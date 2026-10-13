@@ -53,7 +53,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
             "files" -> SpectrumScreens.courses(host)
             "grades" -> if (intent.getBooleanExtra("sample", false)) SpectrumScreens.grades(host, sampleGrades(context)) else SpectrumScreens.grades(host)
             "settings" -> SettingsSheet.build(host, c) {}
-            "signin" -> SignInScreen.build(host.ui, null, {}, {})
+            "signin" -> SignInScreen.build(host.ui) {}
             "sheet" -> {
                 val tt = Timetable.load(context)
                 val course = tt.courses.first { it.code == intent.getStringExtra("code") }

@@ -450,16 +450,16 @@ class MainActivity : Activity(), SpectrumHost {
         if (look != this.look) switchLook(settingsButton ?: shell, look)
     }
 
-    /** First run (no sign-in, no timetable): the sign-in poster (redesign 1t) over the app. */
+    /** First run (no sign-in, no timetable): the sign-in poster (redesign 1t, in UM's colours) over the app. */
     private fun showWelcome() {
         if (welcome != null) return
-        val poster = SignInScreen.build(ui, timetable.term, onSignIn = { signIn() }, onMaya = { openMaya() })
+        val poster = SignInScreen.build(ui) { signIn() }
         findViewById<FrameLayout>(android.R.id.content).addView(poster, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         poster.requestApplyInsets()
         welcome = poster
-        // Dark status and navigation icons on the yellow, whatever the theme.
+        // Light status and navigation icons on UM blue, whatever the theme.
         val dark = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-        window.insetsController?.setSystemBarsAppearance(dark, dark)
+        window.insetsController?.setSystemBarsAppearance(0, dark)
     }
 
     /** Signed in, or a timetable imported: the poster lifts away to the app. */

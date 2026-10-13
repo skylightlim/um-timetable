@@ -41,6 +41,14 @@ video call's picture-in-picture window; use the renderer, or `uiautomator dump` 
 **Checked:** rendered in light and dark (the accent differs slightly). The live flow needs a cleared
 app: part of the reset check.
 
+Follow-up (same night, at the user's request): no semester label (`AcademicCalendar.semesterName` and
+its test removed again); no MAYA link (it's in Settings); the poster in UM's logo colours, sampled
+from the logo: shield blue #3E4095 background, white "Sign in once." and yellow #FFDE20 "Your whole
+semester in one place." (was "Get your whole week."), a yellow rule under UM TIMETABLE that starts with
+a red #ED3237 notch (as the wordmark's U and M do), yellow step numbers with white labels and gold
+#FF9F2D lines between them, a yellow button with blue text; light status and navigation icons. The
+same in both themes.
+
 ## 14 October 2026 (course pages: larger text, everything shown, bold section names)
 
 **Asked for:** on a course page (GIG1003), larger text; all of Spectrum's information shown; section
