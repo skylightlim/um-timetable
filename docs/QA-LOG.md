@@ -18,6 +18,30 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 13 October 2026 (bigger animated title, 1a free-time rows, no vibration on some day swipes)
+
+**Asked for:** a larger day name at the top with an animation; free time between classes as in 1a; the
+user felt no vibration swiping from today to Monday or Wednesday.
+
+**Vibration, found:** the phone's vibrator history (`dumpsys vibrator_manager`) showed day swipes
+playing a TICK and then a CLICK about 15 ms later. The TICK was the "came back before the threshold"
+tap, played at the start of a swipe. `SwipeScrollView` reset its "past the threshold" flag only in
+`onTouchEvent`'s DOWN, which never arrives when the finger lands on a card or the Now block (the card
+takes the DOWN; the scroll view takes over at the first sideways move). So after a swipe dragged past
+60dp, the flag stayed set. The next swipe then played that stray TICK, and a quick flick that went
+straight from the taken-over move to lifting the finger played nothing: its "bump it skipped" CLICK
+is only played when the flag is clear.
+
+**Change:**
+- `SwipeScrollView`: the flag is cleared in `onInterceptTouchEvent`'s DOWN too, so every swipe starts
+  clean: one CLICK when the drag passes 60dp, or when a flick lets go short of it.
+- Top bar title: Big Shoulders 34sp (was 24sp). When it changes, the old title slips away and the new
+  one's words (day, date, Today chip) come in one after another, 45 ms apart, from the side the day
+  moved to; on another tab they rise instead (`Motion.retitle`). The minute's redraw doesn't animate it.
+- Free time (`DayScreen.gap`): "Free · 2 h", a 1px line, "12:00–14:00", in mono 12sp, muted, inset 16dp
+  to line up with the cards' contents. During the gap it reads "Free now · 2 h … next in 40 min" in
+  the accent colour with an accent line.
+
 ## 13 October 2026 (Day: class cards from redesign 1b, strip chips centred)
 
 **Asked for:** centre the day name, date and dots in each strip chip; class cards as in 1b, keeping

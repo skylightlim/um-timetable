@@ -50,7 +50,9 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
         if (onSwipe != null) {
             when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { downX = e.x; downY = e.y; swiping = false }
+                // A touch on a card never reaches onTouchEvent's DOWN, so the drag state starts afresh
+                // here too: left over from the last swipe, it swallowed a quick flick's vibration.
+                MotionEvent.ACTION_DOWN -> { downX = e.x; downY = e.y; swiping = false; past = false }
                 MotionEvent.ACTION_MOVE -> if (!swiping && startsSwipe(e)) { swiping = true; return true }
             }
         }

@@ -154,17 +154,17 @@ object DayScreen {
         return block
     }
 
+    /** Free time between two classes, as in redesign 1a: a quiet line between its length and its times. */
     private fun gap(ui: Ui, prev: Session, next: Session, isToday: Boolean, now: Now): View {
         val p = ui.p
         val inGap = isToday && now.min >= prev.end && now.min < next.start
-        val box = ui.row().apply {
-            background = ui.shape(Color.TRANSPARENT, 12f, if (inGap) p.accent else p.line, 1f, dash = 4f)
-            setPadding(ui.dp(14), ui.dp(9), ui.dp(14), ui.dp(9))
-        }
         val color = if (inGap) p.accentText else p.muted
-        box.addView(ui.text("${if (inGap) "Free now" else "Free"} · ${durationText(next.start - prev.end)}", 13f, color), ui.grow())
-        box.addView(ui.text(if (inGap) "next in ${durationText(ceil(next.start - now.min).toInt())}" else "${clockText(prev.end)}–${clockText(next.start)}", 13f, color))
-        return box
+        return ui.row(gap = 10f).apply {
+            setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(4))
+            addView(ui.text("${if (inGap) "Free now" else "Free"} · ${durationText(next.start - prev.end)}", 12f, color, ui.f.mono))
+            addView(View(ui.context).apply { setBackgroundColor(if (inGap) p.accent else p.line) }, LinearLayout.LayoutParams(0, ui.dp(1), 1f))
+            addView(ui.text(if (inGap) "next in ${durationText(ceil(next.start - now.min).toInt())}" else "${clockText(prev.end)}–${clockText(next.start)}", 12f, color, ui.f.mono))
+        }
     }
 
     /**

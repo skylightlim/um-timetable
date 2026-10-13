@@ -226,6 +226,25 @@ object Motion {
     }
 
     /**
+     * A title changing: the [old] one slips away while the [new] one's parts (words, a chip) follow
+     * each other in, 45 ms apart, from [dx] sideways, or rising by [rise] when [dx] is 0. The old views
+     * are removed from their parent when they're gone.
+     */
+    fun retitle(old: List<View>, new: ViewGroup, dx: Float, rise: Float) {
+        for (v in old) v.animate().translationX(-dx * 0.6f).translationY(if (dx == 0f) -rise * 0.6f else 0f).alpha(0f)
+            .setStartDelay(0).setDuration(140).setInterpolator(EXIT).withEndAction { (v.parent as? ViewGroup)?.removeView(v) }.start()
+        for (i in 0 until new.childCount) {
+            val v = new.getChildAt(i)
+            val delay = 40L + i * 45L
+            v.translationX = dx
+            v.translationY = if (dx == 0f) rise else 0f
+            v.alpha = 0f
+            v.animate().translationX(0f).translationY(0f).setStartDelay(delay).spring(SETTLE).start()
+            ObjectAnimator.ofFloat(v, View.ALPHA, 0f, 1f).setDuration(200).apply { interpolator = PRESS; startDelay = delay }.start()
+        }
+    }
+
+    /**
      * Something about to grow or shrink in place (Show more, a folder, a fold): what changes size
      * animates there, and everything below it moves along. Call just before changing it.
      */

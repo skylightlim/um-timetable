@@ -67,6 +67,9 @@ class MainActivity : Activity(), SpectrumHost {
     private val loading = mutableSetOf<Int>()
 
     private lateinit var titleRow: LinearLayout
+    private lateinit var titleBox: FrameLayout
+    /** What the title says now, so a redraw that doesn't change it doesn't animate it. */
+    private var titleKey: String? = null
     private lateinit var strip: LinearLayout
     private lateinit var scroll: SwipeScrollView
     private lateinit var content: FrameLayout
@@ -170,7 +173,9 @@ class MainActivity : Activity(), SpectrumHost {
         val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
         window.insetsController?.setSystemBarsAppearance(if (p.dark) 0 else lightBars, lightBars)
 
-        titleRow = ui.row()
+        titleBox = FrameLayout(this)
+        titleRow = ui.row().apply { addView(titleBox, ui.grow()) }
+        titleKey = null
         // The day strip: a track of slots, the selection pill gliding over it, and the chips on top.
         strip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         stripTrack = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -311,19 +316,8 @@ class MainActivity : Activity(), SpectrumHost {
     private fun renderTop(n: Now) {
         val p = ui.p
         val tt = timetable
-        titleRow.removeAllViews()
-        // Day: the chosen day and its date; Week: the dates of the strip's week; elsewhere today's date.
-        val title = ui.row(gap = 10f)
-        when (view) {
-            "day" -> {
-                val days = daysFromToday(tt, n, sel)
-                title.addView(ui.text("${DAY_NAMES[sel]} ${dateText(days)}", 24f, p.text, ui.f.sign))
-                if (days == 0) title.addView(ui.chip("Today", p.accent, p.accentInk, 11f).apply { setPadding(ui.dp(8), ui.dp(3), ui.dp(8), ui.dp(3)) })
-            }
-            "week" -> title.addView(ui.text(weekRange(daysFromToday(tt, n, 1)), 24f, p.text, ui.f.sign))
-            else -> title.addView(ui.label("${DAY_NAMES[n.dow]} ${dateText(0)}", p.muted, 11f))
-        }
-        titleRow.addView(title, ui.grow())
+        showTitle(n)
+        while (titleRow.childCount > 1) titleRow.removeViewAt(1)
         val pill = ui.row(gap = 5f)
         titleRow.addView(pill.apply {
             background = ui.pressable(ui.shape(p.surface, 99f, p.line), 99f)
@@ -400,6 +394,36 @@ class MainActivity : Activity(), SpectrumHost {
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.15f).apply { marginStart = ui.dp(6) })
         stripGlider.moveTo(index, if (view == "day" && daysFromToday(tt, n, sel) == 0) p.accent else p.text)
         stripIndex = index
+    }
+
+    /**
+     * The top bar's title. Day: the chosen day and its date; Week: the dates of the strip's week;
+     * elsewhere today's date, small. A new title's words come in from the side the day moved to (or
+     * rise, for another tab) while the old one slips away.
+     */
+    private fun showTitle(n: Now) {
+        val p = ui.p
+        val tt = timetable
+        val big = view == "day" || view == "week"
+        val days = daysFromToday(tt, n, sel)
+        val words = when (view) {
+            "day" -> listOf(DAY_NAMES[sel], dateText(days))
+            "week" -> listOf(weekRange(daysFromToday(tt, n, 1)))
+            else -> listOf("${DAY_NAMES[n.dow]} ${dateText(0)}")
+        }
+        val today = view == "day" && days == 0
+        val key = "$big $today $words"
+        if (key == titleKey) return
+        titleKey = key
+        val title = ui.row(gap = 9f)
+        for (w in words) title.addView(if (big) ui.text(w, 34f, p.text, ui.f.sign, lines = 1) else ui.label(w, p.muted, 11f))
+        if (today) title.addView(ui.chip("Today", p.accent, p.accentInk, 11f).apply { setPadding(ui.dp(8), ui.dp(3), ui.dp(8), ui.dp(3)) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = ui.dp(2) })
+        val old = (0 until titleBox.childCount).map(titleBox::getChildAt)
+        titleBox.addView(title, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+        if (old.isEmpty()) return
+        if (!Motion.enabled) return old.forEach(titleBox::removeView)
+        Motion.retitle(old, title, pendingSlide * ui.dp(32f).toFloat(), ui.dp(10f).toFloat())
     }
 
     /** The new theme spreads out from the theme pill, over a picture of the old one. */
