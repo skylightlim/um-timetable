@@ -70,19 +70,19 @@ fun weekRange(monday: Int): String =
     if (dateIn(monday).get(Calendar.MONTH) == dateIn(monday + 4).get(Calendar.MONTH)) "${dateIn(monday).get(Calendar.DAY_OF_MONTH)}–${dateText(monday + 4)}"
     else "${dateText(monday)} – ${dateText(monday + 4)}"
 
-/** Big page heading, with a one-line summary under it when there's a [meta]. */
-fun pageHeader(ui: Ui, title: String, meta: String?, chip: View? = null, action: View? = null): View {
-    val top = ui.row(gap = 10f)
-    top.addView(ui.text(title.uppercase(), 46f, ui.p.text, ui.f.sign).apply { letterSpacing = 0.01f })
-    chip?.let { top.addView(it) }
-    if (action != null) {
-        top.addView(ui.space(), ui.spacer())
-        top.addView(action)
-    }
-    return ui.column().apply {
-        setPadding(0, ui.dp(18), 0, ui.dp(14))
-        addView(top)
-        meta?.let { addView(ui.text(it, 13.5f, ui.p.muted), ui.wide(top = 8f)) }
+/** A Spectrum tab's name for the top bar (Big Shoulders 56sp, as 1i and 1m's headings) over [week]. */
+fun pageTitle(ui: Ui, name: String, week: String?): LinearLayout = ui.column().apply {
+    addView(ui.text(name, 56f, ui.p.text, ui.f.sign, lines = 1))
+    week?.let { addView(ui.label(it, ui.p.muted, 11f), ui.wide(top = 4f)) }
+}
+
+/** Today in the semester: "Week 2 of 14", the break, revision or exams; null outside the calendar. */
+fun semesterWeek(): String? = AcademicCalendar.week(java.time.LocalDate.now())?.let { w ->
+    when (w.kind) {
+        AcademicCalendar.Kind.TEACHING -> "Week ${w.n} of ${w.of}"
+        AcademicCalendar.Kind.BREAK -> "Mid-semester break"
+        AcademicCalendar.Kind.REVISION -> "Revision week"
+        AcademicCalendar.Kind.EXAMS -> "Exams"
     }
 }
 

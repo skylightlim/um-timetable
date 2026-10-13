@@ -94,23 +94,6 @@ object SpectrumScreens {
         return if (bare.any { it.isLetter() } && bare == bare.uppercase()) MayaImport.titleCase(bare) else bare
     }
 
-    private fun refreshButton(h: SpectrumHost): View {
-        val ui = h.ui
-        return FrameLayout(ui.context).apply {
-            // A 38dp circle inside a 48dp touch area.
-            background = InsetDrawable(ui.pressable(ui.shape(ui.p.surface, 99f, ui.p.line), 99f), ui.dp(5))
-            contentDescription = if (h.syncing) "Syncing" else "Sync with Spectrum"
-            val icon = ui.icon(R.drawable.ic_refresh, ui.p.muted, 18f)
-            addView(icon, FrameLayout.LayoutParams(ui.dp(18), ui.dp(18), Gravity.CENTER))
-            if (h.syncing) icon.animate().rotationBy(360f * 20).setDuration(20_000).setInterpolator(LinearInterpolator()).start()
-            setOnClickListener { if (!h.syncing) h.refresh() }
-            layoutParams = LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)).apply { marginEnd = -ui.dp(5) }
-        }
-    }
-
-    private fun header(h: SpectrumHost, title: String, meta: String) =
-        pageHeader(h.ui, title, meta, action = if (SpectrumStore.signedIn(h.ui.context)) refreshButton(h) else null)
-
     private fun card(ui: Ui) = ui.column().apply {
         background = ui.shape(ui.p.surface, 18f, ui.p.line)
         setPadding(ui.dp(18), ui.dp(18), ui.dp(18), ui.dp(18))
@@ -194,15 +177,13 @@ object SpectrumScreens {
     ): View {
         val ui = h.ui
         val p = ui.p
-        val page = ui.column()
+        val page = ui.column().apply { setPadding(0, ui.dp(6), 0, 0) }
         if (!SpectrumStore.signedIn(ui.context)) {
-            page.addView(header(h, "Due", "Assignments and quizzes from Spectrum"))
             page.addView(connect(h, "See what's due and get reminders 24 h and 2 h before."))
             return page
         }
         val now = System.currentTimeMillis()
         val items = dueItems.sortedBy { it.getLong("due") }
-        page.addView(pageHeader(ui, "Due", null))
         problem(h, page)
         backgroundTip(h, page)
         attendance(h, page, sessions)
@@ -335,9 +316,8 @@ object SpectrumScreens {
     fun grades(h: SpectrumHost, items: List<JSONObject> = SpectrumStore.array(h.ui.context, "grades").objects()): View {
         val ui = h.ui
         val p = ui.p
-        val page = ui.column()
+        val page = ui.column().apply { setPadding(0, ui.dp(6), 0, 0) }
         if (!SpectrumStore.signedIn(ui.context)) {
-            page.addView(header(h, "Grades", "Your marks from Spectrum"))
             page.addView(connect(h, "See each mark as soon as a lecturer releases it, with a notification."))
             return page
         }
@@ -347,7 +327,6 @@ object SpectrumScreens {
         val all = items.filter { g ->
             !SpectrumSync.isAttendance(g) && !(g.isNull("raw") && AttendanceMatch.othersOnly(g.optString("name"), mine(g.optString("code"))))
         }
-        page.addView(pageHeader(ui, "Grades", null))
         problem(h, page)
         if (all.isEmpty()) {
             page.addView(empty(ui, if (SpectrumStore.lastSync(ui.context) > 0) "Spectrum lists no grade items for your courses." else "Syncing with Spectrum…"))
@@ -505,9 +484,8 @@ object SpectrumScreens {
     fun news(h: SpectrumHost): View {
         val ui = h.ui
         val p = ui.p
-        val page = ui.column()
+        val page = ui.column().apply { setPadding(0, ui.dp(6), 0, 0) }
         if (!SpectrumStore.signedIn(ui.context)) {
-            page.addView(header(h, "News", "Announcements from your courses"))
             page.addView(connect(h, "Get a notification when a lecturer posts an announcement."))
             return page
         }
@@ -515,11 +493,12 @@ object SpectrumScreens {
         val mine = all.filter { it.optBoolean("forMe", true) }
         val prefs = ui.context.getSharedPreferences("ui", android.content.Context.MODE_PRIVATE)
         val showAll = prefs.getBoolean("newsAll", false)
-        val switch = ui.segmented(listOf("For me · ${mine.size}", "All · ${all.size}"), if (showAll) 1 else 0) { i ->
+        // For me / All, across the top of the list (the page's name is in the top bar).
+        val switch = ui.segmented(listOf("For me · ${mine.size}", "All · ${all.size}"), if (showAll) 1 else 0, fill = true) { i ->
             prefs.edit().putBoolean("newsAll", i == 1).apply()
             h.render()
         }
-        page.addView(pageHeader(ui, "News", null, action = switch))
+        page.addView(switch, ui.wide(bottom = 6f))
         problem(h, page)
         val list = if (showAll) all else mine
         if (list.isEmpty()) {
@@ -609,15 +588,13 @@ object SpectrumScreens {
     fun courses(h: SpectrumHost): View {
         val ui = h.ui
         val p = ui.p
-        val page = ui.column()
+        val page = ui.column().apply { setPadding(0, ui.dp(6), 0, 0) }
         if (!SpectrumStore.signedIn(ui.context)) {
-            page.addView(header(h, "Courses", "Your Spectrum course pages"))
             page.addView(connect(h, "Read each course page and open its slides and notes in one tap."))
             return page
         }
         val courses = SpectrumStore.array(ui.context, "courses").objects()
         h.openCourse?.let { id -> courses.firstOrNull { it.getInt("id") == id }?.let { return coursePage(h, it) } }
-        page.addView(pageHeader(ui, "Courses", null))
         problem(h, page)
         backgroundTip(h, page)
         if (courses.isEmpty()) page.addView(empty(ui, if (SpectrumStore.lastSync(ui.context) > 0) "No current courses found on Spectrum." else "Syncing with Spectrum…"))

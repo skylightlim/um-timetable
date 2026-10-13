@@ -228,7 +228,7 @@ class MainActivity : Activity(), SpectrumHost {
         presser = Motion.Presser(root)
         root.setOnApplyWindowInsetsListener { _, insets ->
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-            top.setPadding(ui.dp(16) + bars.left, ui.dp(12) + bars.top, ui.dp(16) + bars.right, ui.dp(10))
+            top.setPadding(ui.dp(16) + bars.left, ui.dp(22) + bars.top, ui.dp(16) + bars.right, ui.dp(10))
             tabs.setPadding(ui.dp(16) + bars.left, ui.dp(8), ui.dp(16) + bars.right, ui.dp(8) + bars.bottom)
             WindowInsets.CONSUMED
         }
@@ -339,7 +339,7 @@ class MainActivity : Activity(), SpectrumHost {
             addView(ui.icon(R.drawable.ic_settings, p.text, 20f), FrameLayout.LayoutParams(ui.dp(20), ui.dp(20), Gravity.CENTER))
             setOnClickListener { Haptics.tick(this); SettingsSheet.show(this@MainActivity, this@MainActivity) }
             settingsButton = this
-        }, LinearLayout.LayoutParams(ui.dp(44), ui.dp(44)).apply { marginEnd = -ui.dp(10) })
+        }, LinearLayout.LayoutParams(ui.dp(44), ui.dp(44)).apply { marginEnd = -ui.dp(10); gravity = Gravity.TOP })
         stripFrame.visibility = if (view == "day" || view == "week") View.VISIBLE else View.GONE
         if (stripFrame.visibility != View.VISIBLE) return
         strip.removeAllViews()
@@ -423,22 +423,31 @@ class MainActivity : Activity(), SpectrumHost {
         val p = ui.p
         val tt = timetable
         val big = view == "day" || view == "week"
+        val page = PAGE_TITLES[view]
         val days = daysFromToday(tt, n, sel)
-        val words = when (view) {
-            "day" -> listOf(DAY_NAMES[sel], dateText(days))
-            "week" -> listOf(weekRange(daysFromToday(tt, n, 1)))
-            "grades", "due", "news", "files" -> emptyList()
+        val words = when {
+            view == "day" -> listOf(DAY_NAMES[sel], dateText(days))
+            view == "week" -> listOf(weekRange(daysFromToday(tt, n, 1)))
+            page != null -> listOf(page)
             else -> listOf("${DAY_NAMES[n.dow]} ${dateText(0)}")
         }
+        val weekLine = if (page != null) semesterWeek() else null
         val today = view == "day" && days == 0
-        val key = "$big $today $words"
+        val key = "$big $today $words $weekLine"
         if (key == titleKey) return
         titleKey = key
-        // 40sp: the widest title ("Wednesday 30 Sep"), the Today chip and the settings button just fit 395dp.
-        val title = ui.row(gap = 9f)
-        for (w in words) title.addView(if (big) ui.text(w, 40f, p.text, ui.f.sign, lines = 1) else ui.label(w, p.muted, 11f))
-        if (today) title.addView(ui.chip("Today", p.accent, p.accentInk, 11f).apply { setPadding(ui.dp(8), ui.dp(3), ui.dp(8), ui.dp(3)) },
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = ui.dp(2) })
+        val title: ViewGroup = if (page != null) {
+            // Grades, Due, News, Courses: the page's name large (short words, so 56sp as 1i and 1m's
+            // headings), and which week of the semester it is under it.
+            pageTitle(ui, page, weekLine)
+        } else {
+            // 40sp: the widest title ("Wednesday 30 Sep"), the Today chip and the settings button just fit 395dp.
+            ui.row(gap = 9f).apply {
+                for (w in words) addView(if (big) ui.text(w, 40f, p.text, ui.f.sign, lines = 1) else ui.label(w, p.muted, 11f))
+                if (today) addView(ui.chip("Today", p.accent, p.accentInk, 11f).apply { setPadding(ui.dp(8), ui.dp(3), ui.dp(8), ui.dp(3)) },
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = ui.dp(2) })
+            }
+        }
         val old = (0 until titleBox.childCount).map(titleBox::getChildAt)
         titleBox.addView(title, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
         if (old.isEmpty()) return
@@ -732,6 +741,8 @@ class MainActivity : Activity(), SpectrumHost {
             Triple("news", "News", R.drawable.ic_tab_news),
             Triple("files", "Courses", R.drawable.ic_tab_courses),
         )
+        /** The Spectrum tabs' names, shown large in the top bar. */
+        private val PAGE_TITLES = mapOf("grades" to "Grades", "due" to "Due", "news" to "News", "files" to "Courses")
         /** The week grid has no tab of its own; it's the Week chip under Day. */
         private val VIEWS = TABS.map { it.first }.toSet() + "week"
     }

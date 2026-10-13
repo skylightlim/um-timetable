@@ -18,6 +18,26 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (Spectrum tabs: name and week of the semester in the top bar)
+
+**Asked for:** suggestions 1 and 2 for the empty top of Grades, Due, News and Courses (the page's name
+in the top bar, and the week of the semester), the text using more height, and the whole a little
+lower.
+
+**Change** (`MainActivity.showTitle`, `pageTitle`, `semesterWeek`):
+- On those tabs the top bar shows the page's name in Big Shoulders 56sp (short words, so larger than
+  Day's 40sp, as 1i and 1m's 56px headings) and under it "WEEK 2 OF 14" (or MID-SEMESTER BREAK,
+  REVISION WEEK, EXAMS; nothing outside the calendar), from today's date. It changes with the same
+  animation as the day title.
+- The big heading inside each of those pages is gone (and with it `pageHeader`, `header` and the old
+  sync button code); each page starts 6dp under the top bar. News' For me / All switch now runs
+  full width at the top of the list.
+- The top bar sits 10dp lower on every tab (22dp under the status bar, was 12dp), and the settings
+  button keeps to the top of it.
+- `--es view title --es page Grades` renders that top bar block with a stand-in settings button.
+
+**Checked:** the title block over Grades and News, rendered (light).
+
 ## 14 October 2026 (top bar title larger)
 
 **Asked for:** the "Wednesday 14 Oct" title even larger. Big Shoulders 40sp (was 34sp), for Day and
