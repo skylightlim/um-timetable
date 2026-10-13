@@ -434,8 +434,9 @@ class MainActivity : Activity(), SpectrumHost {
         val key = "$big $today $words"
         if (key == titleKey) return
         titleKey = key
+        // 40sp: the widest title ("Wednesday 30 Sep"), the Today chip and the settings button just fit 395dp.
         val title = ui.row(gap = 9f)
-        for (w in words) title.addView(if (big) ui.text(w, 34f, p.text, ui.f.sign, lines = 1) else ui.label(w, p.muted, 11f))
+        for (w in words) title.addView(if (big) ui.text(w, 40f, p.text, ui.f.sign, lines = 1) else ui.label(w, p.muted, 11f))
         if (today) title.addView(ui.chip("Today", p.accent, p.accentInk, 11f).apply { setPadding(ui.dp(8), ui.dp(3), ui.dp(8), ui.dp(3)) },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = ui.dp(2) })
         val old = (0 until titleBox.childCount).map(titleBox::getChildAt)

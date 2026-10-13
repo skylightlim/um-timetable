@@ -18,6 +18,12 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (top bar title larger)
+
+**Asked for:** the "Wednesday 14 Oct" title even larger. Big Shoulders 40sp (was 34sp), for Day and
+Week. Measured with the font: "Wednesday 30 Sep" (the widest) is 278dp at 40sp; with the Today chip
+(59dp), gaps and the settings button it takes 383 of the phone's 395dp. 42sp would need 397dp.
+
 ## 14 October 2026 (Week: courses as on the Courses tab, totals at the bottom)
 
 **Asked for:** the Week page's courses arranged as on the Courses tab, with the total hours and number
