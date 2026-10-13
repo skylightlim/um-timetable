@@ -209,8 +209,8 @@ object WeekScreen {
         val ui = h.ui
         val p = ui.p
         val tt = h.timetable
-        val page = ui.column()
-        page.addView(pageHeader(ui, "Week", null))
+        // The week's dates are in the top bar and its week of the semester on the Week chip.
+        val page = ui.column().apply { setPadding(0, ui.dp(2), 0, 0) }
         val card = ui.column().apply {
             background = ui.shape(p.surface, 18f, p.line)
             setPadding(ui.dp(2), ui.dp(10), ui.dp(6), ui.dp(8))
@@ -226,64 +226,59 @@ object WeekScreen {
         key.addView(keyItem(View(ui.context).apply { setBackgroundColor(p.accent); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(3)) }, "Now"))
         card.addView(key)
         page.addView(card)
-        val meta = if (tt.sessions.isEmpty()) "No timetable yet · sign in to Spectrum in Courses" else "${tt.sessions.size} classes · ${hoursText(tt.sessions.sumOf { it.end - it.start })} · Mon–Fri · tap a class for details"
-        page.addView(ui.text(meta, 13.5f, p.muted), ui.wide(top = 12f))
-        if (tt.sessions.isNotEmpty()) page.addView(hours(h), ui.wide(top = 18f))
+        if (tt.sessions.isEmpty()) {
+            page.addView(ui.text("No timetable yet · sign in to Spectrum in Courses", 13.5f, p.muted), ui.wide(top = 12f))
+            return page
+        }
+        page.addView(courses(h), ui.wide(top = 30f))
         return page
     }
 
     /**
-     * Each course's hours a week, split by kind of class (lecture, tutorial, then any other kind), and
-     * the totals. A course opens its class sheet.
+     * Each course with its hours a week, as the web page had it: code and name, then occurrence and
+     * hours by kind of class, and the week's total on the right. A course opens its class sheet.
      */
-    private fun hours(h: Host): View {
+    private fun courses(h: Host): View {
         val ui = h.ui
         val p = ui.p
         val tt = h.timetable
+        val list = ui.column()
+        list.addView(ui.row().apply {
+            gravity = Gravity.BOTTOM
+            addView(ui.text("COURSES", 28f, p.text, ui.f.sign).apply { letterSpacing = 0.02f }, ui.grow())
+            addView(ui.text("${tt.sessions.size} ${if (tt.sessions.size == 1) "class" else "classes"} a week", 13.5f, p.muted))
+        }, ui.wide(bottom = 6f))
         val order = listOf("Lecture", "Tutorial")
-        val types = tt.sessions.map { it.type }.distinct().sortedWith(compareBy({ order.indexOf(it).let { i -> if (i < 0) order.size else i } }, { it }))
-        val columns = types.map { it.uppercase() } + "TOTAL"
-        fun minutes(list: List<Session>) = types.map { t -> list.filter { it.type == t }.sumOf { it.end - it.start } } + list.sumOf { it.end - it.start }
-        fun cell(text: String, color: Int, bold: Boolean) = ui.text(text, 13f, color, if (bold) ui.f.monoBold else ui.f.mono).apply { gravity = Gravity.END }
-        fun cells(row: LinearLayout, values: List<Int>, color: Int, bold: Boolean) = values.forEachIndexed { i, m ->
-            val last = i == values.lastIndex
-            row.addView(cell(if (m == 0) "–" else hoursText(m), if (m == 0) p.faint else color, bold || last), LinearLayout.LayoutParams(ui.dp(if (last) 52 else 68), ViewGroup.LayoutParams.WRAP_CONTENT))
-        }
-
-        val card = ui.column().apply {
-            background = ui.shape(p.surface, 18f, p.line)
-            setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(6))
-        }
-        card.addView(ui.row().apply {
-            addView(ui.label("Hours a week", p.muted, 10.5f), ui.grow())
-            columns.forEachIndexed { i, c ->
-                addView(ui.label(c, p.muted, 10.5f).apply { gravity = Gravity.END }, LinearLayout.LayoutParams(ui.dp(if (i == columns.lastIndex) 52 else 68), ViewGroup.LayoutParams.WRAP_CONTENT))
-            }
-        }, ui.wide(bottom = 4f))
-        fun divider() = card.addView(View(ui.context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
         for (course in tt.courses) {
-            val list = tt.sessions.filter { it.course == course }
-            divider()
-            card.addView(ui.column().apply {
-                background = ui.pressable(ui.shape(Color.TRANSPARENT, 12f), 12f)
-                setPadding(0, ui.dp(10), 0, ui.dp(10))
-                contentDescription = "${course.code} ${course.name}: " + types.zip(minutes(list)).filter { it.second > 0 }.joinToString(", ") { "${it.first} ${hoursText(it.second)}" } + ", ${hoursText(list.sumOf { it.end - it.start })} a week"
+            val sessions = tt.sessions.filter { it.course == course }
+            val total = sessions.sumOf { it.end - it.start }
+            val byType = sessions.groupBy { it.type }.toList()
+                .sortedWith(compareBy({ order.indexOf(it.first).let { i -> if (i < 0) order.size else i } }, { it.first }))
+                .map { (type, ss) -> "$type ${hoursText(ss.sumOf { it.end - it.start })}" }
+            val sub = (listOf("Occ ${course.occ}") + byType + listOfNotNull("online".takeIf { sessions.any { it.room == "Online" } })).joinToString(" · ")
+            val code = ui.text(course.code, 14f, p.courseText(course.color), ui.f.monoBold)
+            val row = ui.row(gap = 12f, center = false).apply {
+                setPadding(ui.dp(2), ui.dp(12), ui.dp(2), ui.dp(12))
+                background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
+                contentDescription = "${course.code} ${course.name}, $sub, ${hoursText(total)} a week"
                 setOnClickListener { h.openSheet(course, null) }
-                addView(ui.row().apply {
-                    addView(View(ui.context).apply { background = ui.shape(course.color, 99f) }, LinearLayout.LayoutParams(ui.dp(10), ui.dp(10)).apply { marginEnd = ui.dp(8) })
-                    addView(ui.text(course.code, 13f, p.text, ui.f.monoBold), ui.grow())
-                    cells(this, minutes(list), p.text, false)
+            }
+            row.addView(SpectrumScreens.courseDot(ui, course.color, code))
+            row.addView(ui.column().apply {
+                addView(ui.row(gap = 8f, center = false).apply {
+                    addView(code)
+                    addView(ui.text(course.name, 15f, p.text, ui.f.bodySemi), ui.grow())
+                    baselineAlignedChildIndex = 0
                 })
-                addView(ui.text(course.name, 13f, p.muted), ui.wide(top = 3f).apply { marginStart = ui.dp(18) })
-            })
+                addView(ui.text(sub, 12.5f, p.muted), ui.wide(top = 3f))
+                // The row lines the dot up with the first line's baseline (set once the children are in).
+                baselineAlignedChildIndex = 0
+            }, ui.grow())
+            row.addView(ui.text(hoursText(total), 22f, p.text, ui.f.sign), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER_VERTICAL })
+            list.addView(row)
+            list.addView(View(ui.context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
         }
-        divider()
-        card.addView(ui.row().apply {
-            setPadding(0, ui.dp(12), 0, ui.dp(10))
-            addView(ui.label("All courses", p.text, 10.5f), ui.grow())
-            cells(this, minutes(tt.sessions), p.text, true)
-        })
-        return card
+        return list
     }
 }
 
@@ -391,13 +386,19 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
         canvas.clipRect(r)
         codePaint.color = textColor; codePaint.alpha = alpha
         canvas.drawText(TextUtils.ellipsize(s.course.code, codePaint, w.toFloat(), TextUtils.TruncateAt.END).toString(), r.left + pad, r.top + pad + codePaint.textSize, codePaint)
-        if (s.end - s.start >= 120) {
+        // The name gets the lines that fit between the code and the room: the whole name where there's
+        // room, else the short name, cut short only when even that doesn't fit.
+        val nameTop = r.top + pad + codePaint.textSize + ui.dp(3f)
+        val lines = ((r.bottom - pad - roomPaint.textSize - ui.dp(2f) - nameTop) / namePaint.fontSpacing).toInt()
+        if (lines >= 1) {
             namePaint.color = textColor; namePaint.alpha = alpha
-            val layout = StaticLayout.Builder.obtain(s.course.short, 0, s.course.short.length, namePaint, w)
-                .setMaxLines(2).setEllipsize(TextUtils.TruncateAt.END).setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NORMAL).build()
+            fun layout(text: String) = StaticLayout.Builder.obtain(text, 0, text.length, namePaint, w)
+                .setMaxLines(lines).setEllipsize(TextUtils.TruncateAt.END).setIncludePad(false).setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NORMAL).build()
+            val full = layout(s.course.name)
+            val name = if (full.getEllipsisCount(full.lineCount - 1) > 0 && s.course.short != s.course.name) layout(s.course.short) else full
             canvas.save()
-            canvas.translate(r.left + pad, r.top + pad + codePaint.textSize + ui.dp(3f))
-            layout.draw(canvas)
+            canvas.translate(r.left + pad, nameTop)
+            name.draw(canvas)
             canvas.restore()
         }
         roomPaint.color = textColor; roomPaint.alpha = alpha

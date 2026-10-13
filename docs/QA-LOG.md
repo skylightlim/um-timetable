@@ -18,6 +18,35 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 13 October 2026 (Week page: Courses list as on the web page, full names in the grid, Week pill)
+
+**Asked for:** the dark pill to cover the whole W2 OF 14 chip; no WEEK heading; full course names in
+grid blocks that have room for them; the class count kept alone and merged into the section below,
+in the style the course summary had before Week moved under Day (the web page's Courses list).
+
+**Found:** the Week chip ("W2" / "OF 14") is shorter than the day chips (day, date, dots). Each chip
+wrapped its own content, and the pill takes the height of the chip it moves to, so a strip of white
+slot showed under it.
+
+**Change:**
+- Strip chips all match the strip's height (match parent; the row evens them out), so the pill
+  covers any chip, the Week chip included.
+- Week page: no heading (the dates are in the top bar, the week of the semester on the chip). The grid
+  comes first, then COURSES (Big Shoulders 28sp) with "11 classes a week" on the same line, then one
+  row per course as on the old web page: dot, code and name, "Occ 10 · Lecture 2 h · Tutorial 1 h ·
+  online" underneath, and the week's hours large on the right. A row opens the course's class sheet.
+  The hours table from the previous change is gone.
+- Week grid blocks: the name takes every line that fits between the code and the room. It shows the
+  full name where there's room, the short name if the full one doesn't fit, and is cut short only
+  when neither fits. One-hour blocks still have no room for a name.
+
+**Bad process (my fault, fixed):** the first build of the course list set `baselineAlignedChildIndex`
+before adding the children, which throws. The off-screen renderer crashed twice in a row, so Android
+marked the app a bad process: no background starts (widget updates, alarms, sync job) until the app is
+opened by hand. Neither reinstalling nor `cmd jobscheduler run -f` clears it; only a user launch does.
+The release build never had the bug. Check `dumpsys activity processes | grep -A1 "Bad processes"`
+after any crash in a debug receiver.
+
 ## 13 October 2026 (week of the semester, hours a week per course, no day summary line)
 
 **Asked for:** the Week chip to show which week of the semester it is, without its calendar icon or

@@ -150,7 +150,7 @@ object SpectrumScreens {
      * A round course-colour dot for a top-aligned row: its baseline is set so that, lined up with
      * [text]'s first baseline, the dot is centred on the capital letters.
      */
-    private fun courseDot(ui: Ui, color: Int, text: TextView): View {
+    fun courseDot(ui: Ui, color: Int, text: TextView): View {
         val size = ui.dp(10)
         val caps = Rect().also { text.paint.getTextBounds("H", 0, 1, it) }.height()
         return object : View(ui.context) {

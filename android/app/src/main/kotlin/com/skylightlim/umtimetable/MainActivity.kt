@@ -354,6 +354,7 @@ class MainActivity : Activity(), SpectrumHost {
         for (i in 0..5) {
             stripTrack.addView(View(this).apply { background = ui.shape(p.surface, 12f) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, if (i == 5) 1.15f else 1f).apply { if (i > 0) marginStart = ui.dp(6) })
         }
+        // Every chip is as tall as the tallest (match parent in the strip), so the pill covers the Week chip too.
         fun chip(description: String, vararg parts: View) = ui.column().apply {
             gravity = Gravity.CENTER
             background = ui.pressable(ui.shape(Color.TRANSPARENT, 12f), 12f)
@@ -382,7 +383,7 @@ class MainActivity : Activity(), SpectrumHost {
             val description = tt.day(d).size.let { k -> "${DAY_NAMES[d]} ${dateText(days)}, $k ${if (k == 1) "class" else "classes"}" }
             strip.addView(chip(description, name, date, dots).apply {
                 setOnClickListener { pickedDay = true; goDay(d) }
-            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (d > 1) marginStart = ui.dp(6) })
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { if (d > 1) marginStart = ui.dp(6) })
         }
         // The week grid lives under Day: one more chip after Friday, saying which week of the semester it is.
         val week = index == 5
@@ -406,7 +407,7 @@ class MainActivity : Activity(), SpectrumHost {
         val weekWords = if (semester?.kind == AcademicCalendar.Kind.TEACHING) "Week ${semester.n} of ${semester.of} of the semester" else weekName
         strip.addView(chip("$weekWords, ${tt.sessions.size} classes a week", *weekParts.toTypedArray()).apply {
             setOnClickListener { setView("week") }
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.15f).apply { marginStart = ui.dp(6) })
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.15f).apply { marginStart = ui.dp(6) })
         stripGlider.moveTo(index, if (view == "day" && daysFromToday(tt, n, sel) == 0) p.accent else p.text)
         stripIndex = index
     }
