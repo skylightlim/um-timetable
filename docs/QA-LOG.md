@@ -40,6 +40,11 @@ sync as on Grades (pull down, no button, last sync shown in the pull).
 - Follow-up (user: "the d should be larger"): number and unit are one 34sp text ("2 d", "12 h", as in
   1i) instead of a 16sp unit; "40 min" is wider than the 76dp column at 34sp, so that text alone is
   scaled down to fit (about 29sp).
+- Follow-up (user: "like 1i, the 2d basically has the whole cell; the grid only inside"): the countdown
+  is sized to the column's width, at most 56sp ("2 d" 56sp, "12 h" about 54sp, "40 min" about 29sp),
+  and centred in the row's height. Rules only between rows and down the middle: none under the
+  heading or under the last row. A first try gave the column match-parent height, which cut off the
+  date under a tall countdown; it now wraps its content (so the row grows) with centre gravity.
 
 **Checked:** rendered from the synced data (two deadlines) and the sample, light and dark. "today
 00:45" wrapped in a 76dp column: widened to 80dp.

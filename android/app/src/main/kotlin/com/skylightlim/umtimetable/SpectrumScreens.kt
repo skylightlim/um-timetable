@@ -200,7 +200,6 @@ object SpectrumScreens {
         val now = System.currentTimeMillis()
         val items = dueItems.sortedBy { it.getLong("due") }
         page.addView(pageHeader(ui, "Due", null))
-        page.addView(rule(ui))
         problem(h, page)
         backgroundTip(h, page)
         attendance(h, page, sessions)
@@ -208,7 +207,9 @@ object SpectrumScreens {
             page.addView(empty(ui, if (SpectrumStore.lastSync(ui.context) > 0) "Nothing due on Spectrum right now." else "Syncing with Spectrum…"))
             return page
         }
-        for (i in items) {
+        // Ruled inside only, as in 1i: lines between the rows and down the middle, none above or below.
+        for ((n, i) in items.withIndex()) {
+            if (n > 0) page.addView(rule(ui))
             val due = i.getLong("due")
             val overdue = i.optBoolean("overdue") || due <= now
             val code = i.optString("code")
@@ -221,17 +222,17 @@ object SpectrumScreens {
                 background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
                 setOnClickListener { h.openUrl(i.optString("url")) }
             }
-            // Left: how long is left, large, and when it's due.
+            // Left: how long is left, as large as the cell's width allows (at most 56sp: "2 d", "12 h", "40 min"
+            // smaller), and when it's due, centred in the cell's height.
             row.addView(ui.column().apply {
                 setPadding(0, ui.dp(14), ui.dp(4), ui.dp(14))
-                // Number and unit the same size ("2 d", "12 h"); "40 min" is too wide at 34sp, so it shrinks to fit.
                 addView(ui.text(if (overdue) "Late" else span(due), 34f, color, ui.f.sign).apply {
-                    val room = ui.dp(76).toFloat()
-                    val wide = paint.measureText(text.toString())
-                    if (wide > room) setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textSize * room / wide)
+                    val fit = textSize * ui.dp(76) / paint.measureText(text.toString())
+                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, minOf(fit, ui.dp(56f).toFloat()))
                 })
                 addView(ui.text(whenDue(due), 11f, p.muted, ui.f.mono), ui.wide(top = 4f))
-            }, LinearLayout.LayoutParams(ui.dp(80), ViewGroup.LayoutParams.WRAP_CONTENT))
+            // Wrapping its content so the row grows to fit it, and centred when the other side is taller.
+            }, LinearLayout.LayoutParams(ui.dp(80), ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER_VERTICAL })
             row.addView(View(ui.context).apply { setBackgroundColor(p.line) }, LinearLayout.LayoutParams(1, ViewGroup.LayoutParams.MATCH_PARENT))
             // Right: course, name, and what kind of activity it is.
             row.addView(ui.column().apply {
@@ -244,7 +245,6 @@ object SpectrumScreens {
                 addView(ui.text(listOf(i.optString("moduleLabel"), courseName(h, i.optString("course"), code)).filter { it.isNotBlank() }.joinToString(" · "), 12.5f, p.muted), ui.wide(top = 2f))
             }, ui.grow())
             page.addView(row)
-            page.addView(rule(ui))
         }
         return page
     }
