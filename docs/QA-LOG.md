@@ -37,6 +37,9 @@ sync as on Grades (pull down, no button, last sync shown in the pull).
   "24 Oct"), a vertical rule, then dot and code, the name (16sp) and "Assignment · course" as before.
 - No date in the top bar on Due.
 - The debug renderer's `--es view due --ez sample true` draws made-up deadlines and attendance.
+- Follow-up (user: "the d should be larger"): number and unit are one 34sp text ("2 d", "12 h", as in
+  1i) instead of a 16sp unit; "40 min" is wider than the 76dp column at 34sp, so that text alone is
+  scaled down to fit (about 29sp).
 
 **Checked:** rendered from the synced data (two deadlines) and the sample, light and dark. "today
 00:45" wrapped in a 76dp column: widened to 80dp.

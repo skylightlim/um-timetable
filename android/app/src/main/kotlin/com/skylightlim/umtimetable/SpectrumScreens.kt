@@ -224,15 +224,12 @@ object SpectrumScreens {
             // Left: how long is left, large, and when it's due.
             row.addView(ui.column().apply {
                 setPadding(0, ui.dp(14), ui.dp(4), ui.dp(14))
-                if (overdue) {
-                    addView(ui.text("Late", 34f, color, ui.f.sign))
-                } else {
-                    val (n, unit) = span(due).split(" ")
-                    addView(ui.row(gap = 2f, center = false).apply {
-                        addView(ui.text(n, 34f, color, ui.f.sign))
-                        addView(ui.text(unit, 16f, color, ui.f.sign))
-                    })
-                }
+                // Number and unit the same size ("2 d", "12 h"); "40 min" is too wide at 34sp, so it shrinks to fit.
+                addView(ui.text(if (overdue) "Late" else span(due), 34f, color, ui.f.sign).apply {
+                    val room = ui.dp(76).toFloat()
+                    val wide = paint.measureText(text.toString())
+                    if (wide > room) setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, textSize * room / wide)
+                })
                 addView(ui.text(whenDue(due), 11f, p.muted, ui.f.mono), ui.wide(top = 4f))
             }, LinearLayout.LayoutParams(ui.dp(80), ViewGroup.LayoutParams.WRAP_CONTENT))
             row.addView(View(ui.context).apply { setBackgroundColor(p.line) }, LinearLayout.LayoutParams(1, ViewGroup.LayoutParams.MATCH_PARENT))
