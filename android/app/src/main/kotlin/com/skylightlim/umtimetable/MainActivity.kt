@@ -193,7 +193,8 @@ class MainActivity : Activity(), SpectrumHost {
         stripIndex = -1
         val top = ui.column().apply {
             addView(titleRow)
-            addView(stripFrame, ui.wide(top = 10f))
+            // 16dp under the title, as the Spectrum tabs' pages start 10dp + 6dp under theirs.
+            addView(stripFrame, ui.wide(top = 16f))
         }
         content = FrameLayout(this).apply { setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(24)) }
         scroll = SwipeScrollView(this).apply {

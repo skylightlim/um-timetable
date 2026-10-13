@@ -18,6 +18,15 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (day strip as low as the other tabs' first panel)
+
+**Asked for:** the day strip lower, to match the panel on the other pages.
+
+**Change:** Day's and Week's titles carry the other tabs' small line, invisible (`blankLine`), so all
+top-bar titles are the same height; the strip sits 16dp under the title (was 10dp), as the Spectrum
+tabs' pages start 10dp (the top bar's bottom padding) + 6dp (the page's) under theirs. Switching
+between Day and Grades, the strip and Grades' first card start at the same height.
+
 ## 14 October 2026 (top bar: today's date on the Spectrum tabs, Day's title as large as theirs)
 
 **Asked for:** today's date on the same line as "Week 2"; the date on Day as large as the other tabs'

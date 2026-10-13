@@ -86,13 +86,28 @@ fun pageTitle(ui: Ui, name: String, line: String?): LinearLayout = ui.column().a
  * name doesn't fit at 56sp ("Wednesday 30 Sep" is 387dp of the 361dp beside the settings button);
  * "Wed 30 Sep" and the chip take 313dp.
  */
-fun dayTitle(ui: Ui, day: String, date: String, today: Boolean): LinearLayout = ui.row(gap = 12f).apply {
-    addView(titleText(ui, "$day $date"))
-    if (today) addView(ui.chip("Today", ui.p.accent, ui.p.accentInk, 11f).apply { setPadding(ui.dp(8), ui.dp(3), ui.dp(8), ui.dp(3)) })
+fun dayTitle(ui: Ui, day: String, date: String, today: Boolean): LinearLayout = ui.column().apply {
+    addView(ui.row(gap = 12f).apply {
+        addView(titleText(ui, "$day $date"))
+        if (today) addView(ui.chip("Today", ui.p.accent, ui.p.accentInk, 11f).apply { setPadding(ui.dp(8), ui.dp(3), ui.dp(8), ui.dp(3)) })
+    })
+    addView(blankLine(ui), ui.wide(top = 4f))
 }
 
 /** Week's title: the dates of the strip's week on one line. */
-fun weekTitle(ui: Ui, range: String): LinearLayout = ui.column().apply { addView(titleText(ui, range)) }
+fun weekTitle(ui: Ui, range: String): LinearLayout = ui.column().apply {
+    addView(titleText(ui, range))
+    addView(blankLine(ui), ui.wide(top = 4f))
+}
+
+/**
+ * The other tabs' small line, unseen: Day's and Week's titles are as tall as theirs, so the day strip
+ * starts where those tabs' first panel does.
+ */
+private fun blankLine(ui: Ui) = ui.label("Week", ui.p.muted, 11f).apply {
+    visibility = View.INVISIBLE
+    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+}
 
 /** Today in the semester: "Week 2 of 14", the break, revision or exams; null outside the calendar. */
 fun semesterWeek(): String? = AcademicCalendar.week(java.time.LocalDate.now())?.let { w ->
