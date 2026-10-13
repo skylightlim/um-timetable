@@ -98,7 +98,7 @@ object DayScreen {
         page.addView(ui.text(meta, 13.5f, p.muted), ui.wide(top = 6f, bottom = 12f))
         if (day == homeDay(h.timetable, now)) page.addView(status(h, now), ui.wide(bottom = 18f))
 
-        val agenda = ui.column(gap = 10f)
+        val agenda = ui.column(gap = 8f)
         list.forEachIndexed { i, s ->
             val prev = list.getOrNull(i - 1)
             if (prev != null && s.start > prev.end) agenda.addView(gap(ui, prev, s, isToday, now))
@@ -108,7 +108,7 @@ object DayScreen {
                 now.min >= s.start -> "live"
                 else -> ""
             }
-            agenda.addView(slot(h, s, state, now))
+            agenda.addView(slot(h, s, state))
         }
         page.addView(agenda)
         return page
@@ -164,13 +164,14 @@ object DayScreen {
         val color = if (inGap) p.accentText else p.muted
         box.addView(ui.text("${if (inGap) "Free now" else "Free"} · ${durationText(next.start - prev.end)}", 13f, color), ui.grow())
         box.addView(ui.text(if (inGap) "next in ${durationText(ceil(next.start - now.min).toInt())}" else "${clockText(prev.end)}–${clockText(next.start)}", 13f, color))
-        return ui.row(gap = 10f, center = false).apply {
-            addView(ui.space(w = ui.dp(46)))
-            addView(box, ui.grow())
-        }
+        return box
     }
 
-    private fun slot(h: Host, s: Session, state: String, now: Now): View {
+    /**
+     * One class, as in redesign 1b: its times, then code · type · occurrence, the course name and the
+     * lecturer, and the room large on the right. The yellow block above counts down the class in progress.
+     */
+    private fun slot(h: Host, s: Session, state: String): View {
         val ui = h.ui
         val p = ui.p
         val c = s.course.color
@@ -178,48 +179,29 @@ object DayScreen {
         val fg = if (tut) p.text else p.ink
         val fgMuted = if (tut) p.muted else p.inkMuted
 
-        val card = ui.column(gap = 5f).apply {
+        val card = ui.row(gap = 10f).apply {
             background = ui.pressable(if (tut) ui.shape(p.courseTint(c), 16f, c, 1.5f) else ui.shape(c, 16f))
-            setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(13))
-            // Every card fits its content; the times beside it and the free gaps show how long a class
-            // is. (A 46dp-per-hour minimum only ever lengthened 3-hour classes, by empty space.)
+            setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(14))
             setOnClickListener { h.openSheet(s.course, s) }
         }
-        val top = ui.row(gap = 8f)
-        top.addView(ui.text(s.course.code, 12f, if (tut) p.courseText(c) else p.ink, ui.f.monoBold))
-        top.addView(ui.chip(s.type, if (tut) Palette.mix(c, p.surface, 0.22f) else 0x2410141A, if (tut) p.courseText(c) else p.ink))
-        top.addView(ui.text("Occ ${s.course.occ}", 11f, fg, ui.f.mono).apply { alpha = 0.75f })
-        top.addView(ui.space(), ui.spacer())
-        top.addView(ui.text(s.room, 24f, fg, ui.f.sign))
-        card.addView(top)
-        card.addView(ui.text(s.course.name, 17f, fg, ui.f.bodySemi))
-        card.addView(ui.text(s.lecturer ?: "Lecturer not listed", 13f, fgMuted).apply { if (s.lecturer == null) setTypeface(ui.f.body, Typeface.ITALIC) })
-        if (state == "live") {
-            card.addView(ui.space(h = ui.dp(2)))
-            card.addView(ui.label("Ends in ${durationText(ceil(s.end - now.min).toInt())}", fg))
-            card.addView(ui.bar((now.min - s.start) / (s.end - s.start), if (tut) c else p.ink, if (tut) p.line else 0x2E10141A))
-        }
+        card.addView(ui.column().apply {
+            addView(ui.text(clockText(s.start), 14f, fg, ui.f.monoBold))
+            addView(ui.text(clockText(s.end), 12f, fg, ui.f.mono).apply { alpha = 0.7f }, ui.wide(top = 2f))
+        }, LinearLayout.LayoutParams(ui.dp(52), ViewGroup.LayoutParams.WRAP_CONTENT))
+        card.addView(ui.column().apply {
+            addView(ui.text("${s.course.code} · ${s.type.uppercase()} · Occ ${s.course.occ}", 11f, if (tut) p.courseText(c) else p.ink, ui.f.monoBold))
+            addView(ui.text(s.course.name, 15f, fg, ui.f.bodySemi), ui.wide(top = 3f))
+            addView(ui.text(s.lecturer ?: "Lecturer not listed", 13f, fgMuted).apply { if (s.lecturer == null) setTypeface(ui.f.body, Typeface.ITALIC) }, ui.wide(top = 3f))
+        }, ui.grow())
+        card.addView(ui.text(s.room, 30f, fg, ui.f.sign))
 
-        val time = ui.column().apply {
-            setPadding(0, ui.dp(12), 0, 0)
-            addView(ui.text(clockText(s.start), 12.5f, p.text, ui.f.monoBold))
-            addView(ui.text(clockText(s.end), 12.5f, p.faint, ui.f.mono), ui.wide(top = 2f))
-        }
-        val cardSlot: View = if (state == "live") {
-            // The class in progress gets an accent ring a little outside the card.
-            FrameLayout(ui.context).apply {
-                background = ui.shape(Color.TRANSPARENT, 19f, p.accent, 2f)
-                setPadding(ui.dp(3), ui.dp(3), ui.dp(3), ui.dp(3))
-                addView(card)
-            }
-        } else card
-        if (state == "past") {
-            card.alpha = 0.42f
-            time.alpha = 0.42f
-        }
-        return ui.row(gap = 10f, center = false).apply {
-            addView(time, LinearLayout.LayoutParams(ui.dp(46), ViewGroup.LayoutParams.WRAP_CONTENT))
-            addView(cardSlot, ui.grow())
+        if (state == "past") card.alpha = 0.42f
+        if (state != "live") return card
+        // The class in progress gets an accent ring a little outside the card.
+        return FrameLayout(ui.context).apply {
+            background = ui.shape(Color.TRANSPARENT, 19f, p.accent, 2f)
+            setPadding(ui.dp(3), ui.dp(3), ui.dp(3), ui.dp(3))
+            addView(card)
         }
     }
 }

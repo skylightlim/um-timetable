@@ -360,10 +360,10 @@ class MainActivity : Activity(), SpectrumHost {
             stripTrack.addView(View(this).apply { background = ui.shape(p.surface, 12f) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, if (i == 5) 1.15f else 1f).apply { if (i > 0) marginStart = ui.dp(6) })
         }
         fun chip(description: String, vararg parts: View) = ui.column().apply {
-            gravity = Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER
             background = ui.pressable(ui.shape(Color.TRANSPARENT, 12f), 12f)
             minimumHeight = ui.dp(60)
-            setPadding(ui.dp(10), ui.dp(8), ui.dp(4), ui.dp(8))
+            setPadding(ui.dp(4), ui.dp(8), ui.dp(4), ui.dp(8))
             contentDescription = description
             for ((k, part) in parts.withIndex()) {
                 val lp = part.layoutParams as? LinearLayout.LayoutParams ?: LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)

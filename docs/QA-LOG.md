@@ -18,6 +18,24 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 13 October 2026 (Day: class cards from redesign 1b, strip chips centred)
+
+**Asked for:** centre the day name, date and dots in each strip chip; class cards as in 1b, keeping
+every detail (occurrence, lecturer).
+
+**Change** (`DayScreen.slot`, `MainActivity.renderTop`):
+- A class card is one row, as in 1b: start and end times (mono 14/12sp) inside the card, then
+  "CODE · TYPE · Occ N" (mono 11sp), the full course name (15sp) and the lecturer (13sp, italic
+  "Lecturer not listed" when missing), and the room on the right (Big Shoulders 30sp). Lecture cards
+  are filled with the course colour, tutorials tinted with a colour border, as before.
+- The class in progress keeps its yellow ring. Its "Ends in" label and bar are gone: the Now block
+  above shows the same countdown and is always on the same page.
+- Free gaps lost their 46dp indent (there's no time column outside the cards any more); 8dp between
+  rows, as in 1b.
+- Strip chips centre their contents.
+
+**Checked:** Day rendered off-screen during a class, in light and dark. The strip isn't in the renderer.
+
 ## 13 October 2026 (Day: the yellow Now block and dated day strip from redesign 1b)
 
 **Asked for:** the "Now" section of redesign option 1b, with the course name where 1b shows the room;
