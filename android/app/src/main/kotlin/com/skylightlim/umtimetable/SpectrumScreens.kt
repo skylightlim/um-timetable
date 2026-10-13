@@ -315,13 +315,53 @@ object SpectrumScreens {
         if (waiting.isNotEmpty()) {
             page.addView(ui.label("Not marked yet", p.text, 11f).apply { setPadding(0, 0, 0, ui.dp(6)) })
             page.addView(rule(ui))
-            for ((_, items) in waiting) {
-                val n = items.count { !it.optBoolean("total") }
-                page.addView(courseLine(h, items.first(), "$n ${if (n == 1) "item" else "items"}", 14f, p.text, ui.f.body).apply { setPadding(0, ui.dp(11), 0, ui.dp(11)) })
+            for ((courseId, items) in waiting) {
+                val left = items.filter { !it.optBoolean("total") }
+                val head = courseLine(h, items.first(), "${left.size} ${if (left.size == 1) "item" else "items"}", 14f, p.text, ui.f.body).apply { setPadding(0, ui.dp(11), 0, ui.dp(11)) }
+                page.addView(unmarked(h, head, left, "unmarked-$courseId"))
                 page.addView(rule(ui))
             }
         }
         return page
+    }
+
+    /**
+     * Grade items not marked yet, folded under [head] (a row; the chevron goes at its end). Tapping
+     * the row opens the list in place; an item with a Spectrum page opens it.
+     */
+    private fun unmarked(h: SpectrumHost, head: LinearLayout, items: List<JSONObject>, key: String): View {
+        val ui = h.ui
+        val p = ui.p
+        val shown = key in h.expanded
+        val chevron = Motion.chevron(ui, shown)
+        head.addView(chevron, LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)).apply { marginStart = ui.dp(10) })
+        val list = ui.column().apply { visibility = if (shown) View.VISIBLE else View.GONE }
+        for (g in items) {
+            val url = g.optString("url")
+            list.addView(ui.row(gap = 10f).apply {
+                minimumHeight = ui.dp(44)
+                setPadding(ui.dp(18), ui.dp(8), 0, ui.dp(8))
+                addView(ui.text(g.optString("name"), 14f, p.text), ui.grow())
+                g.optString("kind").takeIf { it.isNotEmpty() }?.let { addView(ui.text(it, 12.5f, p.muted)) }
+                if (url.isNotEmpty()) {
+                    background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
+                    contentDescription = "${g.optString("name")}, not marked yet. Opens it on Spectrum."
+                    addView(ui.icon(R.drawable.ic_chevron, p.faint).apply { layoutParams = LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)) })
+                    setOnClickListener { h.openUrl(url) }
+                }
+            })
+        }
+        head.background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
+        head.setOnClickListener {
+            Motion.resize(head)
+            val open = h.expanded.add(key) || !h.expanded.remove(key)
+            list.visibility = if (open) View.VISIBLE else View.GONE
+            Motion.turn(chevron, open)
+        }
+        return ui.column().apply {
+            addView(head)
+            addView(list)
+        }
     }
 
     private fun rule(ui: Ui) = View(ui.context).apply {
@@ -388,12 +428,15 @@ object SpectrumScreens {
             if (hasContent(feedback)) item.addView(RichText.view(h, feedback, "g${g.getInt("id")}", code.ifEmpty { "Spectrum" }, 3, 13.5f, p.muted, h.expanded), ui.wide(top = 6f))
             box.addView(item, ui.wide(top = 8f))
         }
+        total?.let { box.addView(ui.text("Course total ${SpectrumSync.markText(it)}", 12.5f, p.muted), ui.wide(top = 8f)) }
         val left = items.filter { it.isNull("raw") && !it.optBoolean("total") }
-        val notes = listOfNotNull(
-            total?.let { "Course total ${SpectrumSync.markText(it)}" },
-            left.takeIf { it.isNotEmpty() }?.let { l -> "not marked yet: " + l.joinToString(", ") { it.optString("name") } },
-        ).joinToString(" · ").replaceFirstChar { it.uppercase() }
-        if (notes.isNotEmpty()) box.addView(ui.text(notes, 12.5f, p.muted, lines = 2), ui.wide(top = 8f))
+        if (left.isNotEmpty()) {
+            val head = ui.row().apply {
+                setPadding(0, ui.dp(10), 0, ui.dp(10))
+                addView(ui.text("Not marked yet · ${left.size} ${if (left.size == 1) "item" else "items"}", 12.5f, p.muted), ui.grow())
+            }
+            box.addView(unmarked(h, head, left, "unmarked-${first.getInt("courseId")}"), ui.wide(top = if (total == null) 2f else 0f))
+        }
         return box
     }
 

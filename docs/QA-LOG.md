@@ -18,6 +18,21 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 13 October 2026 (Grades: unmarked items open in place)
+
+**Asked for:** the unmarked courses to be tappable too.
+
+**Change** (`SpectrumScreens.unmarked`): a course under NOT MARKED YET opens in place (chevron turns,
+the page moves along, as the News fold does) to list its items: name, kind, and a chevron when it has
+a Spectrum page, which a tap opens. A course with marks has the same fold, "Not marked yet · 2 items",
+under its cards; its course total is a line of its own above it. The open state is kept like the
+other folds (`expanded`). The debug renderer's `--ez open true` draws every fold open.
+
+**Found:** WIX1002 lists 11 unmarked items, most of them other occurrences' submissions ("Lab 3 -
+OCC3 Submission", "OCC 15 - Tutorial and Lab Submission"). Not filtered yet; the user's call.
+
+**Checked:** rendered with every fold open, from the synced data (light) and made-up marks (dark).
+
 ## 13 October 2026 (Grades as in redesign 1j, pull to sync, no attendance)
 
 **Asked for:** Grades laid out as 1j; no "3 marks · 1 new · synced 11:32" line; sync by pulling the

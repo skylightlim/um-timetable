@@ -26,6 +26,7 @@ import java.io.File
  * dow (0 Sunday … 6 Saturday) and min (minutes after midnight) pretend it's another time of the week.
  * view grades with --ez sample true draws made-up marks for the timetable's first courses instead of the
  * synced ones (to check the mark cards while Spectrum has none).
+ * --ez open true draws every fold and "Show more" opened.
  * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
  * Nth class of the week (0 first).
  */
@@ -40,6 +41,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val now = if (intent.hasExtra("dow")) Now(intent.getIntExtra("dow", 2), intent.getIntExtra("min", 700).toFloat()) else Now.current()
         val host = Host(c, Ui(c, if (dark) Palette.DARK else Palette.LIGHT, Fonts(c)), now).apply {
             openCourse = intent.getIntExtra("course", 0).takeIf { it > 0 }
+            if (intent.getBooleanExtra("open", false)) expanded = object : HashSet<String>() { override fun contains(element: String) = true }
         }
         val page = when (view) {
             "week" -> WeekScreen.build(host)
@@ -191,7 +193,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         override fun showCourse(id: Int) = Unit
         override val syncing = false
         override var openCourse: Int? = null
-        override val expanded = mutableSetOf<String>()
+        override var expanded: MutableSet<String> = mutableSetOf()
         override val seenNews: Set<String> = context.getSharedPreferences("ui", Context.MODE_PRIVATE).getStringSet("newsSeen", emptySet()) ?: emptySet()
         override val seenGrades: Set<String> = context.getSharedPreferences("ui", Context.MODE_PRIVATE).getStringSet("gradesSeen", emptySet()) ?: emptySet()
         override fun courseContents(id: Int): JSONArray? = SpectrumStore.read(context, "contents-$id")?.let { runCatching { JSONArray(it) }.getOrNull() }
