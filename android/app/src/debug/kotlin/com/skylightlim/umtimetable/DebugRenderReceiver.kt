@@ -29,7 +29,7 @@ import java.io.File
  * view due with --ez sample true draws made-up deadlines (late, minutes, hours, days) and attendance
  * (open, about to open, not in Spectrum's calendar).
  * --ez open true draws every fold and "Show more" opened.
- * view settings draws the Settings sheet; view signin the first-run sign-in poster, at screen height.
+ * view signout draws the Sign out question's card. view settings draws the Settings sheet; view signin the first-run sign-in poster, at screen height.
  * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
  * Nth class of the week (0 first).
  */
@@ -54,6 +54,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
             "grades" -> if (intent.getBooleanExtra("sample", false)) SpectrumScreens.grades(host, sampleGrades(context)) else SpectrumScreens.grades(host)
             "settings" -> SettingsSheet.build(host, c) {}
             "signin" -> SignInScreen.build(host.ui) {}
+            "signout" -> ConfirmDialog.card(host.ui, MainActivity.SIGN_OUT_TITLE, MainActivity.SIGN_OUT_BODY, "Sign out", {}, {})
             "sheet" -> {
                 val tt = Timetable.load(context)
                 val course = tt.courses.first { it.code == intent.getStringExtra("code") }

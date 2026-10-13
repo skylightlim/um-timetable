@@ -3,7 +3,6 @@ package com.skylightlim.umtimetable
 import android.Manifest
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
-import android.app.AlertDialog
 import android.app.Activity
 import android.content.Intent
 import android.content.res.ColorStateList
@@ -663,14 +662,7 @@ class MainActivity : Activity(), SpectrumHost {
     override fun signIn() = startActivityForResult(Intent(this, LoginActivity::class.java), REQ_LOGIN)
 
     /** One tap on a link at the bottom of Courses shouldn't wipe the sign-in: ask first. */
-    override fun signOut() {
-        AlertDialog.Builder(this)
-            .setTitle("Sign out of Spectrum?")
-            .setMessage("The app forgets your sign-in and what it saved from Spectrum: courses, announcements, deadlines and marks. Your timetable stays. TimeEdit is signed out too.")
-            .setPositiveButton("Sign out") { _, _ -> signOutNow() }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
+    override fun signOut() = ConfirmDialog.show(ui, SIGN_OUT_TITLE, SIGN_OUT_BODY, "Sign out") { signOutNow() }
 
     private fun signOutNow() {
         SpectrumStore.noteSignOut(this, "you tapped Sign out")
@@ -723,6 +715,9 @@ class MainActivity : Activity(), SpectrumHost {
 
     companion object {
         const val EXTRA_VIEW = "view"
+        /** The Sign out question (redesign 1q, with what this app really removes: the timetable stays). */
+        const val SIGN_OUT_TITLE = "Sign out of Spectrum?"
+        const val SIGN_OUT_BODY = "This removes your sign-in and the courses, announcements, deadlines and marks saved on this phone. TimeEdit is signed out too. Your timetable stays, and you can sign in again any time."
         /** A Spectrum course id to open in the Courses tab. */
         const val EXTRA_COURSE = "course"
         private const val REQ_LOGIN = 1

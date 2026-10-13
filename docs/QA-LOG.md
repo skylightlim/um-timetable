@@ -18,6 +18,21 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (Sign out asks as in redesign 1q)
+
+**Asked for:** a sign-out panel like 1q.
+
+**Change** (`ConfirmDialog`, `MainActivity.signOut`): the platform AlertDialog is replaced by 1q's
+card: centred over a 60% scrim, 20dp from the sides, rounded 22dp; "Sign out of Spectrum?" in Big
+Shoulders 30sp; what happens in 15sp muted; Cancel (surface) and Sign out (yellow) side by side, 48dp
+tall, labels left-aligned. It fades and springs in; Cancel, Back or a tap outside closes it and
+changes nothing. The text keeps what the app really does (1q's mock says the timetable is deleted;
+here it stays): "This removes your sign-in and the courses, announcements, deadlines and marks saved
+on this phone. TimeEdit is signed out too. Your timetable stays, and you can sign in again any time."
+`--es view signout` renders the card.
+
+**Checked:** the card rendered in light and dark.
+
 ## 14 October 2026 (first-run sign-in poster as in redesign 1t)
 
 **Asked for:** the sign-in screen like 1t.
