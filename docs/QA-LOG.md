@@ -49,6 +49,15 @@ a red #ED3237 notch (as the wordmark's U and M do), yellow step numbers with whi
 #FF9F2D lines between them, a yellow button with blue text; light status and navigation icons. The
 same in both themes.
 
+Second follow-up (user: "reconsider the colour with the taste and impeccable skill; the red and
+yellow bar is good"): the first UM version spent its accents everywhere (yellow headline, numbers,
+bar and button, orange-gold lines next to the lemon yellow, pure and translucent white), and the
+crest blue #3E4095 sits at hue 278° in OKLCH, so full-bleed it read violet. Now one field and one
+accent, at the app icon's blue hue (266°): field #132B7C (oklch 0.33 0.14 266); headline and step
+numbers #F1F5FE (11.6:1); "UM TIMETABLE", step labels and footnote #B8C7E9 (7.4:1); lines between
+the steps #4E66A3; yellow #FFDE20 only for the red-notched bar (unchanged) and the button (its blue
+text 9.5:1). The headline breaks after "Sign in once." instead of changing colour mid-sentence.
+
 ## 14 October 2026 (course pages: larger text, everything shown, bold section names)
 
 **Asked for:** on a course page (GIG1003), larger text; all of Spectrum's information shown; section
