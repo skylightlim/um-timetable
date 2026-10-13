@@ -70,11 +70,31 @@ fun weekRange(monday: Int): String =
     if (dateIn(monday).get(Calendar.MONTH) == dateIn(monday + 4).get(Calendar.MONTH)) "${dateIn(monday).get(Calendar.DAY_OF_MONTH)}–${dateText(monday + 4)}"
     else "${dateText(monday)} – ${dateText(monday + 4)}"
 
-/** A Spectrum tab's name for the top bar (Big Shoulders 56sp, as 1i and 1m's headings) over [week]. */
-fun pageTitle(ui: Ui, name: String, week: String?): LinearLayout = ui.column().apply {
-    addView(ui.text(name, 56f, ui.p.text, ui.f.sign, lines = 1))
-    week?.let { addView(ui.label(it, ui.p.muted, 11f), ui.wide(top = 4f)) }
+/** Top-bar titles: Big Shoulders 56sp everywhere (as 1i and 1m's headings). */
+private const val TITLE_SIZE = 56f
+
+private fun titleText(ui: Ui, text: String) = ui.text(text, TITLE_SIZE, ui.p.text, ui.f.sign, lines = 1).apply { setLineSpacing(0f, 1f) }
+
+/** A Spectrum tab's name for the top bar, over a small line (the week of the semester and today's date). */
+fun pageTitle(ui: Ui, name: String, line: String?): LinearLayout = ui.column().apply {
+    addView(titleText(ui, name))
+    line?.let { addView(ui.label(it, ui.p.muted, 11f), ui.wide(top = 4f)) }
 }
+
+/**
+ * Day's title: the day's name, then its date with the Today chip. Two lines, since "Wednesday 30 Sep"
+ * at 56sp is wider than the room beside the settings button.
+ */
+fun dayTitle(ui: Ui, day: String, date: String, today: Boolean): LinearLayout = ui.column().apply {
+    addView(titleText(ui, day))
+    addView(ui.row(gap = 12f).apply {
+        addView(titleText(ui, date))
+        if (today) addView(ui.chip("Today", ui.p.accent, ui.p.accentInk, 11f).apply { setPadding(ui.dp(8), ui.dp(3), ui.dp(8), ui.dp(3)) })
+    }, ui.wide(top = -6f))
+}
+
+/** Week's title: the dates of the strip's week on one line. */
+fun weekTitle(ui: Ui, range: String): LinearLayout = ui.column().apply { addView(titleText(ui, range)) }
 
 /** Today in the semester: "Week 2 of 14", the break, revision or exams; null outside the calendar. */
 fun semesterWeek(): String? = AcademicCalendar.week(java.time.LocalDate.now())?.let { w ->

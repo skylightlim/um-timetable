@@ -54,10 +54,16 @@ class DebugRenderReceiver : BroadcastReceiver() {
             "grades" -> if (intent.getBooleanExtra("sample", false)) SpectrumScreens.grades(host, sampleGrades(context)) else SpectrumScreens.grades(host)
             "settings" -> SettingsSheet.build(host, c) {}
             "signin" -> SignInScreen.build(host.ui) {}
-            // The top bar of a Spectrum tab as MainActivity lays it out: --es view title --es page Grades
+            // The top bar as MainActivity lays it out: --es view title --es page Grades|day|week (day and week
+            // with their widest titles)
             "title" -> host.ui.row().apply {
                 setPadding(host.ui.dp(0), host.ui.dp(22), 0, host.ui.dp(10))
-                addView(pageTitle(host.ui, intent.getStringExtra("page") ?: "Grades", semesterWeek()), host.ui.grow())
+                val page = intent.getStringExtra("page") ?: "Grades"
+                addView(when (page) {
+                    "day" -> dayTitle(host.ui, "Wednesday", "30 Sep", true)
+                    "week" -> weekTitle(host.ui, "28 Sep – 2 Oct")
+                    else -> pageTitle(host.ui, page, listOfNotNull(semesterWeek(), "Wednesday 14 Oct").joinToString(" · "))
+                }, host.ui.grow())
                 addView(android.widget.FrameLayout(c).apply {
                     addView(host.ui.icon(R.drawable.ic_settings, host.ui.p.text, 20f), android.widget.FrameLayout.LayoutParams(host.ui.dp(20), host.ui.dp(20), android.view.Gravity.CENTER))
                 }, android.widget.LinearLayout.LayoutParams(host.ui.dp(44), host.ui.dp(44)).apply { marginEnd = -host.ui.dp(10); gravity = android.view.Gravity.TOP })

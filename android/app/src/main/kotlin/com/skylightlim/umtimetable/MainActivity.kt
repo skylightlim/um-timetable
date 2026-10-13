@@ -431,22 +431,17 @@ class MainActivity : Activity(), SpectrumHost {
             page != null -> listOf(page)
             else -> listOf("${DAY_NAMES[n.dow]} ${dateText(0)}")
         }
-        val weekLine = if (page != null) semesterWeek() else null
+        // The other tabs: the week of the semester and today's date on one small line under the name.
+        val line = if (page != null) listOfNotNull(semesterWeek(), "${DAY_NAMES[n.dow]} ${dateText(0)}").joinToString(" · ") else null
         val today = view == "day" && days == 0
-        val key = "$big $today $words $weekLine"
+        val key = "$big $today $words $line"
         if (key == titleKey) return
         titleKey = key
-        val title: ViewGroup = if (page != null) {
-            // Grades, Due, News, Courses: the page's name large (short words, so 56sp as 1i and 1m's
-            // headings), and which week of the semester it is under it.
-            pageTitle(ui, page, weekLine)
-        } else {
-            // 40sp: the widest title ("Wednesday 30 Sep"), the Today chip and the settings button just fit 395dp.
-            ui.row(gap = 9f).apply {
-                for (w in words) addView(if (big) ui.text(w, 40f, p.text, ui.f.sign, lines = 1) else ui.label(w, p.muted, 11f))
-                if (today) addView(ui.chip("Today", p.accent, p.accentInk, 11f).apply { setPadding(ui.dp(8), ui.dp(3), ui.dp(8), ui.dp(3)) },
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = ui.dp(2) })
-            }
+        val title: ViewGroup = when {
+            page != null -> pageTitle(ui, page, line)
+            view == "day" -> dayTitle(ui, DAY_NAMES[sel], dateText(days), today)
+            view == "week" -> weekTitle(ui, words.first())
+            else -> ui.row().apply { addView(ui.label(words.first(), p.muted, 11f)) }
         }
         val old = (0 until titleBox.childCount).map(titleBox::getChildAt)
         titleBox.addView(title, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))

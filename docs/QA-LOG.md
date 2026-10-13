@@ -18,6 +18,20 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (top bar: today's date on the Spectrum tabs, Day's title as large as theirs)
+
+**Asked for:** today's date on the same line as "Week 2"; the date on Day as large as the other tabs'
+titles.
+
+**Change** (`pageTitle`, `dayTitle`, `weekTitle` in TimetableScreens.kt; `MainActivity.showTitle`):
+- Grades, Due, News, Courses: the small line reads "WEEK 2 OF 14 · WEDNESDAY 14 OCT".
+- Every top-bar title is Big Shoulders 56sp. Day's is two lines, the day's name and then its date
+  with the Today chip, since "Wednesday 30 Sep" at 56sp (387dp) is wider than the 361dp beside the
+  settings button; the second line is pulled up 6dp. Week's "28 Sep – 2 Oct" (296dp) stays on one line.
+- `--es view title --es page day|week|<name>` renders each with its widest title.
+
+**Checked:** the three rendered (light).
+
 ## 14 October 2026 (Spectrum tabs: name and week of the semester in the top bar)
 
 **Asked for:** suggestions 1 and 2 for the empty top of Grades, Due, News and Courses (the page's name
