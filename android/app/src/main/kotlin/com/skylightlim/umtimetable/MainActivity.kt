@@ -578,6 +578,11 @@ class MainActivity : Activity(), SpectrumHost {
 
     override fun openSheet(course: Course, session: Session?) = ClassSheet.show(this, this, course, session)
 
+    override fun showCourse(id: Int) {
+        openCourse = id
+        setView("files")
+    }
+
     // --- Spectrum --------------------------------------------------------------------------
 
     override fun refresh() {

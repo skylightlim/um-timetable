@@ -24,6 +24,8 @@ import java.io.File
  * view: day, week, due, news, files (the Courses tab); course opens one course page from its cache.
  * view icon draws the launcher icon with the phone's mask (icon.png) and its themed layer (icon-mono.png).
  * dow (0 Sunday … 6 Saturday) and min (minutes after midnight) pretend it's another time of the week.
+ * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
+ * Nth class of the week (0 first).
  */
 class DebugRenderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -43,11 +45,19 @@ class DebugRenderReceiver : BroadcastReceiver() {
             "news" -> SpectrumScreens.news(host)
             "files" -> SpectrumScreens.courses(host)
             "grades" -> SpectrumScreens.grades(host)
+            "sheet" -> {
+                val tt = Timetable.load(context)
+                val course = tt.courses.first { it.code == intent.getStringExtra("code") }
+                val session = intent.getIntExtra("session", -1).takeIf { it >= 0 }
+                    ?.let { i -> tt.sessions.filter { it.course == course }.sortedWith(compareBy({ it.day }, { it.start }))[i] }
+                ClassSheet.build(host, c, course, session) {}
+            }
             else -> DayScreen.build(host, intent.getIntExtra("day", homeDay(Timetable.load(context), now)))
         }
         val frame = FrameLayout(c).apply {
             setBackgroundColor(host.ui.p.ground)
-            setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
+            // A sheet runs edge to edge, from the bottom of the screen.
+            if (view != "sheet") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
             addView(page)
         }
         frame.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
@@ -150,6 +160,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         override fun openSheet(course: Course, session: Session?) = Unit
         override fun openUrl(url: String) = Unit
         override fun openFile(file: org.json.JSONObject, folder: String) = Unit
+        override fun showCourse(id: Int) = Unit
         override val syncing = false
         override var openCourse: Int? = null
         override val expanded = mutableSetOf<String>()

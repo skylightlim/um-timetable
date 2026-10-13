@@ -18,6 +18,24 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 13 October 2026 (class sheet as in redesign 1f, with Open course page)
+
+**Asked for:** the sheet a course opens (from the Week page's Courses list) with the course name large
+and aligned as in 1f, an Open course page button, and no "Tap a session to open that day" line.
+
+**Change** (`ClassSheet`, every class sheet, from a class or a course):
+- Header: 12dp colour dot, code, "Occurrence N", close. The course name below it in Big Shoulders 34sp.
+- Facts on a ruled two-column grid as in 1f: labels in an 84dp column, a 1px line above the grid and
+  under each row, values baseline-aligned with their labels (the room's large code sits at the top).
+- "Every week · 5 h", then the sessions (day, time, type, room); the one the sheet is about is
+  outlined in the course colour. A session still opens its day; the line saying so is gone.
+- "Open course page" (with an arrow) opens the course in the Courses tab (`Host.showCourse`). It's
+  there when Spectrum has synced a course with that code.
+- `ClassSheet.build` makes the content; the debug renderer draws it: `--es view sheet --es code
+  WIX1002 [--ei session 1]`.
+
+**Checked:** the course sheet (light) and a tutorial's sheet (dark) rendered off-screen.
+
 ## 13 October 2026 (Week page: Courses list as on the web page, full names in the grid, Week pill)
 
 **Asked for:** the dark pill to cover the whole W2 OF 14 chip; no WEEK heading; full course names in

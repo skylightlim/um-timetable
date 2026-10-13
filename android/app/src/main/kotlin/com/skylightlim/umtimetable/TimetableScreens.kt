@@ -33,6 +33,8 @@ interface Host {
     fun openSheet(course: Course, session: Session?)
     fun openUrl(url: String)
     fun openFile(file: org.json.JSONObject, folder: String)
+    /** Shows a Spectrum course's page (its id) in the Courses tab. */
+    fun showCourse(id: Int)
 }
 
 /**
@@ -418,23 +420,30 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
     override fun performClick() = super.performClick()
 }
 
-/** The class details sheet that slides up from the bottom. */
+/** The class details sheet that slides up from the bottom, laid out as in redesign 1f. */
 object ClassSheet {
     fun show(h: Host, context: Context, course: Course, session: Session?) {
+        lateinit var bottom: BottomSheet
+        val sheet = build(h, context, course, session) { then -> bottom.close(then) }
+        bottom = BottomSheet(context, sheet, h.ui.p.dark)
+        bottom.show()
+    }
+
+    /** The sheet's content; [close] slides the sheet away and runs what it's given. */
+    fun build(h: Host, context: Context, course: Course, session: Session?, close: ((() -> Unit)?) -> Unit): View {
         val ui = h.ui
         val p = ui.p
-        lateinit var bottom: BottomSheet
         val sheet = ui.column().apply {
             background = GradientDrawable().apply {
                 setColor(p.surface)
                 val r = ui.dp(22f).toFloat()
                 cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
             }
-            setPadding(ui.dp(20), ui.dp(10), ui.dp(20), ui.dp(28))
+            setPadding(ui.dp(20), ui.dp(8), ui.dp(20), ui.dp(28))
         }
-        sheet.addView(View(context).apply { background = ui.shape(p.line, 4f) }, LinearLayout.LayoutParams(ui.dp(40), ui.dp(4)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = ui.dp(14) })
+        sheet.addView(View(context).apply { background = ui.shape(p.line, 4f) }, LinearLayout.LayoutParams(ui.dp(40), ui.dp(4)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = ui.dp(12) })
         val top = ui.row(gap = 10f)
-        top.addView(View(context).apply { background = ui.shape(course.color, 99f); layoutParams = LinearLayout.LayoutParams(ui.dp(10), ui.dp(10)) })
+        top.addView(View(context).apply { background = ui.shape(course.color, 99f); layoutParams = LinearLayout.LayoutParams(ui.dp(12), ui.dp(12)) })
         top.addView(ui.text(course.code, 13f, p.courseText(course.color), ui.f.monoBold))
         top.addView(ui.text("Occurrence ${course.occ}", 12f, p.muted))
         top.addView(ui.space(), ui.spacer())
@@ -443,48 +452,67 @@ object ClassSheet {
             background = android.graphics.drawable.InsetDrawable(ui.pressable(ui.shape(p.surface2, 99f), 99f), ui.dp(7))
             contentDescription = "Close"
             addView(ui.icon(R.drawable.ic_close, p.muted, 16f), FrameLayout.LayoutParams(ui.dp(16), ui.dp(16), Gravity.CENTER))
-            setOnClickListener { bottom.close() }
+            setOnClickListener { close(null) }
         }, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)).apply { marginEnd = -ui.dp(7) })
         sheet.addView(top)
-        sheet.addView(ui.text(course.name, 24f, p.text, ui.f.bodyBold), ui.wide(top = 10f, bottom = 16f))
+        sheet.addView(ui.text(course.name, 34f, p.text, ui.f.sign).apply { setLineSpacing(0f, 0.95f) }, ui.wide(top = 6f, bottom = 16f))
 
-        val facts = ui.column(gap = 10f)
-        fun fact(label: String, value: View) = facts.addView(ui.row(gap = 16f, center = false).apply {
-            addView(ui.label(label, p.muted).apply { setPadding(0, ui.dp(3), 0, 0) }, LinearLayout.LayoutParams(ui.dp(76), ViewGroup.LayoutParams.WRAP_CONTENT))
-            addView(value, ui.grow())
-        })
+        // The facts on a ruled grid: labels in an 84dp column, a line under every row.
+        val facts = ui.column()
+        fun rule() = facts.addView(View(context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
+        fun fact(label: String, value: View, valueTop: Float = 10f) {
+            facts.addView(ui.row(center = false).apply {
+                addView(ui.label(label, p.muted, 10.5f).apply { setPadding(0, ui.dp(12), 0, ui.dp(12)) }, LinearLayout.LayoutParams(ui.dp(84), ViewGroup.LayoutParams.WRAP_CONTENT))
+                addView(value.apply { setPadding(0, ui.dp(valueTop), 0, ui.dp(10)) }, ui.grow())
+            })
+            rule()
+        }
+        rule()
         val sessions = h.timetable.sessions.filter { it.course == course }.sortedWith(compareBy({ it.day }, { it.start }))
         if (session != null) {
             fact("When", ui.text("${DAY_NAMES[session.day]}, ${clockText(session.start)}–${clockText(session.end)} · ${durationText(session.end - session.start)}", 15f))
             fact("Type", ui.text(session.type, 15f))
             fact(if (session.room == "Online") "Where" else "Room", ui.column().apply {
-                addView(ui.text(session.room, 30f, p.accentText, ui.f.sign))
+                addView(ui.text(session.room, 30f, p.text, ui.f.sign))
                 session.roomName?.takeIf { it != session.room }?.let { addView(ui.text(it, 12.5f, p.muted), ui.wide(top = 3f)) }
-            })
+            }, valueTop = 8f)
             fact("Lecturer", ui.text(session.lecturer ?: "Not listed", 15f, if (session.lecturer == null) p.muted else p.text))
         } else {
             val names = sessions.mapNotNull { it.lecturer }.distinct()
             fact("Lecturer", ui.text(names.ifEmpty { listOf("Not listed") }.joinToString("\n"), 15f, if (names.isEmpty()) p.muted else p.text))
         }
-        sheet.addView(facts, ui.wide(bottom = 22f))
-        sheet.addView(ui.label("Every week · ${hoursText(sessions.sumOf { it.end - it.start })}", p.muted), ui.wide(bottom = 8f))
-        val list = ui.column(gap = 6f)
+        sheet.addView(facts)
+
+        sheet.addView(ui.label("Every week · ${hoursText(sessions.sumOf { it.end - it.start })}", p.muted, 10.5f), ui.wide(top = 20f, bottom = 8f))
+        val list = ui.column(gap = 4f)
         for (s in sessions) {
+            // A session opens its day.
             val row = ui.row(gap = 8f).apply {
-                background = ui.pressable(ui.shape(p.surface2, 12f, if (s == session) course.color else 0, 1.5f), 12f)
+                background = ui.pressable(ui.shape(p.surface2, 12f, if (s == session) course.color else 0, 2f), 12f)
                 setPadding(ui.dp(12), ui.dp(10), ui.dp(12), ui.dp(10))
-                setOnClickListener { bottom.close { h.goDay(s.day) } }
+                contentDescription = "${DAY_NAMES[s.day]} ${clockText(s.start)} to ${clockText(s.end)}, ${s.type}, ${s.room}. Opens ${DAY_NAMES[s.day]}."
+                setOnClickListener { close { h.goDay(s.day) } }
             }
-            row.addView(ui.text(DAY_SHORT[s.day], 15f, p.text, ui.f.bodyBold), LinearLayout.LayoutParams(ui.dp(36), ViewGroup.LayoutParams.WRAP_CONTENT))
-            row.addView(ui.text("${clockText(s.start)}–${clockText(s.end)}", 12.5f, p.text, ui.f.mono), LinearLayout.LayoutParams(ui.dp(96), ViewGroup.LayoutParams.WRAP_CONTENT))
+            row.addView(ui.text(DAY_SHORT[s.day], 15f, p.text, ui.f.bodyBold), LinearLayout.LayoutParams(ui.dp(40), ViewGroup.LayoutParams.WRAP_CONTENT))
+            row.addView(ui.text("${clockText(s.start)}–${clockText(s.end)}", 12.5f, p.text, ui.f.mono), LinearLayout.LayoutParams(ui.dp(100), ViewGroup.LayoutParams.WRAP_CONTENT))
             row.addView(ui.text(s.type, 13f, p.muted), ui.grow())
             row.addView(ui.text(s.room, 18f, p.text, ui.f.sign))
             list.addView(row)
         }
         sheet.addView(list)
-        sheet.addView(ui.text("Tap a session to open that day.", 12f, p.faint), ui.wide(top = 10f))
 
-        bottom = BottomSheet(context, sheet, p.dark)
-        bottom.show()
+        // The course's page in the Courses tab, once Spectrum has synced it.
+        val pageId = SpectrumStore.array(context, "courses").objects().firstOrNull { it.optString("code") == course.code }?.optInt("id")
+        if (pageId != null) {
+            sheet.addView(ui.row(gap = 12f).apply {
+                background = ui.pressable(ui.shape(p.surface2, 12f), 12f)
+                minimumHeight = ui.dp(48)
+                setPadding(ui.dp(16), ui.dp(12), ui.dp(16), ui.dp(12))
+                addView(ui.text("Open course page", 15f, p.text, ui.f.bodySemi), ui.grow())
+                addView(ui.icon(R.drawable.ic_arrow, p.text, 16f))
+                setOnClickListener { close { h.showCourse(pageId) } }
+            }, ui.wide(top = 16f))
+        }
+        return sheet
     }
 }
