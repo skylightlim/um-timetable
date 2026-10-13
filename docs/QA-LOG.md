@@ -100,6 +100,10 @@ Settings panel.
 **Checked:** Courses rendered (light) and Settings (light, dark). The top bar's button isn't in the
 renderer.
 
+Follow-up (user): Settings drops three explanations: "Reminders 24 h and 2 h before" under
+notifications, "When you change page, go back, or swipe days." under vibration, and "Spectrum · last
+synced …" under the account name (the last sync shows when pulling a Spectrum tab).
+
 ## 14 October 2026 (Show more crashed the app; News for my occurrence only, a month, same-size posts)
 
 **Asked for:** For me to show only the user's occurrence, including course-wide posts that concern

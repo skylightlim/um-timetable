@@ -89,7 +89,7 @@ object SettingsSheet {
         // Android owns the switch: off, it asks; on, it opens the app's notification settings.
         val allowed = Notify.allowed(context)
         section("Notifications", listOf(
-            row("Deadlines, marks and news", "Reminders 24 h and 2 h before", ui.row(gap = 10f).apply {
+            row("Deadlines, marks and news", null, ui.row(gap = 10f).apply {
                 addView(ui.text(if (allowed) "On" else "Off", 14f, if (allowed) p.accentText else p.muted, ui.f.bodySemi))
                 addView(chevron())
             }) { close { if (allowed) h.openAppSettings() else h.enableNotifications() } },
@@ -97,11 +97,10 @@ object SettingsSheet {
 
         label("Vibration")
         sheet.addView(ui.segmented(Haptics.Level.entries.map { it.label }, Haptics.level(context).ordinal, fill = true) { i -> Haptics.setLevel(context, Haptics.Level.entries[i]) })
-        sheet.addView(ui.text("When you change page, go back, or swipe days.", 12.5f, p.muted), ui.wide(top = 6f))
 
         section("Account", listOf(
             if (SpectrumStore.signedIn(context)) {
-                row(SpectrumScreens.accountName(context).ifBlank { "Signed in" }, "Spectrum · ${SpectrumScreens.lastSynced(context).replaceFirstChar { it.lowercase() }}", button("Sign out") { close { h.signOut() } }, null)
+                row(SpectrumScreens.accountName(context).ifBlank { "Signed in" }, null, button("Sign out") { close { h.signOut() } }, null)
             } else {
                 row("Not signed in", "Sign in to Spectrum with your SiswaMail for courses, deadlines, marks and news.", button("Sign in") { close { h.signIn() } }, null)
             },
