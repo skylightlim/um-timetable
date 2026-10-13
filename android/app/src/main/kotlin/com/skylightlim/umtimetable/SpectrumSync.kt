@@ -131,7 +131,7 @@ object SpectrumSync {
         }
     }
 
-    /** core_course_get_contents → [{ name, summary, modules: [{ kind, name, label, url, files, html, dates }] }] */
+    /** core_course_get_contents → [{ name, summary, modules: [{ kind, name, label, url, files, html, dates, availability }] }] */
     fun normalizeContents(sections: JSONArray): JSONArray {
         val out = JSONArray()
         for (s in sections.objects()) {
@@ -160,7 +160,9 @@ object SpectrumSync {
                 val dates = JSONArray((m.optJSONArray("dates") ?: JSONArray()).objects().map { JSONObject().put("label", it.optString("label")).put("time", it.optLong("timestamp") * 1000) })
                 modules.put(
                     JSONObject().put("kind", kind).put("name", plain(m.optString("name"))).put("label", moduleLabel(modname))
-                        .put("url", url).put("files", files).put("html", html).put("dates", dates),
+                        .put("url", url).put("files", files).put("html", html).put("dates", dates)
+                        // Spectrum's access rules under an activity ("Not available unless: …"), as HTML.
+                        .put("availability", m.optString("availabilityinfo")),
                 )
             }
             val summary = s.optString("summary")

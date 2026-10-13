@@ -18,6 +18,25 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (course pages: larger text, everything shown, bold section names)
+
+**Asked for:** on a course page (GIG1003), larger text; all of Spectrum's information shown; section
+headings such as "Course Information (Sem 1, 2026/2027)" bold and dark; the course name more visible.
+
+**Change** (`SpectrumScreens.coursePage`, `moduleButton`, `fileButton`, `SpectrumSync.normalizeContents`):
+- Course name under the code: Instrument Sans Bold 20sp in the text colour (was 13.5sp muted).
+- Section names as Spectrum writes them (not upper-cased), Bold 18sp, text colour (were 11.5sp muted
+  capitals).
+- Nothing behind Show more: section summaries and text blocks in full at 16sp (were 6 lines at 14sp);
+  activity descriptions in full at 15sp in the text colour (were 3 lines, 13sp, muted).
+- Activity and file names 15.5sp semibold (were 14sp regular); dates 13.5sp (were 12sp).
+- Spectrum's access rules under an activity (`availabilityinfo`, e.g. "Not available unless: You
+  belong to (Missing group)") are kept by the sync and shown under it, 13.5sp muted, as Spectrum's
+  own page shows them. GIG1003: 50 sections, 111 activities, 34 with access rules (mostly other
+  occurrences' quizzes, which Spectrum lists for everyone).
+
+**Checked:** GIG1003 fetched fresh (debug receiver, raw reply deleted) and rendered in light and dark.
+
 ## 14 October 2026 (Courses as in redesign 1n; a Settings sheet as in 1p)
 
 **Asked for:** Courses as 1n, and "the other thing" (everything under the course list) in a new
