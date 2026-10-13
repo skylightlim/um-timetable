@@ -756,7 +756,7 @@ object Notify {
         if (!allowed(c)) return
         val n = Notification.Builder(c, channel)
             .setSmallIcon(R.drawable.ic_notify)
-            .setColor(0xFFF5C947.toInt())
+            .setColor(Scheme.load(c).dark.first) // the scheme's bright accent
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(Notification.BigTextStyle().bigText(text))

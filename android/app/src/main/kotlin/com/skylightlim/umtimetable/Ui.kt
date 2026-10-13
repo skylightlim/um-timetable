@@ -66,17 +66,38 @@ data class Palette(
     }
 }
 
+/**
+ * The accent family the user picks in Settings, from UM's crest: Gold (the default, the tigers' yellow),
+ * Blue (the shield) and Red (the hibiscus). Each sets the accent fill, the accent as text, and the ink
+ * on the fill, for the light and the dark palette; the neutrals stay. Built in OKLCH and checked:
+ * text on surfaces ≥ 6:1, ink on the fill ≥ 4.8:1.
+ */
+enum class Scheme(val label: String, val light: Triple<Int, Int, Int>, val dark: Triple<Int, Int, Int>) {
+    GOLD("Gold", Triple(0xFFEFB810.toInt(), 0xFF875A00.toInt(), 0xFF1B1606.toInt()), Triple(0xFFF5C947.toInt(), 0xFFF5C947.toInt(), 0xFF1B1606.toInt())),
+    BLUE("Blue", Triple(0xFF3559C3.toInt(), 0xFF2848A9.toInt(), 0xFFF5F8FF.toInt()), Triple(0xFF96B6FE.toInt(), 0xFF96B6FE.toInt(), 0xFF09163F.toInt())),
+    RED("Red", Triple(0xFFD02C2E.toInt(), 0xFFB71920.toInt(), 0xFFFFF6F5.toInt()), Triple(0xFFF68482.toInt(), 0xFFF68482.toInt(), 0xFF34080B.toInt()));
+
+    /** [base] with this scheme's accent fill, accent text and ink. */
+    fun applyTo(base: Palette): Palette = (if (base.dark) dark else light).let { (fill, text, ink) -> base.copy(accent = fill, accentText = text, accentInk = ink) }
+
+    companion object {
+        private fun prefs(c: Context) = c.getSharedPreferences("ui", Context.MODE_PRIVATE)
+        fun load(c: Context) = runCatching { valueOf(prefs(c).getString("scheme", GOLD.name)!!) }.getOrDefault(GOLD)
+        fun save(c: Context, scheme: Scheme) = prefs(c).edit().putString("scheme", scheme.name).apply()
+    }
+}
+
 /** The theme button: Auto follows the phone's dark mode; Light and Dark override it. */
 enum class Look(val label: String, val icon: Int) {
     AUTO("Auto", R.drawable.ic_look_auto), LIGHT("Light", R.drawable.ic_look_light), DARK("Dark", R.drawable.ic_look_dark);
 
     val next get() = entries[(ordinal + 1) % entries.size]
 
-    fun palette(context: Context): Palette = when (this) {
+    fun palette(context: Context, scheme: Scheme = Scheme.load(context)): Palette = scheme.applyTo(when (this) {
         LIGHT -> Palette.LIGHT
         DARK -> Palette.DARK
         AUTO -> if ((context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES) Palette.DARK else Palette.LIGHT
-    }
+    })
 
     companion object {
         private fun prefs(c: Context) = c.getSharedPreferences("ui", Context.MODE_PRIVATE)

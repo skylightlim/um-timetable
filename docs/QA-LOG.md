@@ -18,6 +18,25 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (three accent themes in Settings)
+
+**Asked for:** a choice of three themes in Settings, the current one as the default plus two more.
+
+**Change** (`Scheme` in Ui.kt, `SettingsSheet`, `MainActivity.setScheme` / `restyle`): a Theme row under
+Appearance with three swatch tiles, the chosen one outlined; choosing closes the sheet and the new
+colours spread from the settings button, as Appearance does. Saved in the `ui` prefs (`scheme`). A
+scheme sets the accent fill, the accent as text and the ink on the fill, in the light and the dark
+palette; the neutrals and course colours stay. From UM's crest, built in OKLCH and checked:
+- Gold (default, unchanged): fill #EFB810 / dark #F5C947, text #875A00 / #F5C947, ink #1B1606.
+- Blue: fill #3559C3 / dark #96B6FE, text #2848A9 / #96B6FE, ink #F5F8FF / #09163F. Text on
+  surfaces 8.1:1 (light) and 8.1:1 (dark); ink on the fill 5.9:1 and 8.7:1.
+- Red: fill #D02C2E / dark #F68482, text #B71920 / #F68482, ink #FFF6F5 / #34080B. Text on
+  surfaces 6.6:1 and 6.7:1; ink on the fill 4.8:1 and 7.2:1.
+Notifications take the scheme's bright accent. The widget keeps Gold for now (its accent lives in XML
+resources). The sign-in poster keeps UM's own colours. `--es scheme blue|red` renders in a scheme.
+
+**Checked:** Settings rendered; Day in Blue and Red, light and dark.
+
 ## 14 October 2026 (animated tab icons)
 
 **Asked for:** the tab icons animated when their tab is chosen: Day's rearranging, Grades' in two parts,

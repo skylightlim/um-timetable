@@ -28,6 +28,7 @@ import java.io.File
  * synced ones (to check the mark cards while Spectrum has none).
  * view due with --ez sample true draws made-up deadlines (late, minutes, hours, days) and attendance
  * (open, about to open, not in Spectrum's calendar).
+ * --es scheme gold|blue|red draws in that accent scheme instead of the chosen one.
  * --ez open true draws every fold and "Show more" opened.
  * view signout draws the Sign out question's card. view settings draws the Settings sheet; view signin the first-run sign-in poster, at screen height.
  * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
@@ -43,7 +44,8 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val width = intent.getIntExtra("width", context.resources.displayMetrics.widthPixels)
         val c = ContextThemeWrapper(context, R.style.Theme_UMTimetable)
         val now = if (intent.hasExtra("dow")) Now(intent.getIntExtra("dow", 2), intent.getIntExtra("min", 700).toFloat()) else Now.current()
-        val host = Host(c, Ui(c, if (dark) Palette.DARK else Palette.LIGHT, Fonts(c)), now).apply {
+        val scheme = intent.getStringExtra("scheme")?.let { name -> Scheme.entries.firstOrNull { it.name.equals(name, true) } } ?: Scheme.load(context)
+        val host = Host(c, Ui(c, scheme.applyTo(if (dark) Palette.DARK else Palette.LIGHT), Fonts(c)), now).apply {
             openCourse = intent.getIntExtra("course", 0).takeIf { it > 0 }
             if (intent.getBooleanExtra("open", false)) expanded = object : HashSet<String>() { override fun contains(element: String) = true }
         }
@@ -276,6 +278,8 @@ class DebugRenderReceiver : BroadcastReceiver() {
         override fun showCourse(id: Int) = Unit
         override val look = Look.AUTO
         override fun setLook(look: Look) = Unit
+        override val scheme get() = Scheme.load(context)
+        override fun setScheme(scheme: Scheme) = Unit
         override val syncing = false
         override var openCourse: Int? = null
         override var expanded: MutableSet<String> = mutableSetOf()

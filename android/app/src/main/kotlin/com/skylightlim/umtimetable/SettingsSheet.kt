@@ -80,6 +80,24 @@ object SettingsSheet {
         label("Appearance", top = 14f)
         sheet.addView(ui.segmented(Look.entries.map { it.label }, h.look.ordinal, fill = true) { i -> close { h.setLook(Look.entries[i]) } })
 
+        // The accent scheme: a swatch of each, the chosen one outlined; the sheet goes and it spreads as the theme does.
+        label("Theme")
+        sheet.addView(ui.row(gap = 8f).apply {
+            for (scheme in Scheme.entries) {
+                val chosen = scheme == h.scheme
+                addView(ui.column().apply {
+                    gravity = Gravity.CENTER
+                    minimumHeight = ui.dp(68)
+                    setPadding(0, ui.dp(10), 0, ui.dp(10))
+                    background = ui.pressable(ui.shape(p.surface2, 12f, if (chosen) p.text else 0, 2f), 12f)
+                    contentDescription = "${scheme.label} theme${if (chosen) ", chosen" else ""}"
+                    addView(View(context).apply { background = ui.shape(scheme.applyTo(p).accent, 99f) }, LinearLayout.LayoutParams(ui.dp(22), ui.dp(22)))
+                    addView(ui.text(scheme.label, 13f, if (chosen) p.text else p.muted, ui.f.bodySemi), LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(6) })
+                    if (!chosen) setOnClickListener { Haptics.tick(this); close { h.setScheme(scheme) } }
+                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            }
+        })
+
         val tt = h.timetable
         section("Timetable", listOf(
             row("Get timetable from TimeEdit", if (tt.sessions.isEmpty()) "No timetable yet" else listOfNotNull("${tt.sessions.size} classes a week", tt.term).joinToString(" · "), chevron()) { close { h.openTimeEdit() } },

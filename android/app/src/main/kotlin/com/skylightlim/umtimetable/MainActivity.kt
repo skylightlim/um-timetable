@@ -47,6 +47,8 @@ class MainActivity : Activity(), SpectrumHost {
     private lateinit var fonts: Fonts
     override var look = Look.AUTO
         private set
+    override var scheme = Scheme.GOLD
+        private set
     /** The sign-in poster over the app on first run (see [showWelcome]). */
     private var welcome: View? = null
     /** The top bar's settings button: the Settings sheet opens from it, and a new theme spreads from it. */
@@ -121,6 +123,7 @@ class MainActivity : Activity(), SpectrumHost {
         }
         fonts = Fonts(this)
         look = Look.load(this)
+        scheme = Scheme.load(this)
         seenNews = prefs().getStringSet("newsSeen", emptySet()) ?: emptySet()
         seenGrades = prefs().getStringSet("gradesSeen", emptySet()) ?: emptySet()
         sel = homeDay(timetable, now())
@@ -173,7 +176,7 @@ class MainActivity : Activity(), SpectrumHost {
     // --- shell -----------------------------------------------------------------------------
 
     private fun buildShell() {
-        ui = Ui(this, look.palette(this), fonts)
+        ui = Ui(this, look.palette(this, scheme), fonts)
         val p = ui.p
         window.decorView.setBackgroundColor(p.ground)
         val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
@@ -467,7 +470,11 @@ class MainActivity : Activity(), SpectrumHost {
     }
 
     override fun setLook(look: Look) {
-        if (look != this.look) switchLook(settingsButton ?: shell, look)
+        if (look != this.look) restyle(settingsButton ?: shell) { this.look = look; Look.save(this, look) }
+    }
+
+    override fun setScheme(scheme: Scheme) {
+        if (scheme != this.scheme) restyle(settingsButton ?: shell) { this.scheme = scheme; Scheme.save(this, scheme) }
     }
 
     /** First run (no sign-in, no timetable): the sign-in poster (redesign 1t, in UM's colours) over the app. */
@@ -511,8 +518,8 @@ class MainActivity : Activity(), SpectrumHost {
         }
     }
 
-    /** The new theme spreads out from [from] (the settings button), over a picture of the old one. */
-    private fun switchLook(from: View, to: Look) {
+    /** A new look or scheme ([change]) spreads out from [from] (the settings button), over a picture of the old one. */
+    private fun restyle(from: View, change: () -> Unit) {
         val old = shell
         val y = scroll.scrollY
         val picture = if (Motion.enabled && old.width > 0 && old.height > 0)
@@ -520,8 +527,7 @@ class MainActivity : Activity(), SpectrumHost {
         val at = IntArray(2).also(from::getLocationInWindow)
         val cx = at[0] + from.width / 2
         val cy = at[1] + from.height / 2
-        look = to
-        Look.save(this, look)
+        change()
         buildShell()
         render(keepScroll = false)
         scroll.post { scroll.scrollTo(0, y) }

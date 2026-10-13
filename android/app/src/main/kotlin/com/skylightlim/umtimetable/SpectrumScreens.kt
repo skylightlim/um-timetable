@@ -30,9 +30,11 @@ interface SpectrumHost : Host {
     fun openTimeEdit()
     fun enableNotifications()
     fun openAppSettings()
-    /** The theme, and choosing one (Settings). */
+    /** Light or dark, and the accent scheme, and choosing them (Settings). */
     val look: Look
     fun setLook(look: Look)
+    val scheme: Scheme
+    fun setScheme(scheme: Scheme)
 }
 
 object SpectrumScreens {
