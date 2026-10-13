@@ -47,6 +47,10 @@ The folds pass a row (a ViewGroup, so it worked); Show more passes its TextView.
 **Checked:** a full sync (debug receiver), then News rendered closed (light) and with everything open
 and Show more tapped (dark).
 
+Follow-ups the same night: post subjects bold and larger, as 1m's rows (Instrument Sans Bold 19sp, was
+SemiBold 16sp); an opened post shows all its text with no Show more (`RichText.view` takes `lines` 0
+for no limit), since tapping the row already asked for more.
+
 ## 14 October 2026 (News as in redesign 1m; pull to sync)
 
 **Asked for:** News laid out as 1m, synced as on Grades.

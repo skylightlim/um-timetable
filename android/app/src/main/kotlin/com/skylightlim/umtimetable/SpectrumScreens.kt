@@ -574,7 +574,8 @@ object SpectrumScreens {
     private fun newsBody(h: SpectrumHost, a: JSONObject, into: LinearLayout) {
         val ui = h.ui
         val code = a.optString("code")
-        into.addView(RichText.view(h, a.optString("html"), "n${a.getInt("id")}", code.ifEmpty { "Spectrum" }, 5, expanded = h.expanded), ui.wide(top = 8f))
+        // An opened post shows all of its text: tapping the row was the "show more".
+        into.addView(RichText.view(h, a.optString("html"), "n${a.getInt("id")}", code.ifEmpty { "Spectrum" }, 0, expanded = h.expanded), ui.wide(top = 8f))
         for (f in a.optJSONArray("attachments")?.objects().orEmpty()) into.addView(fileButton(h, f, code), ui.wide(top = 8f))
     }
 
@@ -590,7 +591,8 @@ object SpectrumScreens {
             setPadding(0, ui.dp(14), 0, ui.dp(14))
             background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
             addView(newsTop(h, a, 11f, chevron.apply { layoutParams = LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)) }))
-            addView(ui.text(a.optString("subject"), 16f, ui.p.text, ui.f.bodySemi), ui.wide(top = 4f))
+            // Bold and large, as 1m's rows.
+            addView(ui.text(a.optString("subject"), 19f, ui.p.text, ui.f.bodyBold).apply { setLineSpacing(0f, 1.15f) }, ui.wide(top = 4f))
             author(a).takeIf { it.isNotEmpty() }?.let { addView(ui.text(it, 12.5f, ui.p.muted), ui.wide(top = 2f)) }
             setOnClickListener {
                 Motion.resize(this)

@@ -48,7 +48,7 @@ object RichText {
     }
 
     /**
-     * Rich text, clamped to [lines] with a Show more toggle when it's long. [expanded] holds the open
+     * Rich text, clamped to [lines] (0 for no limit) with a Show more toggle when it's long. [expanded] holds the open
      * keys. The toggle changes the text in place: rebuilding the page would lose the scroll position.
      */
     @SuppressLint("ClickableViewAccessibility")
@@ -59,7 +59,8 @@ object RichText {
         tv.text = spanned(h, tv, html, folder)
         // Links are handled by touch position, not LinkMovementMethod, which would break the ellipsis.
         tv.setOnTouchListener { _, e -> linkAt(tv, e)?.let { if (e.action == MotionEvent.ACTION_UP) it.onClick(tv); true } ?: false }
-        val long = tv.text.length > lines * 55 || IMG.findAll(html).count() > 1
+        // lines 0: the whole text, no Show more.
+        val long = lines > 0 && (tv.text.length > lines * 55 || IMG.findAll(html).count() > 1)
         if (!long) return tv
         val more = ui.text("", 13f, ui.p.accentText, ui.f.bodySemi).apply {
             minHeight = ui.dp(48)
