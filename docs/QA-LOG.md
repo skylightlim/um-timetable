@@ -18,6 +18,26 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 13 October 2026 (Grades: other occurrences' items hidden, fold chevron, award icon)
+
+**Asked for:** hide other occurrences' items; the fold's arrow looked cut off; the Grades tab icon
+from 1j.
+
+**Found (arrow):** the chevron is an 8×16dp drawable in an 8dp-wide box, turned 90° to point up or
+down, so it's 16dp wide. The row ends right at the box, so the row clipped its ends.
+
+**Change:**
+- An unmarked grade item whose name names occurrences, none of them the user's, is left out
+  (`AttendanceMatch.othersOnly`, reading "OCC3", "(Occ15)", "(OCC 9)", "OCC 15 - …" with the same
+  parser as attendance). The user's occurrence comes from the Spectrum groups (`occurrences`), else the
+  timetable. Items naming no occurrence stay, and marked items always show. On the phone, WIX1002's
+  unmarked items went from 11 to 4. Covered in `AttendanceMatchTest.gradeItemsForOtherOccurrences`.
+- The fold's chevron has a 16×16dp box.
+- `ic_tab_grades`: 1j's award ribbon (a circle with two ribbon tails) instead of the rosette with a star.
+
+**Checked:** Grades rendered with the folds open; the icon's path rendered on its own. The tab bar
+itself isn't in the renderer.
+
 ## 13 October 2026 (Grades: unmarked items open in place)
 
 **Asked for:** the unmarked courses to be tappable too.

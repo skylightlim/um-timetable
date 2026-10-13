@@ -292,7 +292,12 @@ object SpectrumScreens {
             page.addView(connect(h, "See each mark as soon as a lecturer releases it, with a notification."))
             return page
         }
-        val all = items.filter { !SpectrumSync.isAttendance(it) }
+        // Unmarked items named for other occurrences (other groups' submissions) are left out too.
+        val occurrences = SpectrumStore.occurrences(ui.context)
+        fun mine(code: String) = occurrences.optInt(code).takeIf { it > 0 } ?: h.timetable.courses.firstOrNull { it.code == code }?.occ ?: 0
+        val all = items.filter { g ->
+            !SpectrumSync.isAttendance(g) && !(g.isNull("raw") && AttendanceMatch.othersOnly(g.optString("name"), mine(g.optString("code"))))
+        }
         page.addView(pageHeader(ui, "Grades", null))
         problem(h, page)
         if (all.isEmpty()) {
@@ -334,7 +339,8 @@ object SpectrumScreens {
         val p = ui.p
         val shown = key in h.expanded
         val chevron = Motion.chevron(ui, shown)
-        head.addView(chevron, LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)).apply { marginStart = ui.dp(10) })
+        // A 16dp box: turned on its side the 8×16 chevron is 16dp wide, and the row ends right at it.
+        head.addView(chevron, LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)).apply { marginStart = ui.dp(6) })
         val list = ui.column().apply { visibility = if (shown) View.VISIBLE else View.GONE }
         for (g in items) {
             val url = g.optString("url")

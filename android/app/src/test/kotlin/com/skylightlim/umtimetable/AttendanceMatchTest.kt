@@ -19,6 +19,18 @@ class AttendanceMatchTest {
         Session(day, 0, 0, type, room, lecturer, c)
     private fun activities(vararg names: String) = names.mapIndexed { i, n -> AttendanceMatch.Activity(i + 1, i + 1, n) }
 
+    /** Grade items for other occurrences' submissions, shaped like WIX1002's on 13 Oct (initials made up). */
+    @Test fun gradeItemsForOtherOccurrences() {
+        val occ = 12
+        for (name in listOf("Lab 3 - OCC3 Submission (ABC)", "T3/L3 Submission (Occ15) - XY", "Tutorial 3/Lab 3 Submission (OCC 9) - QRS", "OCC 15 - Tutorial and Lab Submission")) {
+            assertEquals(name, true, AttendanceMatch.othersOnly(name, occ))
+        }
+        for (name in listOf("OCC 12 - Tutorial and Lab Submission", "Tutorial 4/Lab 4 Submission (OCC 9, 12) - QRS", "Week 1 : Tutorial & Lab Submission", "What is a palindrome?")) {
+            assertEquals(name, false, AttendanceMatch.othersOnly(name, occ))
+        }
+        assertEquals(false, AttendanceMatch.othersOnly("Lab 3 - OCC3 Submission", 0)) // occurrence unknown: keep it
+    }
+
     @Test fun occurrenceNumbers() {
         val cases = mapOf(
             "Attendance OCC 10 (Thursday - 2 PM- 5 PM) - Dr. Aina" to setOf(10),
