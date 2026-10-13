@@ -17,6 +17,27 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 `view` is day, week, due, news or files (the Courses tab). Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 13 October 2026 (vibration too light: four strengths)
+
+**Problem:** the user found the vibration too light. The vibrator history showed why: the platform's
+haptic constants played as the prebaked TICK, about the lightest effect there is, with no way to
+make it stronger.
+
+**Change** (`Haptics.kt`): vibrations are composed from the vibrator's primitives (this phone supports
+CLICK, TICK, THUD, SPIN, QUICK_RISE/FALL, LOW_TICK) at the strength the user picks: **Off, Light (0.4),
+Medium (0.7, the default), Strong (1.0)**. Selection and crossing a drag threshold: a click; back: a
+click, then a softer tap 50 ms later; coming back before the threshold: a tap. Phones without
+primitives get the predefined tick, click, double click or heavy click. Played as touch feedback, so
+Android's touch-feedback setting still applies. Needs `android.permission.VIBRATE` (granted at install).
+The Courses row is now **Vibration · [level] [three-bar meter]**: each tap steps Off → Light → Medium →
+Strong → Off, plays the new strength and pops the meter. The first version's switch, if turned off,
+reads as Off.
+
+**Checked:** the row rendered off-screen in light and dark ("Medium", two bars). A test vibration from
+the debug hook (`--es haptic tick|back|cross|uncross`, new) reached Android's vibrator service with
+usage TOUCH and no error; it was ignored only because the app was in the background, as Android does.
+The strengths themselves need a hand on the phone.
+
 ## 13 October 2026 (vibration feedback; the now line yellow again)
 
 - **Now line:** back to the app's yellow (the user found the dark gold ugly), 3 dp with a bigger dot,

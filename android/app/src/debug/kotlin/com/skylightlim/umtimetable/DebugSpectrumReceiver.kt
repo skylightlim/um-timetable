@@ -18,6 +18,7 @@ import kotlin.concurrent.thread
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es sso probe [--es site timeedit] [--ez signout true]
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es timeedit build
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es sync full
+ *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es haptic tick|back|cross|uncross
  */
 class DebugSpectrumReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -63,6 +64,19 @@ class DebugSpectrumReceiver : BroadcastReceiver() {
         // no_backup/spectrum/raw-call.json for inspection with run-as. Delete it afterwards.
         // --es attendance check: every course's attendance activities, whose AttendanceMatch thinks
         // each one is, and which it picks for each of the user's classes. Logged, nothing saved.
+        // --es haptic tick|back|cross|uncross: one vibration at the chosen strength (Haptics). Android
+        // ignores it while the app is in the background, but `dumpsys vibrator_manager` still lists it.
+        intent.getStringExtra("haptic")?.let { kind ->
+            val v = android.view.View(c)
+            when (kind) {
+                "back" -> Haptics.back(v)
+                "cross" -> Haptics.threshold(v, true)
+                "uncross" -> Haptics.threshold(v, false)
+                else -> Haptics.tick(v)
+            }
+            Log.i("UMTimetable", "debug: haptic $kind at ${Haptics.level(c)}")
+            return
+        }
         // --es timeedit build: the timetable TimeEdit would give, compared with the app's (DebugTimeEdit).
         if (intent.getStringExtra("timeedit") == "build") {
             val pending = goAsync()

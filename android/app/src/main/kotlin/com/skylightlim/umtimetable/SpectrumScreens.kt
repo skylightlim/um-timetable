@@ -539,42 +539,45 @@ object SpectrumScreens {
         }
         addView(link(ui, "Get timetable from TimeEdit") { h.openTimeEdit() })
         addView(link(ui, "Import timetable from MAYA instead") { h.openMaya() })
-        addView(vibrationSwitch(ui), ui.wide(top = 6f, bottom = 6f))
+        addView(vibrationLevel(ui), ui.wide(top = 6f, bottom = 6f))
         if (signedIn) addView(link(ui, "Sign out") { h.signOut() })
     }
 
-    /** Turns the vibration feedback ([Haptics]) on and off; the whole row is the switch. */
-    private fun vibrationSwitch(ui: Ui): View {
+    /**
+     * The vibration strength ([Haptics]): each tap on the row steps Off → Light → Medium → Strong → Off
+     * and plays the new strength. A three-bar meter and the name show where it is.
+     */
+    private fun vibrationLevel(ui: Ui): View {
         val p = ui.p
-        val switch = android.widget.Switch(ui.context).apply {
-            isChecked = Haptics.on(context)
-            val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
-            thumbTintList = android.content.res.ColorStateList(states, intArrayOf(p.accent, p.surface))
-            trackTintList = android.content.res.ColorStateList(states, intArrayOf(Palette.mix(p.accent, p.surface, 0.7f), p.line))
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            isClickable = false
+        val name = ui.text("", 14f, p.text, ui.f.bodySemi).apply { accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE }
+        val bars = List(3) { View(ui.context) }
+        val meter = LinearLayout(ui.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.BOTTOM
+            bars.forEachIndexed { i, b -> addView(b, LinearLayout.LayoutParams(ui.dp(5), ui.dp(7 + i * 5)).apply { if (i > 0) marginStart = ui.dp(3) }) }
         }
+        fun show(level: Haptics.Level) {
+            name.text = level.label
+            bars.forEachIndexed { i, b -> b.background = ui.shape(if (i < level.ordinal) p.accent else p.line, 2f) }
+        }
+        show(Haptics.level(ui.context))
         return ui.row(gap = 12f).apply {
             minimumHeight = ui.dp(56)
             background = ui.pressable(ui.shape(Color.TRANSPARENT, 12f), 12f)
             addView(ui.column(gap = 2f).apply {
                 addView(ui.text("Vibration", 15f, p.text, ui.f.bodySemi))
-                addView(ui.text("A light tap when you change page, go back, or swipe days", 12.5f, p.muted))
+                addView(ui.text("When you change page, go back, or swipe days. Tap to change.", 12.5f, p.muted))
             }, ui.grow())
-            addView(switch)
-            contentDescription = "Vibration"
-            accessibilityDelegate = object : View.AccessibilityDelegate() {
-                override fun onInitializeAccessibilityNodeInfo(host: View, info: android.view.accessibility.AccessibilityNodeInfo) {
-                    super.onInitializeAccessibilityNodeInfo(host, info)
-                    info.className = android.widget.Switch::class.java.name
-                    info.isCheckable = true
-                    info.isChecked = switch.isChecked
-                }
-            }
+            addView(name)
+            addView(meter, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ui.dp(17)))
+            contentDescription = "Vibration: ${Haptics.level(context).label}. Tap to change."
             setOnClickListener {
-                switch.isChecked = !switch.isChecked
-                Haptics.set(context, switch.isChecked)
-                if (switch.isChecked) Haptics.toggledOn(this)
+                val level = Haptics.next(Haptics.level(context))
+                Haptics.setLevel(context, level)
+                show(level)
+                Motion.pop(meter, 0.75f)
+                Haptics.tick(this)
+                contentDescription = "Vibration: ${level.label}. Tap to change."
             }
         }
     }

@@ -5,6 +5,8 @@
          non-wakeup alarms: while the phone sleeps they wait, and fire the moment
          the screen comes on. USE_EXACT_ALARM is granted at install on Android 13+. -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Vibration feedback at the strength chosen in Courses (Haptics). -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission
         android:name="android.permission.SCHEDULE_EXACT_ALARM"
         android:maxSdkVersion="32" />
