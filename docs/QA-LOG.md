@@ -18,6 +18,27 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 13 October 2026 (week of the semester, hours a week per course, no day summary line)
+
+**Asked for:** the Week chip to show which week of the semester it is, without its calendar icon or
+"WEEK"; the Week page's "11 classes · …" line moved down; each course's hours a week, split into
+lectures and tutorials; the "2 classes · 2 h · 08:00–14:00" line removed from every day.
+
+**Change:**
+- `AcademicCalendar.kt`: UM's bachelor-degree calendar 2026/2027, as amended by the Senate on
+  22 July 2026 (aasd.um.edu.my, Attachment D, July 2026). Semester I teaching runs 5 Oct – 29 Nov
+  and 7 Dec – 17 Jan, with the mid-semester break between them, then revision week and exams. The
+  earlier Attachment J had a 6 + 8 week split; the amendment is 8 + 6. `week(date)` gives teaching week
+  n of 14 (the break isn't counted), Break, Revision or Exams, or null outside the table. Add the
+  2027/2028 calendar when UM publishes it. `AcademicCalendarTest` covers it.
+- Week chip: "W2" (Big Shoulders 22sp) over "OF 14", for the strip's week; "Break", "Revision" or
+  "Exams" in those weeks; "Week" outside the calendar.
+- Week page: the big WEEK heading stays. The class count line sits under the grid. Below it, an
+  "Hours a week" table: one row per course (dot, code, name underneath) with Lecture, Tutorial and
+  Total columns (a column for any other kind of class too), "–" for none, and an All courses row. A
+  row opens that course's class sheet.
+- Day: no summary line. A day without classes says "No classes".
+
 ## 13 October 2026 (bigger animated title, 1a free-time rows, no vibration on some day swipes)
 
 **Asked for:** a larger day name at the top with an animation; free time between classes as in 1a; the

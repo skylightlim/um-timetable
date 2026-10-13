@@ -33,6 +33,7 @@ import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.LocalDate
 import java.util.Calendar
 import kotlin.concurrent.thread
 import kotlin.math.hypot
@@ -383,13 +384,27 @@ class MainActivity : Activity(), SpectrumHost {
                 setOnClickListener { pickedDay = true; goDay(d) }
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (d > 1) marginStart = ui.dp(6) })
         }
-        // The week grid lives under Day: one more chip after Friday.
+        // The week grid lives under Day: one more chip after Friday, saying which week of the semester it is.
         val week = index == 5
-        val weekText = ui.text("Week", 10.5f, if (week) p.ground else p.text, ui.f.bodyBold, caps = true, spacing = 0.1f)
-        val weekIcon = ui.icon(R.drawable.ic_tab_week, if (week) p.ground else p.muted, 18f)
-        if (moved && week) { Motion.tint(weekText, p.text, p.ground); Motion.tint(weekIcon, p.muted, p.ground) }
-        if (moved && stripIndex == 5) { Motion.tint(weekText, p.ground, p.text, 90); Motion.tint(weekIcon, p.ground, p.muted, 90) }
-        strip.addView(chip("Week, ${tt.sessions.size} classes", weekText, weekIcon).apply {
+        val semester = AcademicCalendar.week(LocalDate.now().plusDays(daysFromToday(tt, n, 1).toLong()))
+        val (weekName, weekOf) = when (semester?.kind) {
+            AcademicCalendar.Kind.TEACHING -> "W${semester.n}" to "of ${semester.of}"
+            AcademicCalendar.Kind.BREAK -> "Break" to null
+            AcademicCalendar.Kind.REVISION -> "Revision" to null
+            AcademicCalendar.Kind.EXAMS -> "Exams" to null
+            null -> "Week" to null
+        }
+        val weekParts = listOfNotNull(
+            ui.text(weekName, 22f, if (week) p.ground else p.text, ui.f.sign),
+            weekOf?.let { ui.text(it, 10.5f, if (week) p.ground else p.muted, ui.f.bodyBold, caps = true, spacing = 0.1f) },
+        )
+        for ((k, t) in weekParts.withIndex()) {
+            val rest = if (k == 0) p.text else p.muted
+            if (moved && week) Motion.tint(t, rest, p.ground)
+            if (moved && stripIndex == 5) Motion.tint(t, p.ground, rest, 90)
+        }
+        val weekWords = if (semester?.kind == AcademicCalendar.Kind.TEACHING) "Week ${semester.n} of ${semester.of} of the semester" else weekName
+        strip.addView(chip("$weekWords, ${tt.sessions.size} classes a week", *weekParts.toTypedArray()).apply {
             setOnClickListener { setView("week") }
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.15f).apply { marginStart = ui.dp(6) })
         stripGlider.moveTo(index, if (view == "day" && daysFromToday(tt, n, sel) == 0) p.accent else p.text)

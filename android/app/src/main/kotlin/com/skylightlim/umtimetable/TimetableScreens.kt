@@ -68,8 +68,8 @@ fun weekRange(monday: Int): String =
     if (dateIn(monday).get(Calendar.MONTH) == dateIn(monday + 4).get(Calendar.MONTH)) "${dateIn(monday).get(Calendar.DAY_OF_MONTH)}–${dateText(monday + 4)}"
     else "${dateText(monday)} – ${dateText(monday + 4)}"
 
-/** Big day-name heading with its one-line summary. */
-fun pageHeader(ui: Ui, title: String, meta: String, chip: View? = null, action: View? = null): View {
+/** Big page heading, with a one-line summary under it when there's a [meta]. */
+fun pageHeader(ui: Ui, title: String, meta: String?, chip: View? = null, action: View? = null): View {
     val top = ui.row(gap = 10f)
     top.addView(ui.text(title.uppercase(), 46f, ui.p.text, ui.f.sign).apply { letterSpacing = 0.01f })
     chip?.let { top.addView(it) }
@@ -80,7 +80,7 @@ fun pageHeader(ui: Ui, title: String, meta: String, chip: View? = null, action: 
     return ui.column().apply {
         setPadding(0, ui.dp(18), 0, ui.dp(14))
         addView(top)
-        addView(ui.text(meta, 13.5f, ui.p.muted), ui.wide(top = 8f))
+        meta?.let { addView(ui.text(it, 13.5f, ui.p.muted), ui.wide(top = 8f)) }
     }
 }
 
@@ -91,12 +91,10 @@ object DayScreen {
         val now = h.now()
         val list = h.timetable.day(day)
         val isToday = daysFromToday(h.timetable, now, day) == 0
-        val meta = if (list.isEmpty()) "No classes" else
-            "${list.size} ${if (list.size == 1) "class" else "classes"} · ${hoursText(list.sumOf { it.end - it.start })} · ${clockText(list.first().start)}–${clockText(list.last().end)}"
         // The day's name and date are in the top bar.
-        val page = ui.column()
-        page.addView(ui.text(meta, 13.5f, p.muted), ui.wide(top = 6f, bottom = 12f))
+        val page = ui.column().apply { setPadding(0, ui.dp(2), 0, 0) }
         if (day == homeDay(h.timetable, now)) page.addView(status(h, now), ui.wide(bottom = 18f))
+        if (list.isEmpty()) page.addView(ui.text("No classes", 15f, p.muted), ui.wide(top = 12f))
 
         val agenda = ui.column(gap = 8f)
         list.forEachIndexed { i, s ->
@@ -212,7 +210,7 @@ object WeekScreen {
         val p = ui.p
         val tt = h.timetable
         val page = ui.column()
-        page.addView(pageHeader(ui, "Week", if (tt.sessions.isEmpty()) "No timetable yet · sign in to Spectrum in Courses" else "${tt.sessions.size} classes · ${hoursText(tt.sessions.sumOf { it.end - it.start })} · Mon–Fri · tap a class for details"))
+        page.addView(pageHeader(ui, "Week", null))
         val card = ui.column().apply {
             background = ui.shape(p.surface, 18f, p.line)
             setPadding(ui.dp(2), ui.dp(10), ui.dp(6), ui.dp(8))
@@ -228,8 +226,64 @@ object WeekScreen {
         key.addView(keyItem(View(ui.context).apply { setBackgroundColor(p.accent); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(3)) }, "Now"))
         card.addView(key)
         page.addView(card)
-
+        val meta = if (tt.sessions.isEmpty()) "No timetable yet · sign in to Spectrum in Courses" else "${tt.sessions.size} classes · ${hoursText(tt.sessions.sumOf { it.end - it.start })} · Mon–Fri · tap a class for details"
+        page.addView(ui.text(meta, 13.5f, p.muted), ui.wide(top = 12f))
+        if (tt.sessions.isNotEmpty()) page.addView(hours(h), ui.wide(top = 18f))
         return page
+    }
+
+    /**
+     * Each course's hours a week, split by kind of class (lecture, tutorial, then any other kind), and
+     * the totals. A course opens its class sheet.
+     */
+    private fun hours(h: Host): View {
+        val ui = h.ui
+        val p = ui.p
+        val tt = h.timetable
+        val order = listOf("Lecture", "Tutorial")
+        val types = tt.sessions.map { it.type }.distinct().sortedWith(compareBy({ order.indexOf(it).let { i -> if (i < 0) order.size else i } }, { it }))
+        val columns = types.map { it.uppercase() } + "TOTAL"
+        fun minutes(list: List<Session>) = types.map { t -> list.filter { it.type == t }.sumOf { it.end - it.start } } + list.sumOf { it.end - it.start }
+        fun cell(text: String, color: Int, bold: Boolean) = ui.text(text, 13f, color, if (bold) ui.f.monoBold else ui.f.mono).apply { gravity = Gravity.END }
+        fun cells(row: LinearLayout, values: List<Int>, color: Int, bold: Boolean) = values.forEachIndexed { i, m ->
+            val last = i == values.lastIndex
+            row.addView(cell(if (m == 0) "–" else hoursText(m), if (m == 0) p.faint else color, bold || last), LinearLayout.LayoutParams(ui.dp(if (last) 52 else 68), ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+
+        val card = ui.column().apply {
+            background = ui.shape(p.surface, 18f, p.line)
+            setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(6))
+        }
+        card.addView(ui.row().apply {
+            addView(ui.label("Hours a week", p.muted, 10.5f), ui.grow())
+            columns.forEachIndexed { i, c ->
+                addView(ui.label(c, p.muted, 10.5f).apply { gravity = Gravity.END }, LinearLayout.LayoutParams(ui.dp(if (i == columns.lastIndex) 52 else 68), ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
+        }, ui.wide(bottom = 4f))
+        fun divider() = card.addView(View(ui.context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
+        for (course in tt.courses) {
+            val list = tt.sessions.filter { it.course == course }
+            divider()
+            card.addView(ui.column().apply {
+                background = ui.pressable(ui.shape(Color.TRANSPARENT, 12f), 12f)
+                setPadding(0, ui.dp(10), 0, ui.dp(10))
+                contentDescription = "${course.code} ${course.name}: " + types.zip(minutes(list)).filter { it.second > 0 }.joinToString(", ") { "${it.first} ${hoursText(it.second)}" } + ", ${hoursText(list.sumOf { it.end - it.start })} a week"
+                setOnClickListener { h.openSheet(course, null) }
+                addView(ui.row().apply {
+                    addView(View(ui.context).apply { background = ui.shape(course.color, 99f) }, LinearLayout.LayoutParams(ui.dp(10), ui.dp(10)).apply { marginEnd = ui.dp(8) })
+                    addView(ui.text(course.code, 13f, p.text, ui.f.monoBold), ui.grow())
+                    cells(this, minutes(list), p.text, false)
+                })
+                addView(ui.text(course.name, 13f, p.muted), ui.wide(top = 3f).apply { marginStart = ui.dp(18) })
+            })
+        }
+        divider()
+        card.addView(ui.row().apply {
+            setPadding(0, ui.dp(12), 0, ui.dp(10))
+            addView(ui.label("All courses", p.text, 10.5f), ui.grow())
+            cells(this, minutes(tt.sessions), p.text, true)
+        })
+        return card
     }
 }
 
