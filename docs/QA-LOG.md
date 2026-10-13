@@ -10,12 +10,36 @@ shows on the phone's screen. It draws the page content only (no top bar or tabs)
 width, from cached data:
 
 ```sh
-adb shell am broadcast -n com.skylightlim.umtimetable/.DebugRenderReceiver --es view files [--ei course 151] [--ei day 1] [--ez dark true]
+adb shell am broadcast -n com.skylightlim.umtimetable/.DebugRenderReceiver --es view files [--ei course 151] [--ei day 1] [--ez dark true] [--ei dow 2 --ei min 700]
 adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.png
 ```
 
-`view` is day, week, due, news or files (the Courses tab). Screenshots of the real screen can catch a
+`view` is day, week, due, news or files (the Courses tab). `dow` (0 Sunday … 6 Saturday) and `min`
+(minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
+
+## 13 October 2026 (Day: the yellow Now block and dated day strip from redesign 1b)
+
+**Asked for:** the "Now" section of redesign option 1b, with the course name where 1b shows the room;
+no semester label; the day name moved to the top with its date; dates in the day strip, keeping the
+coloured dots.
+
+**Change** (`MainActivity.renderTop`, `DayScreen`, `TimetableScreens.kt`):
+- The top bar shows the chosen day and its date ("Tuesday 13 Oct", Big Shoulders 24sp) with the Today
+  chip, or the week's dates on Week ("12–16 Oct"). Other tabs show today's date as a small label. The
+  "UM · Sem 1 2026/27" label is gone (the timetable still keeps `term`).
+- Day no longer has the big day-name heading; its summary line ("3 classes · 6 h · …") opens the page.
+- The status card is now 1b's yellow block: Now / Next / Next class with the time left on the right,
+  the course name large (Big Shoulders 40sp, up to 3 lines), then code · type · time with the room on
+  the right, the progress bar in ink during a class, and the "Then …" line.
+- Each day chip shows the short day, the date (Big Shoulders 22sp) and the class dots, left-aligned as
+  in 1b, 60dp tall. The Week chip shows WEEK and its icon.
+- Which week the dates belong to: the week Day opens on (`daysFromToday`). After the week's last class
+  and at the weekend the strip shows next week, so Day doesn't open on a past date. The Week grid
+  only marks today when the strip's week is this week. `HomeDayTest` covers this.
+
+**Checked:** Day rendered off-screen (in class, before a class, the evening before) in light and dark.
+The top bar and strip aren't in the renderer; check them on the phone.
 
 ## 13 October 2026 (vibration too light: four strengths)
 

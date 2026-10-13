@@ -19,6 +19,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import java.util.Calendar
 import kotlin.math.ceil
 
 /** What the screens need from the activity. */
@@ -38,10 +39,34 @@ interface Host {
  * The day Day opens on: today while it still has a class to come, otherwise the next weekday with
  * classes (at 23:50 on Monday that's Tuesday, on Saturday it's Monday).
  */
-fun homeDay(tt: Timetable, now: Now): Int {
-    if (now.dow in 1..5 && tt.day(now.dow).any { it.end > now.min }) return now.dow
-    return (1..7).map { (now.dow + it) % 7 }.firstOrNull { it in 1..5 && tt.day(it).isNotEmpty() } ?: if (now.dow in 1..5) now.dow else 1
+fun homeDay(tt: Timetable, now: Now): Int = (now.dow + homeAhead(tt, now)) % 7
+
+/** How many days from today [homeDay] is: 0 to 7 (7 when today's weekday is the only one with classes). */
+private fun homeAhead(tt: Timetable, now: Now): Int {
+    if (now.dow in 1..5 && tt.day(now.dow).any { it.end > now.min }) return 0
+    return (1..7).firstOrNull { k -> (now.dow + k) % 7 in 1..5 && tt.day((now.dow + k) % 7).isNotEmpty() }
+        ?: if (now.dow in 1..5) 0 else (8 - now.dow) % 7 // no classes at all: today, or the coming Monday
 }
+
+/**
+ * The day strip shows the week [homeDay] is in: this week, or next week once this week's classes
+ * are over and at the weekend. Days from today to [day] (1 Monday … 5 Friday) in that week: 0 is
+ * today, -1 yesterday.
+ */
+fun daysFromToday(tt: Timetable, now: Now, day: Int): Int {
+    val ahead = homeAhead(tt, now)
+    return ahead + day - (now.dow + ahead) % 7
+}
+
+fun dateIn(days: Int): Calendar = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, days) }
+
+/** "13 Oct", [days] from today. */
+fun dateText(days: Int): String = dateIn(days).let { "${it.get(Calendar.DAY_OF_MONTH)} ${MONTHS[it.get(Calendar.MONTH)]}" }
+
+/** "12–16 Oct" (or "28 Sep – 2 Oct"): Monday to Friday of the week whose Monday is [monday] days from today. */
+fun weekRange(monday: Int): String =
+    if (dateIn(monday).get(Calendar.MONTH) == dateIn(monday + 4).get(Calendar.MONTH)) "${dateIn(monday).get(Calendar.DAY_OF_MONTH)}–${dateText(monday + 4)}"
+    else "${dateText(monday)} – ${dateText(monday + 4)}"
 
 /** Big day-name heading with its one-line summary. */
 fun pageHeader(ui: Ui, title: String, meta: String, chip: View? = null, action: View? = null): View {
@@ -65,11 +90,12 @@ object DayScreen {
         val p = ui.p
         val now = h.now()
         val list = h.timetable.day(day)
-        val isToday = day == now.dow
+        val isToday = daysFromToday(h.timetable, now, day) == 0
         val meta = if (list.isEmpty()) "No classes" else
             "${list.size} ${if (list.size == 1) "class" else "classes"} · ${hoursText(list.sumOf { it.end - it.start })} · ${clockText(list.first().start)}–${clockText(list.last().end)}"
+        // The day's name and date are in the top bar.
         val page = ui.column()
-        page.addView(pageHeader(ui, DAY_NAMES[day], meta, chip = if (isToday) ui.chip("Today", p.accent, p.accentInk, 11f).apply { setPadding(ui.dp(8), ui.dp(3), ui.dp(8), ui.dp(3)) } else null))
+        page.addView(ui.text(meta, 13.5f, p.muted), ui.wide(top = 6f, bottom = 12f))
         if (day == homeDay(h.timetable, now)) page.addView(status(h, now), ui.wide(bottom = 18f))
 
         val agenda = ui.column(gap = 10f)
@@ -88,47 +114,44 @@ object DayScreen {
         return page
     }
 
+    /** The class in progress, or the next one, as a big yellow block with its course name. */
     private fun status(h: Host, now: Now): View {
         val ui = h.ui
         val p = ui.p
-        val card = ui.column().apply {
-            background = ui.pressable(ui.shape(p.surface, 18f, p.line), 18f)
-            setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(16))
+        val ink = p.accentInk
+        val block = ui.column().apply {
+            background = ui.pressable(ui.shape(p.accent, 18f), 18f)
+            setPadding(ui.dp(16), ui.dp(16), ui.dp(16), ui.dp(18))
         }
+        fun labels(left: String, right: String?) = block.addView(ui.row().apply {
+            addView(ui.label(left, ink, 11f), ui.grow())
+            right?.let { addView(ui.label(it, ink, 11f)) }
+        })
         val st = h.timetable.status(now)
         if (st == null) {
-            card.addView(ui.label("No timetable yet", p.accentText))
-            card.addView(ui.text("Open the Courses tab and sign in to Spectrum with your SiswaMail: the app then gets your timetable from TimeEdit.", 17f, p.text, ui.f.bodySemi), ui.wide(top = 8f))
-            return card
+            labels("No timetable yet", null)
+            block.addView(ui.text("Open the Courses tab and sign in to Spectrum with your SiswaMail: the app then gets your timetable from TimeEdit.", 17f, ink, ui.f.bodySemi), ui.wide(top = 8f))
+            return block
         }
         val s = st.session
-        val label = when (st.phase) {
-            Phase.IN_CLASS -> "Now · ends in ${durationText(st.minutesAway)}"
-            Phase.NEXT_TODAY -> "Next · in ${durationText(st.minutesAway)}"
-            Phase.NEXT_LATER -> "Next class · ${if (st.daysAhead == 1) "tomorrow" else DAY_NAMES[s.day]} at ${clockText(s.start)}"
+        when (st.phase) {
+            Phase.IN_CLASS -> labels("Now", "${durationText(st.minutesAway)} left")
+            Phase.NEXT_TODAY -> labels("Next", "in ${durationText(st.minutesAway)}")
+            Phase.NEXT_LATER -> labels("Next class", "in ${durationText(st.minutesAway)}")
         }
-        val time = if (st.phase == Phase.NEXT_LATER) "${DAY_SHORT[s.day]} ${clockText(s.start)}–${clockText(s.end)}" else "${clockText(s.start)}–${clockText(s.end)}"
-        card.addView(ui.label(label, p.accentText))
-        val main = ui.row(gap = 12f).apply { gravity = Gravity.BOTTOM }
-        main.addView(ui.column().apply {
-            addView(ui.text("${s.course.code} · ${s.type} · $time", 12f, p.muted, ui.f.mono))
-            addView(ui.text(s.course.name, 18f, p.text, ui.f.bodySemi), ui.wide(top = 4f))
-        }, ui.grow())
-        main.addView(ui.column().apply {
-            gravity = Gravity.END
-            addView(ui.label(if (s.room == "Online") "Where" else "Room", p.muted, 10.5f))
-            addView(ui.text(s.room, 42f, p.accentText, ui.f.sign))
-        })
-        card.addView(main, ui.wide(top = 8f))
+        block.addView(ui.text(s.course.name, 40f, ink, ui.f.sign, lines = 3).apply { setLineSpacing(0f, 0.95f) }, ui.wide(top = 10f))
+        val info = ui.row(gap = 12f).apply { gravity = Gravity.BOTTOM }
+        info.addView(ui.text("${s.course.code} · ${s.type} · ${clockText(s.start)}–${clockText(s.end)}", 12f, ink, ui.f.monoBold, caps = true), ui.grow())
+        info.addView(ui.text(s.room, 30f, ink, ui.f.sign).apply { contentDescription = "${if (s.room == "Online") "Where" else "Room"}: ${s.room}" })
+        block.addView(info, ui.wide(top = 8f))
         if (st.phase == Phase.IN_CLASS) {
-            card.addView(ui.bar(st.progress, p.accent, p.line), ui.wide(top = 12f).apply { height = ui.dp(4) })
+            block.addView(ui.bar(st.progress, ink, (ink and 0xFFFFFF) or 0x2E000000), ui.wide(top = 14f).apply { height = ui.dp(4) })
             h.timetable.day(now.dow).firstOrNull { it.start > now.min }?.let { next ->
-                card.addView(ui.space(h = 1).apply { setBackgroundColor(p.line) }, ui.wide(top = 12f).apply { height = 1 })
-                card.addView(ui.text("Then ${next.course.code} ${next.type.lowercase()} at ${clockText(next.start)} · ${next.room}", 13f, p.muted), ui.wide(top = 10f))
+                block.addView(ui.text("Then ${next.course.code} ${next.type.lowercase()} at ${clockText(next.start)} · ${next.room}", 13f, p.inkMuted), ui.wide(top = 12f))
             }
         }
-        card.setOnClickListener { h.openSheet(s.course, s) }
-        return card
+        block.setOnClickListener { h.openSheet(s.course, s) }
+        return block
     }
 
     private fun gap(ui: Ui, prev: Session, next: Session, isToday: Boolean, now: Now): View {
@@ -239,6 +262,8 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
     private val padY = ui.dp(8f).toFloat()
     private val startMin = 8 * 60
     private val blocks = mutableListOf<Pair<RectF, Session>>()
+    /** Today's column, when the week shown is this week (see [daysFromToday]). */
+    private val today = now.dow.takeIf { it in 1..5 && daysFromToday(tt, now, it) == 0 }
 
     private fun sp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, resources.displayMetrics)
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -264,7 +289,7 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
         val top = head + padY
         val bottom = top + hour * 11
         // Now: on a weekday between 08:00 and 19:00.
-        val nowY = if (now.dow in 1..5 && now.min >= startMin && now.min <= 19 * 60) top + (now.min - startMin) / 60 * hour else null
+        val nowY = if (today != null && now.min >= startMin && now.min <= 19 * 60) top + (now.min - startMin) / 60 * hour else null
         val pillH = ui.dp(15f).toFloat()
         for (h in 8..19) {
             val y = top + (h - 8) * hour
@@ -273,7 +298,7 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
         }
         for (d in 1..5) {
             val left = axis + gapX + (d - 1) * (colW + gapX)
-            val isToday = d == now.dow
+            val isToday = d == today
             dayPaint.color = if (isToday) p.accentText else p.muted
             canvas.drawText(DAY_SHORT[d], left + colW / 2, head - ui.dp(8f), dayPaint)
             if (isToday) {
@@ -291,10 +316,10 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
             }
             for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), isToday && now.min >= s.end)
         }
-        if (nowY == null) return
+        if (nowY == null || today == null) return
         // Today's line goes over the classes (a class in progress is when it matters most), in the app's
         // yellow, on a halo in the card's colour so it reads on any course colour.
-        val left = axis + gapX + (now.dow - 1) * (colW + gapX)
+        val left = axis + gapX + (today - 1) * (colW + gapX)
         fill.color = p.surface
         canvas.drawRect(left - ui.dp(2f), nowY - ui.dp(3f), left + colW, nowY + ui.dp(3f), fill)
         canvas.drawCircle(left, nowY, ui.dp(6.5f).toFloat(), fill)

@@ -49,8 +49,6 @@ object SpectrumScreens {
     /** Spectrum display names often end in " ." (an empty field after the name). */
     private val TRAILING_DOT = Regex("""\s+\.$""")
 
-    private val MONTHS = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-
     private fun rel(ms: Long): String {
         val m = Math.round((ms - System.currentTimeMillis()) / 60_000.0)
         val a = Math.abs(m)

@@ -18,11 +18,12 @@ import java.io.File
  * full width, from cached data.
  *
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugRenderReceiver \
- *     --es view files [--ei course 151] [--ei day 1] [--ez dark true] [--ei width 1280]
+ *     --es view files [--ei course 151] [--ei day 1] [--ez dark true] [--ei width 1280] [--ei dow 2 --ei min 700]
  *   adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.png
  *
  * view: day, week, due, news, files (the Courses tab); course opens one course page from its cache.
  * view icon draws the launcher icon with the phone's mask (icon.png) and its themed layer (icon-mono.png).
+ * dow (0 Sunday … 6 Saturday) and min (minutes after midnight) pretend it's another time of the week.
  */
 class DebugRenderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -32,7 +33,8 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val dark = intent.getBooleanExtra("dark", false)
         val width = intent.getIntExtra("width", context.resources.displayMetrics.widthPixels)
         val c = ContextThemeWrapper(context, R.style.Theme_UMTimetable)
-        val host = Host(c, Ui(c, if (dark) Palette.DARK else Palette.LIGHT, Fonts(c))).apply {
+        val now = if (intent.hasExtra("dow")) Now(intent.getIntExtra("dow", 2), intent.getIntExtra("min", 700).toFloat()) else Now.current()
+        val host = Host(c, Ui(c, if (dark) Palette.DARK else Palette.LIGHT, Fonts(c)), now).apply {
             openCourse = intent.getIntExtra("course", 0).takeIf { it > 0 }
         }
         val page = when (view) {
@@ -41,7 +43,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
             "news" -> SpectrumScreens.news(host)
             "files" -> SpectrumScreens.courses(host)
             "grades" -> SpectrumScreens.grades(host)
-            else -> DayScreen.build(host, intent.getIntExtra("day", homeDay(Timetable.load(context), Now.current())))
+            else -> DayScreen.build(host, intent.getIntExtra("day", homeDay(Timetable.load(context), now)))
         }
         val frame = FrameLayout(c).apply {
             setBackgroundColor(host.ui.p.ground)
@@ -139,9 +141,9 @@ class DebugRenderReceiver : BroadcastReceiver() {
     }
 
     /** Just enough of MainActivity for the screens to build: cached data, no actions. */
-    private class Host(private val context: Context, override val ui: Ui) : SpectrumHost {
+    private class Host(private val context: Context, override val ui: Ui, private val at: Now? = null) : SpectrumHost {
         override val timetable get() = Timetable.load(context)
-        override fun now() = Now.current()
+        override fun now() = at ?: Now.current()
         override fun render() = Unit
         override fun goDay(day: Int, dir: Int) = Unit
         override fun setView(view: String) = Unit

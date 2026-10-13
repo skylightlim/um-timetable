@@ -33,6 +33,7 @@ import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Calendar
 import kotlin.concurrent.thread
 import kotlin.math.hypot
 
@@ -65,7 +66,7 @@ class MainActivity : Activity(), SpectrumHost {
     private val contentErrors = mutableMapOf<Int, String>()
     private val loading = mutableSetOf<Int>()
 
-    private lateinit var eyebrowRow: LinearLayout
+    private lateinit var titleRow: LinearLayout
     private lateinit var strip: LinearLayout
     private lateinit var scroll: SwipeScrollView
     private lateinit var content: FrameLayout
@@ -169,7 +170,7 @@ class MainActivity : Activity(), SpectrumHost {
         val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
         window.insetsController?.setSystemBarsAppearance(if (p.dark) 0 else lightBars, lightBars)
 
-        eyebrowRow = ui.row()
+        titleRow = ui.row()
         // The day strip: a track of slots, the selection pill gliding over it, and the chips on top.
         strip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         stripTrack = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -180,7 +181,7 @@ class MainActivity : Activity(), SpectrumHost {
         stripGlider = Motion.Glider(stripFrame, strip, ui.dp(12f).toFloat(), 1)
         stripIndex = -1
         val top = ui.column().apply {
-            addView(eyebrowRow)
+            addView(titleRow)
             addView(stripFrame, ui.wide(top = 10f))
         }
         content = FrameLayout(this).apply { setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(24)) }
@@ -309,10 +310,22 @@ class MainActivity : Activity(), SpectrumHost {
 
     private fun renderTop(n: Now) {
         val p = ui.p
-        eyebrowRow.removeAllViews()
-        eyebrowRow.addView(ui.label(listOfNotNull("UM", timetable.term).joinToString(" · "), p.muted, 11f), ui.grow())
+        val tt = timetable
+        titleRow.removeAllViews()
+        // Day: the chosen day and its date; Week: the dates of the strip's week; elsewhere today's date.
+        val title = ui.row(gap = 10f)
+        when (view) {
+            "day" -> {
+                val days = daysFromToday(tt, n, sel)
+                title.addView(ui.text("${DAY_NAMES[sel]} ${dateText(days)}", 24f, p.text, ui.f.sign))
+                if (days == 0) title.addView(ui.chip("Today", p.accent, p.accentInk, 11f).apply { setPadding(ui.dp(8), ui.dp(3), ui.dp(8), ui.dp(3)) })
+            }
+            "week" -> title.addView(ui.text(weekRange(daysFromToday(tt, n, 1)), 24f, p.text, ui.f.sign))
+            else -> title.addView(ui.label("${DAY_NAMES[n.dow]} ${dateText(0)}", p.muted, 11f))
+        }
+        titleRow.addView(title, ui.grow())
         val pill = ui.row(gap = 5f)
-        eyebrowRow.addView(pill.apply {
+        titleRow.addView(pill.apply {
             background = ui.pressable(ui.shape(p.surface, 99f, p.line), 99f)
             setPadding(ui.dp(8), ui.dp(4), ui.dp(10), ui.dp(4))
             contentDescription = "Theme: ${look.label}. Switch to ${look.next.label}."
@@ -321,11 +334,11 @@ class MainActivity : Activity(), SpectrumHost {
             setOnClickListener { switchLook(this) }
         })
         // The pill is about 24dp tall; a delegate on the top bar gives it a 48dp touch area.
-        val bar = eyebrowRow.parent as View
+        val bar = titleRow.parent as View
         bar.post {
             val r = android.graphics.Rect()
             pill.getHitRect(r)
-            r.offset(eyebrowRow.left, eyebrowRow.top)
+            r.offset(titleRow.left, titleRow.top)
             val grow = maxOf(0, (ui.dp(48) - r.height()) / 2)
             r.inset(-ui.dp(4), -grow)
             bar.touchDelegate = android.view.TouchDelegate(r, pill)
@@ -337,52 +350,55 @@ class MainActivity : Activity(), SpectrumHost {
         val index = if (view == "week") 5 else sel - 1
         // The pill glides; the two labels it leaves and reaches change colour with it.
         val moved = stripIndex != -1 && stripIndex != index
-        fun fg(d: Int, selected: Boolean) = when {
-            selected && d == n.dow -> p.accentInk
+        fun fg(today: Boolean, selected: Boolean) = when {
+            selected && today -> p.accentInk
             selected -> p.ground
-            d == n.dow -> p.accentText
+            today -> p.accentText
             else -> p.text
         }
         for (i in 0..5) {
             stripTrack.addView(View(this).apply { background = ui.shape(p.surface, 12f) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, if (i == 5) 1.15f else 1f).apply { if (i > 0) marginStart = ui.dp(6) })
         }
+        fun chip(description: String, vararg parts: View) = ui.column().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            background = ui.pressable(ui.shape(Color.TRANSPARENT, 12f), 12f)
+            minimumHeight = ui.dp(60)
+            setPadding(ui.dp(10), ui.dp(8), ui.dp(4), ui.dp(8))
+            contentDescription = description
+            for ((k, part) in parts.withIndex()) {
+                val lp = part.layoutParams as? LinearLayout.LayoutParams ?: LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                addView(part, lp.apply { if (k > 0) topMargin = ui.dp(if (k == 1) 2 else 5) })
+            }
+        }
         for (d in 1..5) {
             val selected = index == d - 1
-            val label = ui.text(DAY_SHORT[d], 13f, fg(d, selected), ui.f.bodySemi).apply { gravity = Gravity.CENTER }
-            if (moved && selected) Motion.tint(label, fg(d, false), fg(d, true))
-            if (moved && stripIndex == d - 1) Motion.tint(label, fg(d, true), fg(d, false), 90)
-            val dots = ui.row(gap = 3f).apply {
-                gravity = Gravity.CENTER
-                for (s in timetable.day(d)) addView(View(context).apply { background = ui.shape(s.course.color, 99f) }, LinearLayout.LayoutParams(ui.dp(6), ui.dp(6)))
+            val days = daysFromToday(tt, n, d)
+            val today = days == 0
+            val name = ui.text(DAY_SHORT[d], 10.5f, fg(today, selected), ui.f.bodyBold, caps = true, spacing = 0.1f)
+            val date = ui.text(dateIn(days).get(Calendar.DAY_OF_MONTH).toString(), 22f, fg(today, selected), ui.f.sign)
+            for (t in listOf(name, date)) {
+                if (moved && selected) Motion.tint(t, fg(today, false), fg(today, true))
+                if (moved && stripIndex == d - 1) Motion.tint(t, fg(today, true), fg(today, false), 90)
             }
-            strip.addView(ui.column().apply {
-                gravity = Gravity.CENTER
-                background = ui.pressable(ui.shape(Color.TRANSPARENT, 12f), 12f)
-                minimumHeight = ui.dp(48)
-                setPadding(0, ui.dp(8), 0, ui.dp(7))
-                contentDescription = timetable.day(d).size.let { n -> "${DAY_NAMES[d]}, $n ${if (n == 1) "class" else "classes"}" }
-                addView(label)
-                addView(dots, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ui.dp(6)).apply { topMargin = ui.dp(5) })
+            val dots = ui.row(gap = 3f).apply {
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ui.dp(6))
+                for (s in tt.day(d)) addView(View(context).apply { background = ui.shape(s.course.color, 99f) }, LinearLayout.LayoutParams(ui.dp(6), ui.dp(6)))
+            }
+            val description = tt.day(d).size.let { k -> "${DAY_NAMES[d]} ${dateText(days)}, $k ${if (k == 1) "class" else "classes"}" }
+            strip.addView(chip(description, name, date, dots).apply {
                 setOnClickListener { pickedDay = true; goDay(d) }
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (d > 1) marginStart = ui.dp(6) })
         }
         // The week grid lives under Day: one more chip after Friday.
         val week = index == 5
-        val weekText = ui.text("Week", 13f, if (week) p.ground else p.text, ui.f.bodySemi).apply { gravity = Gravity.CENTER }
-        val weekIcon = ui.icon(R.drawable.ic_tab_week, if (week) p.ground else p.muted, 12f)
+        val weekText = ui.text("Week", 10.5f, if (week) p.ground else p.text, ui.f.bodyBold, caps = true, spacing = 0.1f)
+        val weekIcon = ui.icon(R.drawable.ic_tab_week, if (week) p.ground else p.muted, 18f)
         if (moved && week) { Motion.tint(weekText, p.text, p.ground); Motion.tint(weekIcon, p.muted, p.ground) }
         if (moved && stripIndex == 5) { Motion.tint(weekText, p.ground, p.text, 90); Motion.tint(weekIcon, p.ground, p.muted, 90) }
-        strip.addView(ui.column().apply {
-            gravity = Gravity.CENTER
-            background = ui.pressable(ui.shape(Color.TRANSPARENT, 12f), 12f)
-            minimumHeight = ui.dp(48)
-            setPadding(0, ui.dp(8), 0, ui.dp(7))
-            contentDescription = "Week, ${timetable.sessions.size} classes"
-            addView(weekText)
-            addView(weekIcon, LinearLayout.LayoutParams(ui.dp(12), ui.dp(12)).apply { topMargin = ui.dp(2) })
+        strip.addView(chip("Week, ${tt.sessions.size} classes", weekText, weekIcon).apply {
             setOnClickListener { setView("week") }
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.15f).apply { marginStart = ui.dp(6) })
-        stripGlider.moveTo(index, if (view == "day" && sel == n.dow) p.accent else p.text)
+        stripGlider.moveTo(index, if (view == "day" && daysFromToday(tt, n, sel) == 0) p.accent else p.text)
         stripIndex = index
     }
 
