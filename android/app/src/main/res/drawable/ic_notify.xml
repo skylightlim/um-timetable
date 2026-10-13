@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon: the launcher icon's week grid, in one colour. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M4,3h4a1,1 0 0 1 1,1v6a1,1 0 0 1 -1,1h-4a1,1 0 0 1 -1,-1v-6a1,1 0 0 1 1,-1z M10,6h4a1,1 0 0 1 1,1v7a1,1 0 0 1 -1,1h-4a1,1 0 0 1 -1,-1v-7a1,1 0 0 1 1,-1z M16,3h4a1,1 0 0 1 1,1v3a1,1 0 0 1 -1,1h-4a1,1 0 0 1 -1,-1v-3a1,1 0 0 1 1,-1z M4,14h4a1,1 0 0 1 1,1v5a1,1 0 0 1 -1,1h-4a1,1 0 0 1 -1,-1v-5a1,1 0 0 1 1,-1z M16,11h4a1,1 0 0 1 1,1v8a1,1 0 0 1 -1,1h-4a1,1 0 0 1 -1,-1v-8a1,1 0 0 1 1,-1z" />
+</vector>

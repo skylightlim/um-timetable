@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/lbl"
+    android:layout_width="15dp"
+    android:layout_height="wrap_content"
+    android:fontFamily="monospace"
+    android:gravity="end"
+    android:includeFontPadding="false"
+    android:textColor="@color/w_faint"
+    android:textSize="8dp" />

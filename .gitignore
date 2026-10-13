@@ -1,0 +1,10 @@
+# Build output and local machine settings
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/local.properties
+*.apk
+
+# Local snapshots from before the project was in git (an old APK, timetable copies)
+backups/

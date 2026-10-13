@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark theme: charcoal and yellow, as in the original timetable. -->
+<resources>
+    <color name="app_ground">#FF11151B</color>
+    <color name="w_bg">#FF151A21</color>
+    <color name="w_col">#FF1D242E</color>
+    <color name="w_col_today">#FF2C2C24</color>
+    <color name="w_line">#FF2B3440</color>
+    <color name="w_text">#FFE8ECF1</color>
+    <color name="w_muted">#FF8F9AA9</color>
+    <color name="w_faint">#FF5F6B7A</color>
+    <color name="w_accent">#FFF5C947</color>
+    <color name="w_accent_text">#FFF5C947</color>
+</resources>

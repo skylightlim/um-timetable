@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug only: renders the widget at a chosen size, time and theme.
+             Force-stop first, or Android may resume an older preview with old extras:
+             adb shell am force-stop com.skylightlim.umtimetable
+             adb shell am start -n com.skylightlim.umtimetable/.WidgetPreviewActivity \
+               -\-ei w 360 -\-ei h 420 -\-ei dow 3 -\-ef min 744 -\-ez night true
+             dow: 0 = Sunday … 6 = Saturday; min: minutes after midnight. -->
+        <activity
+            android:name=".WidgetPreviewActivity"
+            android:exported="true" />
+        <activity
+            android:name=".DebugSpectrumCallActivity"
+            android:exported="true"
+            android:excludeFromRecents="true" />
+        <receiver
+            android:name=".DebugSpectrumReceiver"
+            android:exported="true" />
+        <!-- Debug only: draws a page into cache/render/<view>.png without showing it. -->
+        <receiver
+            android:name=".DebugRenderReceiver"
+            android:exported="true" />
+    </application>
+</manifest>

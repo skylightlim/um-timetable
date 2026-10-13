@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One class in the week grid. Lectures are filled, tutorials outlined; the
+     course colour is applied at runtime as a colour filter on b_bg. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/blk"
+    android:layout_width="match_parent"
+    android:layout_height="20dp">
+
+    <ImageView
+        android:id="@+id/b_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:src="@drawable/blk_tut" />
+
+    <ImageView
+        android:id="@+id/b_ring"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:src="@drawable/blk_ring"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="3dp">
+
+        <TextView
+            android:id="@+id/b_code"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:textColor="@color/w_text"
+            android:textSize="8.5dp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/b_room"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif-condensed"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:textColor="@color/w_text"
+            android:textSize="11dp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</FrameLayout>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Light theme. Same palette as the web app's light tokens. -->
+<resources>
+    <color name="app_ground">#FFEEF1F4</color>
+    <color name="w_bg">#FFF7F8FA</color>
+    <color name="w_col">#FFE9EDF1</color>
+    <color name="w_col_today">#FFF4EACB</color>
+    <color name="w_line">#FFD6DCE3</color>
+    <color name="w_text">#FF141A22</color>
+    <color name="w_muted">#FF5A6573</color>
+    <color name="w_faint">#FF8B95A2</color>
+    <color name="w_accent">#FFEFB810</color>
+    <color name="w_accent_text">#FF875A00</color>
+    <color name="ic_bg">#FF223E99</color>
+</resources>
