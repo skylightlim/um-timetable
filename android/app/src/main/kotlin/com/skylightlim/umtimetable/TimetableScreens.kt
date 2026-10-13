@@ -237,49 +237,58 @@ object WeekScreen {
     }
 
     /**
-     * Each course with its hours a week, as the web page had it: code and name, then occurrence and
-     * hours by kind of class, and the week's total on the right. A course opens its class sheet.
+     * Each course with its hours a week, laid out and ordered as the Courses tab (by code): code and
+     * occurrence, the name, the hours by kind of class, and the week's hours on the right; lines between
+     * courses only; then the totals. A course opens its class sheet.
      */
     private fun courses(h: Host): View {
         val ui = h.ui
         val p = ui.p
         val tt = h.timetable
         val list = ui.column()
-        list.addView(ui.row().apply {
-            gravity = Gravity.BOTTOM
-            addView(ui.text("COURSES", 28f, p.text, ui.f.sign).apply { letterSpacing = 0.02f }, ui.grow())
-            addView(ui.text("${tt.sessions.size} ${if (tt.sessions.size == 1) "class" else "classes"} a week", 13.5f, p.muted))
-        }, ui.wide(bottom = 6f))
+        list.addView(ui.text("COURSES", 28f, p.text, ui.f.sign).apply { letterSpacing = 0.02f }, ui.wide(bottom = 4f))
         val order = listOf("Lecture", "Tutorial")
-        for (course in tt.courses) {
+        fun byType(sessions: List<Session>) = sessions.groupBy { it.type }.toList()
+            .sortedWith(compareBy({ order.indexOf(it.first).let { i -> if (i < 0) order.size else i } }, { it.first }))
+            .map { (type, ss) -> "$type ${hoursText(ss.sumOf { it.end - it.start })}" }
+        tt.courses.sortedWith(compareBy({ it.code.ifEmpty { "~" } }, { it.name })).forEachIndexed { n, course ->
+            if (n > 0) list.addView(View(ui.context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
             val sessions = tt.sessions.filter { it.course == course }
             val total = sessions.sumOf { it.end - it.start }
-            val byType = sessions.groupBy { it.type }.toList()
-                .sortedWith(compareBy({ order.indexOf(it.first).let { i -> if (i < 0) order.size else i } }, { it.first }))
-                .map { (type, ss) -> "$type ${hoursText(ss.sumOf { it.end - it.start })}" }
-            val sub = (listOf("Occ ${course.occ}") + byType + listOfNotNull("online".takeIf { sessions.any { it.room == "Online" } })).joinToString(" · ")
-            val code = ui.text(course.code, 14f, p.courseText(course.color), ui.f.monoBold)
-            val row = ui.row(gap = 12f, center = false).apply {
-                setPadding(ui.dp(2), ui.dp(12), ui.dp(2), ui.dp(12))
-                background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
-                contentDescription = "${course.code} ${course.name}, $sub, ${hoursText(total)} a week"
-                setOnClickListener { h.openSheet(course, null) }
+            val sub = (byType(sessions) + listOfNotNull("online".takeIf { sessions.any { it.room == "Online" } })).joinToString(" · ")
+            val codeLine = ui.row().apply {
+                addView(ui.text(course.code, 12f, p.courseText(course.color), ui.f.monoBold))
+                addView(ui.text(" · Occ ${course.occ}", 12f, p.faint, ui.f.mono))
+                setPadding(0, 0, 0, ui.dp(2))
             }
-            row.addView(SpectrumScreens.courseDot(ui, course.color, code))
-            row.addView(ui.column().apply {
-                addView(ui.row(gap = 8f, center = false).apply {
-                    addView(code)
-                    addView(ui.text(course.name, 15f, p.text, ui.f.bodySemi), ui.grow())
-                    baselineAlignedChildIndex = 0
-                })
-                addView(ui.text(sub, 12.5f, p.muted), ui.wide(top = 3f))
-                // The row lines the dot up with the first line's baseline (set once the children are in).
-                baselineAlignedChildIndex = 0
-            }, ui.grow())
-            row.addView(ui.text(hoursText(total), 22f, p.text, ui.f.sign), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER_VERTICAL })
-            list.addView(row)
-            list.addView(View(ui.context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
+            list.addView(ui.row(gap = 12f).apply {
+                minimumHeight = ui.dp(60)
+                setPadding(0, ui.dp(10), 0, ui.dp(10))
+                background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
+                contentDescription = "${course.code}, occurrence ${course.occ}, ${course.name}: $sub, ${hoursText(total)} a week"
+                setOnClickListener { h.openSheet(course, null) }
+                addView(View(ui.context).apply { background = ui.shape(course.color, 99f) }, LinearLayout.LayoutParams(ui.dp(12), ui.dp(12)))
+                addView(ui.column().apply {
+                    addView(codeLine)
+                    addView(ui.text(course.name, 15f, p.text, ui.f.bodySemi))
+                    addView(ui.text(sub, 12.5f, p.muted), ui.wide(top = 2f))
+                }, ui.grow())
+                addView(ui.text(hoursText(total), 22f, p.text, ui.f.sign))
+            })
         }
+        // The week in total, under a heavier line.
+        list.addView(View(ui.context).apply { setBackgroundColor(p.text) }, ui.wide(top = 4f).apply { height = ui.dp(1.5f) })
+        val all = tt.sessions.sumOf { it.end - it.start }
+        list.addView(ui.row(gap = 12f).apply {
+            minimumHeight = ui.dp(60)
+            setPadding(ui.dp(24), ui.dp(10), 0, ui.dp(10))
+            contentDescription = "Total: ${tt.sessions.size} classes, ${hoursText(all)} a week"
+            addView(ui.column().apply {
+                addView(ui.text("Total", 15f, p.text, ui.f.bodyBold))
+                addView(ui.text("${tt.sessions.size} ${if (tt.sessions.size == 1) "class" else "classes"} a week · ${byType(tt.sessions).joinToString(" · ")}", 12.5f, p.muted), ui.wide(top = 2f))
+            }, ui.grow())
+            addView(ui.text(hoursText(all), 26f, p.text, ui.f.sign))
+        })
         return list
     }
 }

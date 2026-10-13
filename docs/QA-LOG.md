@@ -18,6 +18,20 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (Week: courses as on the Courses tab, totals at the bottom)
+
+**Asked for:** the Week page's courses arranged as on the Courses tab, with the total hours and number
+of classes at the bottom.
+
+**Change** (`WeekScreen.courses`): courses in the Courses tab's order (by code) and its row layout: 12dp
+dot, "WIX1002 · Occ 16" (code in the course colour, occurrence faint), the name (15sp semibold), then
+"Lecture 2 h · Tutorial 3 h · online" muted, and the course's hours (Big Shoulders 22sp) on the right;
+lines between courses only (the old list also ruled under the last one). The COURSES heading lost its
+"11 classes a week"; under a 1.5dp line in the text colour, a Total row: "11 classes a week · Lecture
+14 h · Tutorial 6 h" and "20 h" (Big Shoulders 26sp).
+
+**Checked:** rendered in light and dark.
+
 ## 14 October 2026 (Sign out asks as in redesign 1q)
 
 **Asked for:** a sign-out panel like 1q.
