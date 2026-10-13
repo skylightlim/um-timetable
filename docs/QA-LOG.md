@@ -18,6 +18,19 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (Day and Week: a line under the title)
+
+**Asked for:** something in the empty line under Day's and Week's titles (where the other tabs show
+the week and date): the day at a glance for Day, the deadlines for Week.
+
+**Change** (`dayGlance`, `MainActivity.weekDeadlines`, `smallLine`): Day shows "3 CLASSES ·
+08:00–19:00" for the chosen day ("NO CLASSES" on a free one). Week shows the Spectrum deadlines still
+to come in the strip's week, Monday to Sunday: "3 DEADLINES THIS WEEK", "NEXT WEEK" once the strip
+has moved on, "NO DEADLINES …"; signed out it stays blank (still taking its height, so the strip
+doesn't move). Both follow each redraw: a sync, a deadline passing, another day.
+
+**Checked:** the three titles rendered with their lines (the Week line with a sample count).
+
 ## 14 October 2026 (day strip as low as the other tabs' first panel)
 
 **Asked for:** the day strip lower, to match the panel on the other pages.

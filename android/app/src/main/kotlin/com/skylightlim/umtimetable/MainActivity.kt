@@ -432,16 +432,22 @@ class MainActivity : Activity(), SpectrumHost {
             page != null -> listOf(page)
             else -> listOf("${DAY_NAMES[n.dow]} ${dateText(0)}")
         }
-        // The other tabs: the week of the semester and today's date on one small line under the name.
-        val line = if (page != null) listOfNotNull(semesterWeek(), "${DAY_NAMES[n.dow]} ${dateText(0)}").joinToString(" · ") else null
+        // The small line under the title. The other tabs: the week of the semester and today's date; Day:
+        // the day at a glance; Week: its Spectrum deadlines.
+        val line = when {
+            page != null -> listOfNotNull(semesterWeek(), "${DAY_NAMES[n.dow]} ${dateText(0)}").joinToString(" · ")
+            view == "day" -> dayGlance(tt.day(sel))
+            view == "week" -> weekDeadlines(daysFromToday(tt, n, 1))
+            else -> null
+        }
         val today = view == "day" && days == 0
         val key = "$big $today $words $line"
         if (key == titleKey) return
         titleKey = key
         val title: ViewGroup = when {
             page != null -> pageTitle(ui, page, line)
-            view == "day" -> dayTitle(ui, DAY_SHORT[sel], dateText(days), today)
-            view == "week" -> weekTitle(ui, words.first())
+            view == "day" -> dayTitle(ui, DAY_SHORT[sel], dateText(days), today, line)
+            view == "week" -> weekTitle(ui, words.first(), line)
             else -> ui.row().apply { addView(ui.label(words.first(), p.muted, 11f)) }
         }
         val old = (0 until titleBox.childCount).map(titleBox::getChildAt)
@@ -476,6 +482,24 @@ class MainActivity : Activity(), SpectrumHost {
         fun remove() { (poster.parent as? ViewGroup)?.removeView(poster) }
         if (!Motion.enabled) { remove(); return }
         poster.animate().translationY(-poster.height.toFloat()).setInterpolator(Motion.EXIT).setDuration(320).withEndAction { remove() }.start()
+    }
+
+    /**
+     * The Spectrum deadlines in the strip's week (Monday [monday] days from today, to Sunday) not yet
+     * passed: "3 deadlines this week" (or "next week" once the strip shows it); null when not signed in.
+     */
+    private fun weekDeadlines(monday: Int): String? {
+        if (!SpectrumStore.signedIn(this)) return null
+        val from = startOfDay(dateIn(monday).timeInMillis)
+        val to = startOfDay(dateIn(monday + 7).timeInMillis)
+        val now = System.currentTimeMillis()
+        val n = SpectrumStore.array(this, "due").objects().count { it.getLong("due") in maxOf(from, now) until to }
+        val which = if (monday > 0) "next week" else "this week"
+        return when (n) {
+            0 -> "No deadlines $which"
+            1 -> "1 deadline $which"
+            else -> "$n deadlines $which"
+        }
     }
 
     /** The new theme spreads out from [from] (the settings button), over a picture of the old one. */
