@@ -27,6 +27,8 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     private var downX = 0f
     private var downY = 0f
     private var swiping = false
+    /** The drag is past the point where letting go moves on (vibrates on crossing it either way). */
+    private var past = false
     private var velocity: VelocityTracker? = null
 
     private val page: View? get() = getChildAt(0)
@@ -59,7 +61,7 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     override fun onTouchEvent(e: MotionEvent): Boolean {
         val swipe = onSwipe ?: return super.onTouchEvent(e)
         when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> { downX = e.x; downY = e.y; swiping = false }
+            MotionEvent.ACTION_DOWN -> { downX = e.x; downY = e.y; swiping = false; past = false }
             MotionEvent.ACTION_MOVE -> if (!swiping && startsSwipe(e)) swiping = true
         }
         if (!swiping) return super.onTouchEvent(e)
@@ -69,6 +71,10 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
                 // Follows the finger from where the swipe was recognised, a touch slower.
                 translationX = (dx - sign(dx) * slop) * 0.9f
                 alpha = 1f - (abs(translationX) / width.coerceAtLeast(1)) * 0.5f
+                if ((abs(dx) > minDistance) != past) {
+                    past = !past
+                    Haptics.threshold(this@SwipeScrollView, past)
+                }
             }
             MotionEvent.ACTION_UP -> {
                 velocity?.computeCurrentVelocity(1000)
@@ -76,6 +82,7 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
                 val flick = abs(vx) > 900 * density && sign(vx) == sign(dx)
                 swiping = false
                 if (abs(dx) > minDistance || flick) {
+                    if (!past) Haptics.threshold(this, true) // a short flick: the bump it skipped
                     page?.apply { animate().cancel(); translationX = 0f; alpha = 1f }
                     swipe(if (dx < 0) 1 else -1)
                 } else {

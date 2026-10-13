@@ -132,7 +132,7 @@ class MainActivity : Activity(), SpectrumHost {
         intent.getIntExtra(EXTRA_COURSE, 0).takeIf { it > 0 }?.let { openCourse = it; setView("files"); return }
         intent.getStringExtra(EXTRA_VIEW)?.takeIf { it in VIEWS }?.let {
             if (it == "day") { pickedDay = false; sel = homeDay(timetable, now()) }
-            setView(it)
+            go(it, null)
         }
     }
 
@@ -249,9 +249,11 @@ class MainActivity : Activity(), SpectrumHost {
                     // Tapping Courses while inside a course goes back to the course list;
                     // tapping Day while on Day goes back to the day of the next class.
                     if (id == view && id == "files" && openCourse != null) {
+                        Haptics.back(this)
                         openCourse = null
                         render()
                     } else if (id == view && id == "day" && pickedDay) {
+                        Haptics.back(this)
                         pickedDay = false
                         sel = homeDay(timetable, now())
                         render()
@@ -386,6 +388,7 @@ class MainActivity : Activity(), SpectrumHost {
 
     /** The new theme spreads out from the theme pill, over a picture of the old one. */
     private fun switchLook(from: View) {
+        Haptics.tick(from)
         val old = shell
         val y = scroll.scrollY
         val picture = if (Motion.enabled && old.width > 0 && old.height > 0)
@@ -471,11 +474,15 @@ class MainActivity : Activity(), SpectrumHost {
 
     // --- navigation ------------------------------------------------------------------------
 
-    override fun setView(view: String) {
+    override fun setView(view: String) = go(view, Haptics::tick)
+
+    /** Shows [view]; [feel] is the vibration for the move (none when the app is only being opened there). */
+    private fun go(view: String, feel: ((View) -> Unit)?) {
         if (view !in VIEWS) return
         val changed = view != this.view
         this.view = view
         prefs().edit().putString("view", view).apply()
+        if (changed) feel?.invoke(shell)
         render(keepScroll = false, enter = changed)
     }
 
@@ -488,6 +495,7 @@ class MainActivity : Activity(), SpectrumHost {
         pickedDay = true
         if (d == sel && view == "day") return
         pendingSlide = if (view != "day") 0 else if (dir != 0) dir else if (d > sel) 1 else -1
+        if (view == "day" && !slideFar) Haptics.tick(shell)
         sel = d
         setView("day")
     }
@@ -495,10 +503,11 @@ class MainActivity : Activity(), SpectrumHost {
     // Back: leave a course page, then return to Day; on Day, Android's own back leaves the app.
     private val back = OnBackInvokedCallback {
         if (view == "files" && openCourse != null) {
+            Haptics.back(shell)
             openCourse = null
             render()
         } else if (view != "day") {
-            setView("day")
+            go("day", Haptics::back)
         }
     }
     private var backRegistered = false
@@ -606,7 +615,7 @@ class MainActivity : Activity(), SpectrumHost {
                 timetableAfterSync = Timetable.load(this).sessions.isEmpty()
                 refresh()
             }
-            REQ_MAYA, REQ_TIMEEDIT -> setView("week")
+            REQ_MAYA, REQ_TIMEEDIT -> go("week", null)
         }
     }
 

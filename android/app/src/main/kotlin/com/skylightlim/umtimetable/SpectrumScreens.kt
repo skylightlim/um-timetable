@@ -507,7 +507,7 @@ object SpectrumScreens {
             val row = ui.row(gap = 12f, center = false).apply {
                 setPadding(ui.dp(2), ui.dp(17), ui.dp(2), ui.dp(17))
                 background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
-                setOnClickListener { h.openCourse = c.getInt("id"); h.render() }
+                setOnClickListener { Haptics.tick(this); h.openCourse = c.getInt("id"); h.render() }
             }
             val name = ui.text(courseName(h, c.optString("name"), code), 15f, p.text, ui.f.bodySemi)
             val codeText = code.takeIf { it.isNotEmpty() }?.let { ui.text(it, 14f, p.courseText(colorOf(h, code)), ui.f.monoBold) }
@@ -539,7 +539,44 @@ object SpectrumScreens {
         }
         addView(link(ui, "Get timetable from TimeEdit") { h.openTimeEdit() })
         addView(link(ui, "Import timetable from MAYA instead") { h.openMaya() })
+        addView(vibrationSwitch(ui), ui.wide(top = 6f, bottom = 6f))
         if (signedIn) addView(link(ui, "Sign out") { h.signOut() })
+    }
+
+    /** Turns the vibration feedback ([Haptics]) on and off; the whole row is the switch. */
+    private fun vibrationSwitch(ui: Ui): View {
+        val p = ui.p
+        val switch = android.widget.Switch(ui.context).apply {
+            isChecked = Haptics.on(context)
+            val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+            thumbTintList = android.content.res.ColorStateList(states, intArrayOf(p.accent, p.surface))
+            trackTintList = android.content.res.ColorStateList(states, intArrayOf(Palette.mix(p.accent, p.surface, 0.7f), p.line))
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            isClickable = false
+        }
+        return ui.row(gap = 12f).apply {
+            minimumHeight = ui.dp(56)
+            background = ui.pressable(ui.shape(Color.TRANSPARENT, 12f), 12f)
+            addView(ui.column(gap = 2f).apply {
+                addView(ui.text("Vibration", 15f, p.text, ui.f.bodySemi))
+                addView(ui.text("A light tap when you change page, go back, or swipe days", 12.5f, p.muted))
+            }, ui.grow())
+            addView(switch)
+            contentDescription = "Vibration"
+            accessibilityDelegate = object : View.AccessibilityDelegate() {
+                override fun onInitializeAccessibilityNodeInfo(host: View, info: android.view.accessibility.AccessibilityNodeInfo) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.className = android.widget.Switch::class.java.name
+                    info.isCheckable = true
+                    info.isChecked = switch.isChecked
+                }
+            }
+            setOnClickListener {
+                switch.isChecked = !switch.isChecked
+                Haptics.set(context, switch.isChecked)
+                if (switch.isChecked) Haptics.toggledOn(this)
+            }
+        }
     }
 
     private fun coursePage(h: SpectrumHost, c: JSONObject): View {

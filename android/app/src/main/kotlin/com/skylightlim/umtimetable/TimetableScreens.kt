@@ -220,7 +220,7 @@ object WeekScreen {
         }
         key.addView(keyItem(View(ui.context).apply { background = ui.shape(p.text, 3f); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(10)) }, "Lecture"))
         key.addView(keyItem(View(ui.context).apply { background = ui.shape(Color.TRANSPARENT, 3f, p.text, 1.5f); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(10)) }, "Tutorial"))
-        key.addView(keyItem(View(ui.context).apply { setBackgroundColor(p.accentText); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(3)) }, "Now"))
+        key.addView(keyItem(View(ui.context).apply { setBackgroundColor(p.accent); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(3)) }, "Now"))
         card.addView(key)
         page.addView(card)
 
@@ -284,23 +284,23 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
             for (h in 0..11) canvas.drawRect(left, top + h * hour, left + colW, top + h * hour + 1, fill)
             // A faint guide across the other days, under their classes, so "now" lines up across the week.
             if (nowY != null && !isToday) {
-                fill.color = p.accentText
-                fill.alpha = 90
+                fill.color = p.accent
+                fill.alpha = 120
                 canvas.drawRect(left, nowY - ui.dp(0.5f), left + colW, nowY + ui.dp(0.5f), fill)
                 fill.alpha = 255
             }
             for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), isToday && now.min >= s.end)
         }
         if (nowY == null) return
-        // Today's line goes over the classes (a class in progress is when it matters most), with a
-        // halo in the card's colour so it reads on any course colour.
+        // Today's line goes over the classes (a class in progress is when it matters most), in the app's
+        // yellow, on a halo in the card's colour so it reads on any course colour.
         val left = axis + gapX + (now.dow - 1) * (colW + gapX)
         fill.color = p.surface
-        canvas.drawRect(left - ui.dp(2f), nowY - ui.dp(2.5f), left + colW, nowY + ui.dp(2.5f), fill)
-        canvas.drawCircle(left, nowY, ui.dp(6f).toFloat(), fill)
-        fill.color = p.accentText
-        canvas.drawRect(left, nowY - ui.dp(1.25f), left + colW, nowY + ui.dp(1.25f), fill)
-        canvas.drawCircle(left, nowY, ui.dp(4.5f).toFloat(), fill)
+        canvas.drawRect(left - ui.dp(2f), nowY - ui.dp(3f), left + colW, nowY + ui.dp(3f), fill)
+        canvas.drawCircle(left, nowY, ui.dp(6.5f).toFloat(), fill)
+        fill.color = p.accent
+        canvas.drawRect(left, nowY - ui.dp(1.5f), left + colW, nowY + ui.dp(1.5f), fill)
+        canvas.drawCircle(left, nowY, ui.dp(5f).toFloat(), fill)
         // The time, on the hour axis.
         val pill = RectF(0f, nowY - pillH / 2, axis + gapX / 2, nowY + pillH / 2)
         fill.color = p.accent

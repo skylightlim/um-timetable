@@ -17,6 +17,25 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 `view` is day, week, due, news or files (the Courses tab). Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 13 October 2026 (vibration feedback; the now line yellow again)
+
+- **Now line:** back to the app's yellow (the user found the dark gold ugly), 3 dp with a bigger dot,
+  still over the classes on a halo; the guide across the other days is yellow too.
+- **Vibration** (`Haptics.kt`, the platform's haptic constants, so Android's touch-feedback setting
+  applies too): a selection tick for a new tab, day or course page and the theme switch; a click for
+  going back (Back, or tapping the lit tab to return to its start); a threshold bump when a day swipe or
+  the class sheet's drag crosses the point where letting go would switch or close (and back). A short
+  flick that switches without crossing gets its bump on release. Opening the app on a page (widget,
+  notification, a returning screen) doesn't vibrate. Android 14+ gets the newer constants
+  (SEGMENT_TICK, GESTURE_THRESHOLD_*, TOGGLE_ON); 12–13 fall back to CLOCK_TICK.
+- **Vibration switch** in Courses, above Sign out ("Vibration · A light tap when you change page, go
+  back, or swipe days"), on by default; the whole row toggles; read as a switch by TalkBack.
+- Apps can't vibrate when the user switches to another app, so "switch" was taken as moving around
+  inside this one.
+
+**Checked:** Courses and Week rendered off-screen in light and dark; the phone's touch feedback is on.
+The vibrations themselves need a hand on the phone.
+
 ## 13 October 2026 (Week: the now line was hard to see)
 
 **Problem:** the Week grid's now line was a 2 dp light-yellow line drawn *under* the class blocks: hidden
