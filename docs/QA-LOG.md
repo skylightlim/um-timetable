@@ -17,6 +17,21 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 `view` is day, week, due, news or files (the Courses tab). Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 13 October 2026 (Week: the now line was hard to see)
+
+**Problem:** the Week grid's now line was a 2 dp light-yellow line drawn *under* the class blocks: hidden
+during a class in progress (when it matters most), and about 1.7:1 against the white card in the light
+theme. Only a small dot marked it.
+
+**Change** (`WeekGrid.onDraw`): today's line is drawn over the classes, 2.5 dp in `accentText` (dark
+gold in light, yellow in dark; about 6:1 on white), on a halo in the card's colour so it reads on any
+course colour, with a bigger dot. A faint guide continues across the other days, under their classes.
+A time pill (accent, e.g. "17:47") sits on the hour axis; the hour label it would cover is skipped.
+The key's "Now" swatch matches.
+
+**Checked:** Week rendered off-screen in light and dark at 17:47 on a Tuesday: line over GIG1017's
+block, pill on the axis, guide across the week. Release build installed.
+
 ## 13 October 2026 (signed out several times: why)
 
 **Asked:** the app signed out several times today; accidental taps or a bug?

@@ -220,7 +220,7 @@ object WeekScreen {
         }
         key.addView(keyItem(View(ui.context).apply { background = ui.shape(p.text, 3f); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(10)) }, "Lecture"))
         key.addView(keyItem(View(ui.context).apply { background = ui.shape(Color.TRANSPARENT, 3f, p.text, 1.5f); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(10)) }, "Tutorial"))
-        key.addView(keyItem(View(ui.context).apply { setBackgroundColor(p.accent); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(2)) }, "Now"))
+        key.addView(keyItem(View(ui.context).apply { setBackgroundColor(p.accentText); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(3)) }, "Now"))
         card.addView(key)
         page.addView(card)
 
@@ -248,6 +248,7 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
     private val codePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.monoBold; textSize = sp(9f) }
     private val namePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodySemi; textSize = sp(10f) }
     private val roomPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.sign; textSize = sp(15f) }
+    private val nowPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.monoBold; textSize = sp(9.5f); color = p.accentInk; textAlign = Paint.Align.CENTER }
 
     init {
         contentDescription = "Week timetable: " + tt.sessions.joinToString("; ") { "${DAY_NAMES[it.day]} ${clockText(it.start)} ${it.course.code} ${it.type} ${it.room}" }
@@ -262,8 +263,12 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
         val colW = (width - axis - gapX * 5) / 5
         val top = head + padY
         val bottom = top + hour * 11
+        // Now: on a weekday between 08:00 and 19:00.
+        val nowY = if (now.dow in 1..5 && now.min >= startMin && now.min <= 19 * 60) top + (now.min - startMin) / 60 * hour else null
+        val pillH = ui.dp(15f).toFloat()
         for (h in 8..19) {
             val y = top + (h - 8) * hour
+            if (nowY != null && kotlin.math.abs(y - nowY) < pillH) continue // the time pill is there
             canvas.drawText("%02d".format(h), axis - ui.dp(3f), y + axisPaint.textSize * 0.35f, axisPaint)
         }
         for (d in 1..5) {
@@ -277,15 +282,30 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
             }
             fill.color = p.line
             for (h in 0..11) canvas.drawRect(left, top + h * hour, left + colW, top + h * hour + 1, fill)
-            if (isToday && now.min >= startMin && now.min <= 19 * 60) {
-                // Drawn before the blocks, so a class in progress covers it.
-                val y = top + (now.min - startMin) / 60 * hour
-                fill.color = p.accent
-                canvas.drawRect(left - ui.dp(2f), y - ui.dp(1f), left + colW, y + ui.dp(1f), fill)
-                canvas.drawCircle(left - ui.dp(1f), y, ui.dp(4f).toFloat(), fill)
+            // A faint guide across the other days, under their classes, so "now" lines up across the week.
+            if (nowY != null && !isToday) {
+                fill.color = p.accentText
+                fill.alpha = 90
+                canvas.drawRect(left, nowY - ui.dp(0.5f), left + colW, nowY + ui.dp(0.5f), fill)
+                fill.alpha = 255
             }
             for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), isToday && now.min >= s.end)
         }
+        if (nowY == null) return
+        // Today's line goes over the classes (a class in progress is when it matters most), with a
+        // halo in the card's colour so it reads on any course colour.
+        val left = axis + gapX + (now.dow - 1) * (colW + gapX)
+        fill.color = p.surface
+        canvas.drawRect(left - ui.dp(2f), nowY - ui.dp(2.5f), left + colW, nowY + ui.dp(2.5f), fill)
+        canvas.drawCircle(left, nowY, ui.dp(6f).toFloat(), fill)
+        fill.color = p.accentText
+        canvas.drawRect(left, nowY - ui.dp(1.25f), left + colW, nowY + ui.dp(1.25f), fill)
+        canvas.drawCircle(left, nowY, ui.dp(4.5f).toFloat(), fill)
+        // The time, on the hour axis.
+        val pill = RectF(0f, nowY - pillH / 2, axis + gapX / 2, nowY + pillH / 2)
+        fill.color = p.accent
+        canvas.drawRoundRect(pill, pillH / 2, pillH / 2, fill)
+        canvas.drawText(clockText(now.min.toInt()), pill.centerX(), nowY + nowPaint.textSize * 0.35f, nowPaint)
     }
 
     private fun drawBlock(canvas: Canvas, s: Session, r: RectF, past: Boolean) {
