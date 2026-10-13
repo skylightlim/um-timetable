@@ -67,6 +67,17 @@ class Timetable(val sessions: List<Session>, val courses: List<Course> = session
 
     fun day(d: Int): List<Session> = sessions.filter { it.day == d }.sortedBy { it.start }
 
+    /**
+     * This timetable with each course in [scheme]'s colour for its slot: the place of its colour in the
+     * import palette, or else its place in the list. Gold keeps the colours as imported.
+     */
+    fun recolored(scheme: Scheme): Timetable {
+        val palette = scheme.courses ?: return this
+        val defaults = MayaImport.PALETTE.map { Color.parseColor(it) }
+        val now = courses.withIndex().associate { (i, c) -> c to c.copy(color = palette[(defaults.indexOf(c.color).takeIf { it >= 0 } ?: i) % palette.size]) }
+        return Timetable(sessions.map { s -> s.copy(course = now[s.course] ?: s.course) }, courses.map { now.getValue(it) }, term)
+    }
+
     /** Null only when the timetable has no classes at all. */
     fun status(now: Now): Status? {
         val isWeekday = now.dow in 1..5
@@ -96,7 +107,8 @@ class Timetable(val sessions: List<Session>, val courses: List<Course> = session
     }
 
     companion object {
-        @Volatile private var cached: Timetable? = null
+        /** The timetable as last loaded, in the theme it was coloured for. */
+        @Volatile private var cached: Pair<Scheme, Timetable>? = null
         private const val LOCAL = "timetable.json"
 
         /** The app's timetable as saved by the MAYA import (and TimeEdit's lecturers), if there is one. */
@@ -113,7 +125,11 @@ class Timetable(val sessions: List<Session>, val courses: List<Course> = session
             local(context)?.let { runCatching { JSONObject(it) }.getOrNull() }?.takeIf { it.has("sessions") }
                 ?: JSONObject().put("courses", JSONObject()).put("sessions", org.json.JSONArray())
 
-        fun load(context: Context): Timetable = cached ?: runCatching { parse(json(context)) }.getOrElse { Timetable(emptyList()) }.also { cached = it }
+        fun load(context: Context): Timetable {
+            val scheme = Scheme.load(context)
+            cached?.takeIf { it.first == scheme }?.let { return it.second }
+            return runCatching { parse(json(context)) }.getOrElse { Timetable(emptyList()) }.recolored(scheme).also { cached = scheme to it }
+        }
 
         /** `{term, courses: {code: {name, short, occ, color}}, sessions: [{day, start, end, code, type, room, roomName, lecturer}]}` */
         fun parse(root: JSONObject): Timetable {

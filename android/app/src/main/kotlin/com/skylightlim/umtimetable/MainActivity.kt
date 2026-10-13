@@ -474,7 +474,11 @@ class MainActivity : Activity(), SpectrumHost {
     }
 
     override fun setScheme(scheme: Scheme) {
-        if (scheme != this.scheme) restyle(settingsButton ?: shell) { this.scheme = scheme; Scheme.save(this, scheme) }
+        if (scheme != this.scheme) restyle(settingsButton ?: shell) {
+            this.scheme = scheme
+            Scheme.save(this, scheme)
+            TimetableWidget.updateAll(this) // its classes take the theme's course colours too
+        }
     }
 
     /** First run (no sign-in, no timetable): the sign-in poster (redesign 1t, in UM's colours) over the app. */

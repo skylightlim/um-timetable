@@ -67,15 +67,26 @@ data class Palette(
 }
 
 /**
- * The accent family the user picks in Settings, from UM's crest: Gold (the default, the tigers' yellow),
- * Blue (the shield) and Red (the hibiscus). Each sets the accent fill, the accent as text, and the ink
- * on the fill, for the light and the dark palette; the neutrals stay. Built in OKLCH and checked:
- * text on surfaces ≥ 6:1, ink on the fill ≥ 4.8:1.
+ * The colour theme the user picks in Settings, from UM's crest: Gold (the default, the tigers' yellow),
+ * Blue (the shield) and Red (the hibiscus). Each sets the accent fill, the accent as text and the ink on
+ * the fill for the light and the dark palette (text on surfaces ≥ 6:1, ink on the fill ≥ 4.8:1), and the
+ * courses' colours: [courses] replaces the import palette slot by slot (null keeps it). Gold is the
+ * import's mixed set; Blue a cool one (mint to violet), Red a warm one (rose to gold). Built in OKLCH:
+ * the course ink is ≥ 5:1 on every colour, and the first seven stay ≥ 0.085 apart in OKLab.
  */
-enum class Scheme(val label: String, val light: Triple<Int, Int, Int>, val dark: Triple<Int, Int, Int>) {
-    GOLD("Gold", Triple(0xFFEFB810.toInt(), 0xFF875A00.toInt(), 0xFF1B1606.toInt()), Triple(0xFFF5C947.toInt(), 0xFFF5C947.toInt(), 0xFF1B1606.toInt())),
-    BLUE("Blue", Triple(0xFF3559C3.toInt(), 0xFF2848A9.toInt(), 0xFFF5F8FF.toInt()), Triple(0xFF96B6FE.toInt(), 0xFF96B6FE.toInt(), 0xFF09163F.toInt())),
-    RED("Red", Triple(0xFFD02C2E.toInt(), 0xFFB71920.toInt(), 0xFFFFF6F5.toInt()), Triple(0xFFF68482.toInt(), 0xFFF68482.toInt(), 0xFF34080B.toInt()));
+enum class Scheme(val label: String, val light: Triple<Int, Int, Int>, val dark: Triple<Int, Int, Int>, val courses: List<Int>?) {
+    GOLD("Gold", Triple(0xFFEFB810.toInt(), 0xFF875A00.toInt(), 0xFF1B1606.toInt()), Triple(0xFFF5C947.toInt(), 0xFFF5C947.toInt(), 0xFF1B1606.toInt()), null),
+    BLUE(
+        "Blue", Triple(0xFF3559C3.toInt(), 0xFF2848A9.toInt(), 0xFFF5F8FF.toInt()), Triple(0xFF96B6FE.toInt(), 0xFF96B6FE.toInt(), 0xFF09163F.toInt()),
+        listOf(0xFFB199F4, 0xFF449DF0, 0xFF54DDCE, 0xFF68CA80, 0xFFE38FDB, 0xFF2F9BB2, 0xFFCCE47F, 0xFF35B9C0, 0xFFB0C2F9).map { it.toInt() },
+    ),
+    RED(
+        "Red", Triple(0xFFD02C2E.toInt(), 0xFFB71920.toInt(), 0xFFFFF6F5.toInt()), Triple(0xFFF68482.toInt(), 0xFFF68482.toInt(), 0xFF34080B.toInt()),
+        listOf(0xFFD275D8, 0xFFEF546C, 0xFFFDB171, 0xFFA3C75D, 0xFFF6A9CD, 0xFFCA6B49, 0xFFFDCE4E, 0xFFFDB5AF, 0xFFB699EB).map { it.toInt() },
+    );
+
+    /** The course colours this theme shows, in import-slot order. */
+    val courseColors: List<Int> get() = courses ?: MayaImport.PALETTE.map { Color.parseColor(it) }
 
     /** [base] with this scheme's accent fill, accent text and ink. */
     fun applyTo(base: Palette): Palette = (if (base.dark) dark else light).let { (fill, text, ink) -> base.copy(accent = fill, accentText = text, accentInk = ink) }

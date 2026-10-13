@@ -37,6 +37,17 @@ resources). The sign-in poster keeps UM's own colours. `--es scheme blue|red` re
 
 **Checked:** Settings rendered; Day in Blue and Red, light and dark.
 
+Follow-up (user: "all other course code colours should change too, not only today's colour"): a
+theme now recolours the courses as well. `Timetable.load` colours each course by its slot (the place of
+its colour in the import palette, `MayaImport.PALETTE`, else its place in the list), from the theme's
+set, so everything that reads a course's colour follows: cards, Week blocks, dots, sheets, Grades,
+Due, News, Courses and the widget (updated on change). Gold keeps the import's colours. Blue: #B199F4
+#449DF0 #54DDCE #68CA80 #E38FDB #2F9BB2 #CCE47F #35B9C0 #B0C2F9 (cool). Red: #D275D8 #EF546C #FDB171
+#A3C75D #F6A9CD #CA6B49 #FDCE4E #FDB5AF #B699EB (warm). In OKLCH, with the course ink ≥ 5:1 on each and
+the first seven ≥ 0.085 apart in OKLab (Gold's are 0.11; the first tries had blue/sky and coral/red
+pairs at 0.06–0.07). The cache is per theme. The Theme tiles preview the accent and four course
+colours. `--es scheme` also recolours the rendered timetable.
+
 ## 14 October 2026 (animated tab icons)
 
 **Asked for:** the tab icons animated when their tab is chosen: Day's rearranging, Grades' in two parts,

@@ -44,8 +44,9 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val width = intent.getIntExtra("width", context.resources.displayMetrics.widthPixels)
         val c = ContextThemeWrapper(context, R.style.Theme_UMTimetable)
         val now = if (intent.hasExtra("dow")) Now(intent.getIntExtra("dow", 2), intent.getIntExtra("min", 700).toFloat()) else Now.current()
-        val scheme = intent.getStringExtra("scheme")?.let { name -> Scheme.entries.firstOrNull { it.name.equals(name, true) } } ?: Scheme.load(context)
-        val host = Host(c, Ui(c, scheme.applyTo(if (dark) Palette.DARK else Palette.LIGHT), Fonts(c)), now).apply {
+        val forced = intent.getStringExtra("scheme")?.let { name -> Scheme.entries.firstOrNull { it.name.equals(name, true) } }
+        val scheme = forced ?: Scheme.load(context)
+        val host = Host(c, Ui(c, scheme.applyTo(if (dark) Palette.DARK else Palette.LIGHT), Fonts(c)), now, forced).apply {
             openCourse = intent.getIntExtra("course", 0).takeIf { it > 0 }
             if (intent.getBooleanExtra("open", false)) expanded = object : HashSet<String>() { override fun contains(element: String) = true }
         }
@@ -266,8 +267,8 @@ class DebugRenderReceiver : BroadcastReceiver() {
     }
 
     /** Just enough of MainActivity for the screens to build: cached data, no actions. */
-    private class Host(private val context: Context, override val ui: Ui, private val at: Now? = null) : SpectrumHost {
-        override val timetable get() = Timetable.load(context)
+    private class Host(private val context: Context, override val ui: Ui, private val at: Now? = null, private val scheme0: Scheme? = null) : SpectrumHost {
+        override val timetable get() = scheme0?.let { Timetable.parse(Timetable.json(context)).recolored(it) } ?: Timetable.load(context)
         override fun now() = at ?: Now.current()
         override fun render() = Unit
         override fun goDay(day: Int, dir: Int) = Unit

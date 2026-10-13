@@ -220,5 +220,6 @@ object MayaImport {
         add(Calendar.DAY_OF_MONTH, -((get(Calendar.DAY_OF_WEEK) + 5) % 7))
     }.timeInMillis
 
-    private val PALETTE = listOf("#a586e8", "#4f9cf0", "#f0913c", "#2ec4a0", "#e97bc0", "#f2645f", "#a6cf4f", "#5cc8e0", "#d9a54a")
+    /** The course colours an import hands out, in order: purple, blue, orange, teal, pink, red, lime, cyan, ochre. Themes recolour by slot. */
+    val PALETTE = listOf("#a586e8", "#4f9cf0", "#f0913c", "#2ec4a0", "#e97bc0", "#f2645f", "#a6cf4f", "#5cc8e0", "#d9a54a")
 }
