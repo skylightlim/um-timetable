@@ -1,11 +1,15 @@
 package com.skylightlim.umtimetable
 
+import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
 import android.content.Context
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.animation.LinearInterpolator
+import android.widget.LinearLayout
 import android.widget.ScrollView
 import com.skylightlim.umtimetable.Motion.spring
 import kotlin.math.abs
@@ -16,17 +20,28 @@ import kotlin.math.sign
  * starts on content or on empty space. The page follows the finger; let go past 60dp (or with a
  * flick) and it moves on to the next day, otherwise it springs back. Its children are clipped to its
  * bounds, so a sliding page can never widen the screen.
+ *
+ * Where there's something to sync ([onPull]), the page can also be pulled down from the top: past
+ * 72dp and let go, it syncs, and the page waits lowered over [pullIndicator] until [endPull].
  */
 class SwipeScrollView(context: Context) : ScrollView(context) {
     /** Called with +1 for a swipe to the left (next) and -1 for a swipe to the right (previous). */
     var onSwipe: ((Int) -> Unit)? = null
+    /** Called when the page is pulled down past the threshold and let go. */
+    var onPull: (() -> Unit)? = null
+    /** What the pull uncovers above the page. */
+    var pullIndicator: PullIndicator? = null
 
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
     private val density = context.resources.displayMetrics.density
     private val minDistance = 60 * density
+    private val pullDistance = 72 * density
     private var downX = 0f
     private var downY = 0f
     private var swiping = false
+    private var pulling = false
+    /** Let go past the threshold: the page stays lowered while the sync runs. */
+    private var held = false
     /** The drag is past the point where letting go moves on (vibrates on crossing it either way). */
     private var past = false
     private var velocity: VelocityTracker? = null
@@ -34,9 +49,17 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     private val page: View? get() = getChildAt(0)
 
     private fun startsSwipe(e: MotionEvent): Boolean {
+        if (onSwipe == null) return false
         val dx = e.x - downX
         val dy = e.y - downY
         return abs(dx) > slop && abs(dx) > abs(dy) * 1.5f
+    }
+
+    private fun startsPull(e: MotionEvent): Boolean {
+        if (onPull == null || held || scrollY > 0) return false
+        val dx = e.x - downX
+        val dy = e.y - downY
+        return dy > slop && dy > abs(dx) * 1.5f
     }
 
     override fun dispatchTouchEvent(e: MotionEvent): Boolean {
@@ -47,13 +70,23 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
         return super.dispatchTouchEvent(e)
     }
 
+    /** A new touch: the drag state starts afresh. */
+    private fun down(e: MotionEvent) {
+        downX = e.x
+        downY = e.y
+        swiping = false
+        pulling = false
+        past = false
+    }
+
     override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
-        if (onSwipe != null) {
-            when (e.actionMasked) {
-                // A touch on a card never reaches onTouchEvent's DOWN, so the drag state starts afresh
-                // here too: left over from the last swipe, it swallowed a quick flick's vibration.
-                MotionEvent.ACTION_DOWN -> { downX = e.x; downY = e.y; swiping = false; past = false }
-                MotionEvent.ACTION_MOVE -> if (!swiping && startsSwipe(e)) { swiping = true; return true }
+        when (e.actionMasked) {
+            // A touch on a card never reaches onTouchEvent's DOWN, so the drag state starts afresh
+            // here too: left over from the last swipe, it swallowed a quick flick's vibration.
+            MotionEvent.ACTION_DOWN -> down(e)
+            MotionEvent.ACTION_MOVE -> if (!swiping && !pulling) {
+                if (startsSwipe(e)) { swiping = true; return true }
+                if (startsPull(e)) { pulling = true; return true }
             }
         }
         return super.onInterceptTouchEvent(e)
@@ -61,12 +94,15 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        val swipe = onSwipe ?: return super.onTouchEvent(e)
         when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> { downX = e.x; downY = e.y; swiping = false; past = false }
-            MotionEvent.ACTION_MOVE -> if (!swiping && startsSwipe(e)) swiping = true
+            MotionEvent.ACTION_DOWN -> down(e)
+            MotionEvent.ACTION_MOVE -> if (!swiping && !pulling) {
+                if (startsSwipe(e)) swiping = true else if (startsPull(e)) pulling = true
+            }
         }
-        if (!swiping) return super.onTouchEvent(e)
+        if (pulling) return pull(e)
+        val swipe = onSwipe
+        if (!swiping || swipe == null) return super.onTouchEvent(e)
         val dx = e.x - downX
         when (e.actionMasked) {
             MotionEvent.ACTION_MOVE -> page?.apply {
@@ -96,6 +132,60 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
         return true
     }
 
+    /** The page follows a downward drag at half speed; past the threshold, letting go syncs. */
+    private fun pull(e: MotionEvent): Boolean {
+        val page = page ?: return true
+        val d = ((e.y - downY - slop) * 0.5f).coerceIn(0f, pullDistance * 1.6f)
+        when (e.actionMasked) {
+            MotionEvent.ACTION_MOVE -> {
+                page.animate().cancel()
+                page.translationY = d
+                pullIndicator?.pulled(d, d >= pullDistance)
+                if ((d >= pullDistance) != past) {
+                    past = !past
+                    Haptics.threshold(this, past)
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                pulling = false
+                if (past) {
+                    held = true
+                    pullIndicator?.syncing()
+                    lower(pullIndicator?.height?.toFloat() ?: pullDistance)
+                    onPull?.invoke()
+                } else {
+                    lower(0f)
+                }
+            }
+            MotionEvent.ACTION_CANCEL -> { pulling = false; lower(0f) }
+        }
+        return true
+    }
+
+    /** Moves the page to [y] below the top, the indicator following it. */
+    private fun lower(y: Float) {
+        val page = page ?: return
+        page.animate().translationY(y).spring(Motion.SETTLE)
+            .setUpdateListener { pullIndicator?.follow(page.translationY) }.start()
+        if (!Motion.enabled) pullIndicator?.follow(y)
+    }
+
+    /** The sync has finished: the indicator says so for a moment, then the page goes back up. */
+    fun endPull() {
+        if (!held) return
+        held = false
+        pullIndicator?.done()
+        postDelayed({ if (!held && !pulling) lower(0f) }, 600)
+    }
+
+    /** Puts the page straight back (another page is showing). */
+    fun resetPull() {
+        held = false
+        pulling = false
+        page?.apply { animate().cancel(); translationY = 0f }
+        pullIndicator?.follow(0f)
+    }
+
     /** Not far enough: back to where it was. */
     private fun settle() {
         val page = page ?: return
@@ -107,5 +197,67 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
         velocity?.recycle()
         velocity = null
         super.onDetachedFromWindow()
+    }
+}
+
+/**
+ * What pulling a page down uncovers: a refresh icon that turns with the pull and spins while the sync
+ * runs, what letting go will do, and when Spectrum last synced ([lastSync]).
+ */
+@SuppressLint("ViewConstructor")
+class PullIndicator(private val ui: Ui, private val lastSync: () -> String) : LinearLayout(ui.context) {
+    private val icon = ui.icon(R.drawable.ic_refresh, ui.p.muted, 20f)
+    private val title = ui.text("Pull to sync", 13f, ui.p.text, ui.f.bodySemi)
+    private val sub = ui.text("", 12f, ui.p.muted)
+    private var spin: ObjectAnimator? = null
+
+    init {
+        orientation = VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        setPadding(0, ui.dp(12), 0, ui.dp(12))
+        addView(icon)
+        addView(title, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(6) })
+        addView(sub, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(2) })
+        alpha = 0f
+    }
+
+    /** Sits just above the page's top edge, [y] below the top, showing as it comes into view. */
+    fun follow(y: Float) {
+        translationY = y - height
+        alpha = if (height == 0) 0f else (y / height).coerceIn(0f, 1f)
+    }
+
+    /** Being pulled, [y] down; [armed] past the threshold. */
+    fun pulled(y: Float, armed: Boolean) {
+        stopSpin()
+        title.text = if (armed) "Release to sync" else "Pull to sync"
+        sub.text = lastSync()
+        icon.imageTintList = android.content.res.ColorStateList.valueOf(if (armed) ui.p.accentText else ui.p.muted)
+        icon.rotation = y * 2f
+        follow(y)
+    }
+
+    fun syncing() {
+        title.text = "Syncing…"
+        icon.imageTintList = android.content.res.ColorStateList.valueOf(ui.p.accentText)
+        stopSpin()
+        if (Motion.enabled) spin = ObjectAnimator.ofFloat(icon, View.ROTATION, icon.rotation, icon.rotation + 360f).apply {
+            duration = 800
+            repeatCount = ObjectAnimator.INFINITE
+            interpolator = LinearInterpolator()
+            start()
+        }
+    }
+
+    fun done() {
+        stopSpin()
+        title.text = "Synced"
+        sub.text = lastSync()
+        icon.imageTintList = android.content.res.ColorStateList.valueOf(ui.p.muted)
+    }
+
+    private fun stopSpin() {
+        spin?.cancel()
+        spin = null
     }
 }

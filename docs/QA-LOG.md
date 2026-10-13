@@ -18,6 +18,39 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 13 October 2026 (Grades as in redesign 1j, pull to sync, no attendance)
+
+**Asked for:** Grades laid out as 1j; no "3 marks · 1 new · synced 11:32" line; sync by pulling the
+page down, with a refresh animation and the last sync time there; no "Tuesday 13 Oct" in the top bar
+on Grades; no attendance in Grades.
+
+**Change:**
+- `SpectrumScreens.grades` / `courseMarks`: the GRADES heading alone (no summary, no sync button). Each
+  course with marks: a ruled line with dot, code, name (one line) and "2 of 4" in mono, then a card
+  per mark, newest first: name with a yellow NEW tag until seen, "Quiz · marked today" under it, the
+  mark (Big Shoulders 28sp, accent) and "/ 10" on one baseline, and the feedback if any. Under the
+  cards: "Course total 85% · not marked yet: …" when there is one. Then NOT MARKED YET: one ruled
+  line per course with its number of items. The percentage under each mark is gone, as in 1j.
+- Attendance grade items (`SpectrumSync.isAttendance`) are left out of Grades, the Grades badge and
+  the "New mark" notifications (one would open a tab that doesn't show it).
+- Pull to sync (`SwipeScrollView.onPull`, `PullIndicator`): on Grades, Due, News and Courses when
+  signed in, the page at the top follows a downward drag at half speed. Behind it, a refresh icon
+  turns with the pull, with "Pull to sync" / "Release to sync" and "Last synced 11:32". Past 72dp it
+  vibrates (the swipe threshold click); let go there and it syncs. The page then waits lowered while
+  the icon spins ("Syncing…"), shows "Synced" for 0.6 s when the sync ends, and springs back up.
+  Changing tab puts the page straight back. Due, News and Courses keep their sync buttons too.
+- Top bar: no date on Grades (Due, News and Courses still show today's date).
+
+- Not marked yet leaves out courses with nothing left to mark: on the phone two courses had only
+  attendance items and showed "0 items".
+
+**Found:** with attendance left out, Spectrum has no released marks for the user yet; the "3 marks"
+Grades used to show were attendance.
+
+**Checked:** Grades rendered off-screen in light and dark, from the synced data and from made-up marks
+(`DebugRenderReceiver --es view grades --ez sample true`: NEW tags, a scale word, feedback, a course
+total, unmarked items). The pull gesture can't be rendered; try it on the phone.
+
 ## 13 October 2026 (class sheet as in redesign 1f, with Open course page)
 
 **Asked for:** the sheet a course opens (from the Week page's Courses list) with the course name large

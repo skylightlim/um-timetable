@@ -24,6 +24,8 @@ import java.io.File
  * view: day, week, due, news, files (the Courses tab); course opens one course page from its cache.
  * view icon draws the launcher icon with the phone's mask (icon.png) and its themed layer (icon-mono.png).
  * dow (0 Sunday … 6 Saturday) and min (minutes after midnight) pretend it's another time of the week.
+ * view grades with --ez sample true draws made-up marks for the timetable's first courses instead of the
+ * synced ones (to check the mark cards while Spectrum has none).
  * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
  * Nth class of the week (0 first).
  */
@@ -44,7 +46,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
             "due" -> SpectrumScreens.due(host)
             "news" -> SpectrumScreens.news(host)
             "files" -> SpectrumScreens.courses(host)
-            "grades" -> SpectrumScreens.grades(host)
+            "grades" -> if (intent.getBooleanExtra("sample", false)) SpectrumScreens.grades(host, sampleGrades(context)) else SpectrumScreens.grades(host)
             "sheet" -> {
                 val tt = Timetable.load(context)
                 val course = tt.courses.first { it.code == intent.getStringExtra("code") }
@@ -65,6 +67,32 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val bitmap = Bitmap.createBitmap(frame.measuredWidth, frame.measuredHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         frame.draw(Canvas(bitmap))
         save(context, bitmap, "$view${host.openCourse?.let { "-$it" } ?: ""}${if (dark) "-dark" else ""}")
+    }
+
+    /** Made-up grade items: marks (one a scale word, one with feedback), a course total, unmarked items. */
+    private fun sampleGrades(context: Context): List<org.json.JSONObject> {
+        val courses = Timetable.load(context).courses.take(3)
+        var id = 900_000
+        val now = System.currentTimeMillis()
+        fun item(c: Course, i: Int, name: String, kind: String, raw: Double?, max: Double, daysAgo: Int, word: String = "", feedback: String = "", total: Boolean = false) =
+            org.json.JSONObject().put("id", id++).put("courseId", i).put("code", c.code).put("course", c.name).put("total", total)
+                .put("name", name).put("kind", kind).put("raw", raw ?: org.json.JSONObject.NULL).put("max", max).put("word", word)
+                .put("percent", "").put("feedback", feedback).put("gradedAt", if (raw == null) 0 else now - daysAgo * 86_400_000L).put("url", "")
+        val out = mutableListOf<org.json.JSONObject>()
+        courses.getOrNull(0)?.let { c ->
+            out += item(c, 1, "Quiz 1", "Quiz", 8.5, 10.0, 0)
+            out += item(c, 1, "Tutorial 1", "Assignment", 9.0, 10.0, 5, feedback = "<p>Good working, but show every step in question 3.</p>")
+            out += item(c, 1, "Quiz 2", "Quiz", null, 10.0, 0)
+        }
+        courses.getOrNull(1)?.let { c ->
+            out += item(c, 2, "Lab 1", "Assignment", 18.0, 20.0, 8)
+            out += item(c, 2, "Course total", "", 18.0, 100.0, 8, total = true)
+            out += item(c, 2, "Lab 2", "Assignment", null, 20.0, 0)
+        }
+        courses.getOrNull(2)?.let { c ->
+            out += item(c, 3, "Presentation", "Assignment", 1.0, 1.0, 2, word = "Pass")
+        }
+        return out
     }
 
     private fun save(context: Context, bitmap: Bitmap, name: String) {

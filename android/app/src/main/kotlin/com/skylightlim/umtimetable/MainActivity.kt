@@ -210,7 +210,13 @@ class MainActivity : Activity(), SpectrumHost {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(p.ground)
             addView(top)
-            addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            // The pull-to-sync indicator sits behind the page, uncovered as the page is pulled down.
+            val pull = PullIndicator(ui) { SpectrumScreens.lastSynced(this@MainActivity) }
+            scroll.pullIndicator = pull
+            addView(FrameLayout(this@MainActivity).apply {
+                addView(pull, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
+                addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             addView(tabBar)
         }
         shell = root
@@ -302,6 +308,8 @@ class MainActivity : Activity(), SpectrumHost {
         content.removeAllViews()
         content.addView(page)
         scroll.onSwipe = if (view == "day") { dir -> slideFar = true; goDay(sel + dir, dir) } else null
+        // Spectrum's tabs sync when pulled down.
+        scroll.onPull = if (view in setOf("grades", "due", "news", "files") && SpectrumStore.signedIn(this)) ::refresh else null
         if (pendingSlide != 0) {
             // Another day: from the side it was swiped in from, or from close by after a tap.
             Motion.slideIn(page, pendingSlide * if (slideFar) scroll.width * 0.35f else ui.dp(40f).toFloat())
@@ -425,6 +433,7 @@ class MainActivity : Activity(), SpectrumHost {
         val words = when (view) {
             "day" -> listOf(DAY_NAMES[sel], dateText(days))
             "week" -> listOf(weekRange(daysFromToday(tt, n, 1)))
+            "grades" -> emptyList()
             else -> listOf("${DAY_NAMES[n.dow]} ${dateText(0)}")
         }
         val today = view == "day" && days == 0
@@ -482,7 +491,7 @@ class MainActivity : Activity(), SpectrumHost {
     private fun renderTabs() {
         val p = ui.p
         val unread = SpectrumStore.array(this, "news").objects().count { it.optBoolean("forMe", true) && it.getInt("id").toString() !in seenNews }
-        val newMarks = SpectrumStore.array(this, "grades").objects().count { !it.isNull("raw") && SpectrumSync.gradeKey(it) !in seenGrades }
+        val newMarks = SpectrumStore.array(this, "grades").objects().count { !it.isNull("raw") && !SpectrumSync.isAttendance(it) && SpectrumSync.gradeKey(it) !in seenGrades }
         val counts = mapOf("news" to unread, "grades" to newMarks, "due" to SpectrumScreens.openAttendance(this))
         var lit = 0
         for ((id, views) in tabViews) {
@@ -536,6 +545,7 @@ class MainActivity : Activity(), SpectrumHost {
     private fun go(view: String, feel: ((View) -> Unit)?) {
         if (view !in VIEWS) return
         val changed = view != this.view
+        if (changed) scroll.resetPull()
         this.view = view
         prefs().edit().putString("view", view).apply()
         if (changed) feel?.invoke(shell)
@@ -593,6 +603,7 @@ class MainActivity : Activity(), SpectrumHost {
             SpectrumSync.run(applicationContext)
             runOnUiThread {
                 syncing = false
+                scroll.endPull()
                 contents.clear() // course pages refresh the next time they're opened
                 contentErrors.clear()
                 render(keepScroll = true)

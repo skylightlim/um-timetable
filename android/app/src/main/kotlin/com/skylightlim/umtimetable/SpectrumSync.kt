@@ -535,9 +535,12 @@ object SpectrumSync {
         SpectrumStore.putStringSet(c, "seenDue", (seen + fresh.map { it.getInt("id").toString() }).toList().takeLast(500).toSet())
     }
 
+    /** An attendance grade item: kept out of the Grades tab, its badge and its notifications. */
+    fun isAttendance(g: JSONObject) = g.optString("kind") == "Attendance"
+
     /** A notification per newly released (or changed) mark; the first sync with grades only records them. */
     private fun notifyGrades(c: Context, grades: JSONArray) {
-        val marked = grades.objects().filter { !it.isNull("raw") }
+        val marked = grades.objects().filter { !it.isNull("raw") && !isAttendance(it) }
         val seen = SpectrumStore.stringSet(c, "seenGrades")
         if (SpectrumStore.flag(c, "gradesPrimed")) {
             for (g in marked.filter { gradeKey(it) !in seen }.take(4)) {

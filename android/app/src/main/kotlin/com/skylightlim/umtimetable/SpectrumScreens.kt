@@ -60,6 +60,14 @@ object SpectrumScreens {
         return if (m >= 0) "in $t" else "$t ago"
     }
 
+    /** "Last synced 11:32" (today), "Last synced yesterday", "Last synced Mon 12 Oct", or not yet. */
+    fun lastSynced(c: android.content.Context): String {
+        val t = SpectrumStore.lastSync(c)
+        if (t == 0L) return "Not synced yet"
+        val label = dayLabel(t)
+        return "Last synced ${if (label == "Today") hm(t) else if (label == "Yesterday") "yesterday" else label}"
+    }
+
     private fun synced(h: SpectrumHost): String {
         val t = SpectrumStore.lastSync(h.ui.context)
         if (t == 0L) return "not synced yet"
@@ -271,7 +279,11 @@ object SpectrumScreens {
      * Marks released on Spectrum. Courses with marks come first, the one with the newest mark on top;
      * courses with none yet are listed compactly after them.
      */
-    fun grades(h: SpectrumHost): View {
+    /**
+     * Marks grouped by course as in redesign 1j, the newest marks' course first, then the courses with
+     * nothing marked yet. Pull down to sync. Attendance isn't shown: it's in Due.
+     */
+    fun grades(h: SpectrumHost, items: List<JSONObject> = SpectrumStore.array(h.ui.context, "grades").objects()): View {
         val ui = h.ui
         val p = ui.p
         val page = ui.column()
@@ -280,112 +292,108 @@ object SpectrumScreens {
             page.addView(connect(h, "See each mark as soon as a lecturer releases it, with a notification."))
             return page
         }
-        // Unmarked attendance items are mostly other occurrences' (GIG1017 has one per OCC 1–15).
-        val all = SpectrumStore.array(ui.context, "grades").objects().filter { !(it.isNull("raw") && it.optString("kind") == "Attendance") }
-        val marks = all.filter { !it.isNull("raw") && !it.optBoolean("total") }
-        page.addView(header(h, "Grades", "${marks.size} ${if (marks.size == 1) "mark" else "marks"} · ${synced(h)}"))
+        val all = items.filter { !SpectrumSync.isAttendance(it) }
+        page.addView(pageHeader(ui, "Grades", null))
         problem(h, page)
         if (all.isEmpty()) {
             page.addView(empty(ui, if (SpectrumStore.lastSync(ui.context) > 0) "Spectrum lists no grade items for your courses." else "Syncing with Spectrum…"))
             return page
         }
         val byCourse = all.groupBy { it.getInt("courseId") }
-        val (marked, waiting) = byCourse.entries.partition { (_, items) -> items.any { !it.isNull("raw") && !it.optBoolean("total") } }
+        val (marked, unmarked) = byCourse.entries.partition { (_, items) -> items.any { !it.isNull("raw") && !it.optBoolean("total") } }
+        // A course whose only item was attendance (or that has only its total) has nothing to wait for.
+        val waiting = unmarked.filter { (_, items) -> items.any { !it.optBoolean("total") } }
         if (marked.isEmpty()) {
             page.addView(card(ui).apply {
                 addView(ui.text("No marks released yet", 17f, p.text, ui.f.bodyBold))
                 addView(ui.text("When a lecturer releases a mark on Spectrum, it shows here and you get a notification.", 14.5f, p.muted), ui.wide(top = 6f))
-            }, ui.wide(bottom = 18f))
+            }, ui.wide(bottom = 20f))
         }
         for ((_, items) in marked.sortedByDescending { (_, items) -> items.maxOf { it.getLong("gradedAt") } }) {
-            page.addView(courseMarks(h, items), ui.wide(bottom = 22f))
+            page.addView(courseMarks(h, items), ui.wide(bottom = 20f))
         }
         if (waiting.isNotEmpty()) {
-            page.addView(ui.label("Not marked yet"), ui.wide(top = if (marked.isEmpty()) 0f else 6f, bottom = 4f))
+            page.addView(ui.label("Not marked yet", p.text, 11f).apply { setPadding(0, 0, 0, ui.dp(6)) })
+            page.addView(rule(ui))
             for ((_, items) in waiting) {
-                val first = items.first()
-                val code = first.optString("code")
                 val n = items.count { !it.optBoolean("total") }
-                val row = ui.row(gap = 12f, center = false).apply { setPadding(ui.dp(2), ui.dp(14), ui.dp(2), ui.dp(14)) }
-                val name = ui.text(courseName(h, first.optString("course"), code), 15f, p.text, ui.f.bodySemi)
-                val codeText = code.takeIf { it.isNotEmpty() }?.let { ui.text(it, 14f, p.courseText(colorOf(h, code)), ui.f.monoBold) }
-                row.addView(courseDot(ui, colorOf(h, code), codeText ?: name))
-                row.addView(ui.row(gap = 8f, center = false).apply {
-                    codeText?.let { addView(it) }
-                    addView(name, ui.grow())
-                    baselineAlignedChildIndex = 0
-                }, ui.grow())
-                row.addView(ui.text("$n ${if (n == 1) "item" else "items"}", 12.5f, p.muted, ui.f.mono).apply { (layoutParams as? LinearLayout.LayoutParams)?.gravity = Gravity.CENTER_VERTICAL })
-                page.addView(row)
-                page.addView(View(ui.context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
+                page.addView(courseLine(h, items.first(), "$n ${if (n == 1) "item" else "items"}", 14f, p.text, ui.f.body).apply { setPadding(0, ui.dp(11), 0, ui.dp(11)) })
+                page.addView(rule(ui))
             }
         }
         return page
     }
 
-    /** One course's marks, newest first, then what's still to be marked. */
+    private fun rule(ui: Ui) = View(ui.context).apply {
+        setBackgroundColor(ui.p.line)
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1)
+    }
+
+    /** A course on one line: dot, code, name (cut short to fit) and [end] in small mono at the end. */
+    private fun courseLine(h: SpectrumHost, item: JSONObject, end: String, nameSize: Float, nameColor: Int, nameFace: android.graphics.Typeface): LinearLayout {
+        val ui = h.ui
+        val code = item.optString("code")
+        return ui.row(gap = 8f).apply {
+            addView(View(ui.context).apply { background = ui.shape(colorOf(h, code), 99f) }, LinearLayout.LayoutParams(ui.dp(10), ui.dp(10)))
+            if (code.isNotEmpty()) addView(ui.text(code, 13f, ui.p.courseText(colorOf(h, code)), ui.f.monoBold))
+            addView(ui.text(courseName(h, item.optString("course"), code), nameSize, nameColor, nameFace, lines = 1), ui.grow())
+            addView(ui.text(end, 11f, ui.p.muted, ui.f.mono))
+        }
+    }
+
+    /**
+     * One course's marks as in 1j: a ruled header line with how many items are marked, then a card per
+     * mark, newest first, tagged NEW until seen, then the course total and what's still to be marked.
+     */
     private fun courseMarks(h: SpectrumHost, items: List<JSONObject>): View {
         val ui = h.ui
         val p = ui.p
         val first = items.first()
         val code = first.optString("code")
-        val color = colorOf(h, code)
-        val box = ui.column(gap = 8f)
+        val box = ui.column()
         val marks = items.filter { !it.isNull("raw") && !it.optBoolean("total") }.sortedByDescending { it.getLong("gradedAt") }
         val total = items.firstOrNull { it.optBoolean("total") && !it.isNull("raw") }
-        val title = ui.row(gap = 12f, center = false)
-        val name = ui.text(courseName(h, first.optString("course"), code), 15f, p.text, ui.f.bodySemi)
-        val codeText = code.takeIf { it.isNotEmpty() }?.let { ui.text(it, 14f, p.courseText(color), ui.f.monoBold) }
-        title.addView(courseDot(ui, color, codeText ?: name))
-        title.addView(ui.row(gap = 8f, center = false).apply {
-            codeText?.let { addView(it) }
-            addView(name, ui.grow())
-            baselineAlignedChildIndex = 0
-        }, ui.grow())
-        box.addView(title)
         val count = items.count { !it.optBoolean("total") }
-        box.addView(ui.text(listOfNotNull("${marks.size} of $count marked", total?.let { "course total ${SpectrumSync.markText(it)}" }).joinToString(" · "), 12.5f, p.muted).apply { setPadding(ui.dp(24), 0, 0, ui.dp(2)) })
+        box.addView(courseLine(h, first, "${marks.size} of $count", 14f, p.text, ui.f.bodySemi).apply { setPadding(0, 0, 0, ui.dp(8)) })
+        box.addView(rule(ui))
         for (g in marks) {
             val isNew = SpectrumSync.gradeKey(g) !in h.seenGrades
-            val item = ui.column(gap = 4f).apply {
-                background = ui.pressable(ui.shape(p.surface, 14f, if (isNew) p.accent else p.line, if (isNew) 1.5f else 1f), 14f)
+            val item = ui.column().apply {
+                background = ui.pressable(ui.shape(p.surface, 14f, p.line), 14f)
                 setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
                 g.optString("url").takeIf { it.isNotEmpty() }?.let { url -> setOnClickListener { h.openUrl(url) } }
             }
-            val word = g.optString("word")
             val row = ui.row(gap = 12f)
             row.addView(ui.column().apply {
-                addView(ui.text(g.optString("name"), 16f, p.text, ui.f.bodySemi))
+                addView(ui.row(gap = 8f).apply {
+                    addView(ui.text(g.optString("name"), 15f, p.text, ui.f.bodySemi), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).takeIf { !isNew } ?: LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0f))
+                    if (isNew) addView(ui.chip("New", p.accent, p.accentInk).apply { setPadding(ui.dp(6), ui.dp(1), ui.dp(6), ui.dp(1)) })
+                })
                 val markedOn = g.getLong("gradedAt").takeIf { it > 0 }?.let { dayLabel(it) }?.let { d -> "marked ${if (d in setOf("Today", "Yesterday")) d.lowercase() else d}" }
-                addView(ui.text(listOfNotNull(g.optString("kind").ifEmpty { null }, markedOn).joinToString(" · "), 12.5f, p.muted), ui.wide(top = 3f))
+                addView(ui.text(listOfNotNull(g.optString("kind").ifEmpty { null }, markedOn).joinToString(" · "), 12.5f, p.muted), ui.wide(top = 2f))
             }, ui.grow())
-            row.addView(ui.column().apply {
-                gravity = Gravity.END
-                if (word.isNotEmpty()) {
-                    addView(ui.text(word, 22f, p.accentText, ui.f.sign))
-                } else {
-                    fun num(x: Double) = "%.2f".format(x).trimEnd('0').trimEnd('.')
-                    addView(ui.row().apply {
-                        gravity = Gravity.BOTTOM or Gravity.END
-                        addView(ui.text(num(g.getDouble("raw")), 30f, p.accentText, ui.f.sign))
-                        addView(ui.text(" / ${num(g.optDouble("max"))}", 13f, p.muted, ui.f.mono).apply { setPadding(0, 0, 0, ui.dp(4)) })
-                    })
-                    g.optString("percent").takeIf { it.isNotEmpty() && it != "-" }?.let { addView(ui.text(it, 12f, p.muted, ui.f.mono)) }
-                }
-            })
+            val word = g.optString("word")
+            if (word.isNotEmpty()) {
+                row.addView(ui.text(word, 22f, p.accentText, ui.f.sign))
+            } else {
+                fun num(x: Double) = "%.2f".format(x).trimEnd('0').trimEnd('.')
+                // The mark and its maximum share a baseline.
+                row.addView(ui.row(gap = 3f, center = false).apply {
+                    addView(ui.text(num(g.getDouble("raw")), 28f, p.accentText, ui.f.sign))
+                    addView(ui.text("/ ${num(g.optDouble("max"))}", 12f, p.muted, ui.f.mono))
+                })
+            }
             item.addView(row)
             val feedback = g.optString("feedback")
-            if (hasContent(feedback)) item.addView(RichText.view(h, feedback, "g${g.getInt("id")}", code.ifEmpty { "Spectrum" }, 3, 13.5f, p.muted, h.expanded), ui.wide(top = 4f))
-            box.addView(item)
+            if (hasContent(feedback)) item.addView(RichText.view(h, feedback, "g${g.getInt("id")}", code.ifEmpty { "Spectrum" }, 3, 13.5f, p.muted, h.expanded), ui.wide(top = 6f))
+            box.addView(item, ui.wide(top = 8f))
         }
         val left = items.filter { it.isNull("raw") && !it.optBoolean("total") }
-        if (left.isNotEmpty()) {
-            box.addView(ui.text("Not marked yet: " + left.joinToString(", ") { it.optString("name") }, 12.5f, p.muted).apply {
-                maxLines = 2
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                setPadding(ui.dp(2), ui.dp(2), 0, 0)
-            })
-        }
+        val notes = listOfNotNull(
+            total?.let { "Course total ${SpectrumSync.markText(it)}" },
+            left.takeIf { it.isNotEmpty() }?.let { l -> "not marked yet: " + l.joinToString(", ") { it.optString("name") } },
+        ).joinToString(" · ").replaceFirstChar { it.uppercase() }
+        if (notes.isNotEmpty()) box.addView(ui.text(notes, 12.5f, p.muted, lines = 2), ui.wide(top = 8f))
         return box
     }
 
