@@ -48,6 +48,8 @@ class MainActivity : Activity(), SpectrumHost {
     private lateinit var fonts: Fonts
     override var look = Look.AUTO
         private set
+    /** The sign-in poster over the app on first run (see [showWelcome]). */
+    private var welcome: View? = null
     /** The top bar's settings button: the Settings sheet opens from it, and a new theme spreads from it. */
     private var settingsButton: View? = null
 
@@ -128,6 +130,7 @@ class MainActivity : Activity(), SpectrumHost {
         intent.getIntExtra(EXTRA_COURSE, 0).takeIf { it > 0 }?.let { view = "files"; openCourse = it }
         buildShell()
         render()
+        if (!SpectrumStore.signedIn(this) && timetable.sessions.isEmpty()) showWelcome()
         fresh = true
         SpectrumSyncJob.ensure(this)
         // Launch timing: Android logs "Fully drawn" with the time since the app started.
@@ -447,6 +450,29 @@ class MainActivity : Activity(), SpectrumHost {
         if (look != this.look) switchLook(settingsButton ?: shell, look)
     }
 
+    /** First run (no sign-in, no timetable): the sign-in poster (redesign 1t) over the app. */
+    private fun showWelcome() {
+        if (welcome != null) return
+        val poster = SignInScreen.build(ui, timetable.term, onSignIn = { signIn() }, onMaya = { openMaya() })
+        findViewById<FrameLayout>(android.R.id.content).addView(poster, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        poster.requestApplyInsets()
+        welcome = poster
+        // Dark status and navigation icons on the yellow, whatever the theme.
+        val dark = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+        window.insetsController?.setSystemBarsAppearance(dark, dark)
+    }
+
+    /** Signed in, or a timetable imported: the poster lifts away to the app. */
+    private fun hideWelcome() {
+        val poster = welcome ?: return
+        welcome = null
+        val dark = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+        window.insetsController?.setSystemBarsAppearance(if (ui.p.dark) 0 else dark, dark)
+        fun remove() { (poster.parent as? ViewGroup)?.removeView(poster) }
+        if (!Motion.enabled) { remove(); return }
+        poster.animate().translationY(-poster.height.toFloat()).setInterpolator(Motion.EXIT).setDuration(320).withEndAction { remove() }.start()
+    }
+
     /** The new theme spreads out from [from] (the settings button), over a picture of the old one. */
     private fun switchLook(from: View, to: Look) {
         val old = shell
@@ -677,12 +703,16 @@ class MainActivity : Activity(), SpectrumHost {
         if (resultCode != RESULT_OK) return
         when (requestCode) {
             REQ_LOGIN -> {
+                hideWelcome()
                 enableNotifications()
                 SpectrumSyncJob.schedule(this)
                 timetableAfterSync = Timetable.load(this).sessions.isEmpty()
                 refresh()
             }
-            REQ_MAYA, REQ_TIMEEDIT -> go("week", null)
+            REQ_MAYA, REQ_TIMEEDIT -> {
+                hideWelcome()
+                go("week", null)
+            }
         }
     }
 

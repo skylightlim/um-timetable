@@ -29,7 +29,7 @@ import java.io.File
  * view due with --ez sample true draws made-up deadlines (late, minutes, hours, days) and attendance
  * (open, about to open, not in Spectrum's calendar).
  * --ez open true draws every fold and "Show more" opened.
- * view settings draws the Settings sheet.
+ * view settings draws the Settings sheet; view signin the first-run sign-in poster, at screen height.
  * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
  * Nth class of the week (0 first).
  */
@@ -53,6 +53,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
             "files" -> SpectrumScreens.courses(host)
             "grades" -> if (intent.getBooleanExtra("sample", false)) SpectrumScreens.grades(host, sampleGrades(context)) else SpectrumScreens.grades(host)
             "settings" -> SettingsSheet.build(host, c) {}
+            "signin" -> SignInScreen.build(host.ui, null, {}, {})
             "sheet" -> {
                 val tt = Timetable.load(context)
                 val course = tt.courses.first { it.code == intent.getStringExtra("code") }
@@ -71,10 +72,13 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val frame = FrameLayout(c).apply {
             setBackgroundColor(host.ui.p.ground)
             // A sheet runs edge to edge, from the bottom of the screen.
-            if (view != "sheet" && view != "settings") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
+            if (view != "sheet" && view != "settings" && view != "signin") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
             addView(page)
         }
-        frame.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        frame.measure(
+            View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+            if (view == "signin") View.MeasureSpec.makeMeasureSpec(context.resources.displayMetrics.heightPixels, View.MeasureSpec.EXACTLY) else View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+        )
         frame.layout(0, 0, frame.measuredWidth, frame.measuredHeight)
         val bitmap = Bitmap.createBitmap(frame.measuredWidth, frame.measuredHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         frame.draw(Canvas(bitmap))

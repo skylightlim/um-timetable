@@ -22,24 +22,21 @@ object AcademicCalendar {
     private fun p(kind: Kind, start: String, weeks: Int) = Period(kind, LocalDate.parse(start), weeks)
 
     private val SEMESTERS = listOf(
-        // Semester I 2026/2027
-        listOf(
+        "Sem 1 2026/27" to listOf(
             p(Kind.TEACHING, "2026-10-05", 8), p(Kind.BREAK, "2026-11-30", 1), p(Kind.TEACHING, "2026-12-07", 6),
             p(Kind.REVISION, "2027-01-18", 1), p(Kind.EXAMS, "2027-01-25", 2),
         ),
-        // Semester II 2026/2027
-        listOf(
+        "Sem 2 2026/27" to listOf(
             p(Kind.TEACHING, "2027-03-01", 7), p(Kind.BREAK, "2027-04-19", 1), p(Kind.TEACHING, "2027-04-26", 7),
             p(Kind.REVISION, "2027-06-14", 1), p(Kind.EXAMS, "2027-06-21", 2),
         ),
-        // Special semester 2026/2027
-        listOf(p(Kind.TEACHING, "2027-07-19", 7), p(Kind.EXAMS, "2027-09-06", 1)),
+        "Special sem 2026/27" to listOf(p(Kind.TEACHING, "2027-07-19", 7), p(Kind.EXAMS, "2027-09-06", 1)),
     )
 
     /** The semester week [date] falls in, or null outside the calendar's semesters. */
     fun week(date: LocalDate): Week? {
         val monday = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-        for (semester in SEMESTERS) {
+        for ((_, semester) in SEMESTERS) {
             val total = semester.filter { it.kind == Kind.TEACHING }.sumOf { it.weeks }
             var taught = 0
             for (period in semester) {
@@ -52,4 +49,8 @@ object AcademicCalendar {
         }
         return null
     }
+
+    /** The semester [date] is in, or the next one to start ("Sem 1 2026/27"); null past the calendar. */
+    fun semesterName(date: LocalDate): String? =
+        SEMESTERS.firstOrNull { (_, periods) -> periods.last().let { it.start.plusWeeks(it.weeks.toLong()) } > date }?.first
 }

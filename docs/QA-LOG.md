@@ -18,6 +18,29 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (first-run sign-in poster as in redesign 1t)
+
+**Asked for:** the sign-in screen like 1t.
+
+**Change** (`SignInScreen`, `MainActivity.showWelcome` / `hideWelcome`, `AcademicCalendar.semesterName`):
+- With no Spectrum sign-in and no timetable (a new or cleared app), a full-screen yellow poster lies
+  over the app: "UM TIMETABLE" and the semester ("SEM 1 2026/27": the timetable's term, else the
+  academic calendar's current or next semester) over a 1.5dp ink rule; "Sign in once. Get your whole
+  week." in Big Shoulders 64sp; the three steps (1 SiswaMail · 2 TimeEdit week · 3 Due, News, Grades)
+  with lines between them only (the user's preference; 1t also rules above and below); an ink "Sign in
+  with SiswaMail" button with an arrow; "Unofficial. Nothing leaves your phone except to Microsoft and
+  UM."; and, beyond 1t, a small underlined "Import from MAYA instead" (the fallback when TimeEdit
+  can't be reached; Settings is under the poster).
+- Dark status and navigation icons while it shows, in either theme. After a sign-in (or a MAYA or
+  TimeEdit import) it lifts away upwards (320 ms) and the usual flow goes on: sync, then TimeEdit
+  opens by itself.
+- Signed out with a timetable kept (Sign out keeps it), the app opens as before, with sign-in cards on
+  the Spectrum tabs.
+- `--es view signin` renders it at screen height. `AcademicCalendarTest.semesterNames` covers the label.
+
+**Checked:** rendered in light and dark (the accent differs slightly). The live flow needs a cleared
+app: part of the reset check.
+
 ## 14 October 2026 (course pages: larger text, everything shown, bold section names)
 
 **Asked for:** on a course page (GIG1003), larger text; all of Spectrum's information shown; section
