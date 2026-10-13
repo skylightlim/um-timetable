@@ -495,9 +495,9 @@ object SpectrumScreens {
     // --- News ------------------------------------------------------------------------------
 
     /**
-     * Announcements as in redesign 1m: a For me / All switch by the heading, the newest post as a lead
-     * story with its text and files, then the rest as ruled rows that open in place. "For me" leaves out
-     * posts made only to other occurrences' groups. Pull down to sync.
+     * Announcements as in redesign 1m: a For me / All switch by the heading, then every post as a ruled
+     * row (course, when, subject, author) that opens in place to its text and files. "For me" leaves out
+     * posts for other occurrences (`forMe`, set by the sync). Pull down to sync.
      */
     fun news(h: SpectrumHost): View {
         val ui = h.ui
@@ -523,16 +523,15 @@ object SpectrumScreens {
             val synced = SpectrumStore.lastSync(ui.context) > 0
             page.addView(empty(ui, when {
                 !synced -> "Syncing with Spectrum…"
-                all.isEmpty() -> "No announcements in the past two weeks."
-                else -> "Nothing for your occurrences in the past two weeks. All shows the others' too."
+                all.isEmpty() -> "No announcements in the past month."
+                else -> "Nothing for your occurrence in the past month. All shows the others' too."
             }))
             if (synced) page.addView(olderNews(h))
             return page
         }
-        page.addView(lead(h, list.first()))
-        // Ruled inside only: a line between posts, none above the first or below the last.
-        for (a in list.drop(1)) {
-            page.addView(rule(ui))
+        // Every post the same, as 1m's rows; ruled inside only (a line between posts, none above or below).
+        for ((n, a) in list.withIndex()) {
+            if (n > 0) page.addView(rule(ui))
             page.addView(newsRow(h, a))
         }
         page.addView(olderNews(h), ui.wide(top = 8f))
@@ -579,17 +578,7 @@ object SpectrumScreens {
         for (f in a.optJSONArray("attachments")?.objects().orEmpty()) into.addView(fileButton(h, f, code), ui.wide(top = 8f))
     }
 
-    /** The newest post, open: its subject large, the text, who posted it and its files. */
-    private fun lead(h: SpectrumHost, a: JSONObject) = h.ui.column().apply {
-        val ui = h.ui
-        setPadding(0, ui.dp(4), 0, ui.dp(16))
-        addView(newsTop(h, a, 12f))
-        addView(ui.text(a.optString("subject"), 30f, ui.p.text, ui.f.sign).apply { setLineSpacing(0f, 1f) }, ui.wide(top = 10f))
-        author(a).takeIf { it.isNotEmpty() }?.let { addView(ui.text(it, 12.5f, ui.p.muted), ui.wide(top = 4f)) }
-        newsBody(h, a, this)
-    }
-
-    /** An older post as a ruled row: course, when, subject and author; tapping it opens its text in place. */
+    /** A post as a ruled row: course, when, subject and author; tapping it opens its text and files in place. */
     private fun newsRow(h: SpectrumHost, a: JSONObject): View {
         val ui = h.ui
         val key = "news-open-${a.getInt("id")}"
@@ -619,7 +608,7 @@ object SpectrumScreens {
     /** The end of News: it only reaches back [SpectrumSync.NEWS_DAYS] days. */
     private fun olderNews(h: SpectrumHost) = h.ui.column().apply {
         setPadding(0, h.ui.dp(10), 0, h.ui.dp(8))
-        addView(h.ui.text("News only shows announcements from the past two weeks. For older ones, open the course in Courses and tap its announcements forum.", 13f, h.ui.p.muted))
+        addView(h.ui.text("News only shows announcements from the past month. For older ones, open the course in Courses and tap its announcements forum.", 13f, h.ui.p.muted))
         addView(link(h.ui, "Open Courses") { h.setView("files") })
     }
 

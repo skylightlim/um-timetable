@@ -41,10 +41,10 @@ object SpectrumSync {
     private val syncPool = Executors.newFixedThreadPool(4)
     private val requestPool = Executors.newFixedThreadPool(6)
 
-    /** News covers this many days; older announcements are on each course's page. */
-    const val NEWS_DAYS = 14
+    /** News covers this many days (a month); older announcements are on each course's page. */
+    const val NEWS_DAYS = 30
     private const val NEWS_PAGE = 50
-    /** A safety stop: 500 discussions in two weeks would be a forum posting to many groups every day. */
+    /** A safety stop: 500 discussions in a month would be a forum posting to many groups every day. */
     private const val NEWS_MAX_PAGES = 10
 
     /** Like Future.get(), but rethrows the task's own exception so the error handling below still sees it. */
@@ -210,6 +210,14 @@ object SpectrumSync {
         )
     }
 
+    /**
+     * A course-wide announcement meant for other occurrences only: its subject names occurrences, none of
+     * them [occ], or, when the subject names none, its opening ("Dear OCC7, OCC8, and OCC9 Students")
+     * does. One naming the user's occurrence, or none at all, is for everyone.
+     */
+    fun addressedToOthers(subject: String, text: String, occ: Int): Boolean =
+        AttendanceMatch.occurrences(subject).ifEmpty { AttendanceMatch.occurrences(text.take(160)) }.let { occ > 0 && it.isNotEmpty() && occ !in it }
+
     /** "GROUP 10 2026/2027_1", idnumber "2026@2027@1@10" (session@semester@occurrence) → 10. */
     fun occurrenceOf(group: JSONObject): Int? =
         group.optString("idnumber").split('@').takeIf { it.size == 4 }?.last()?.toIntOrNull()
@@ -240,6 +248,10 @@ object SpectrumSync {
             }
             SpectrumStore.write(c, "occurrences", occurrences.toString())
         }
+        // The user's occurrence in each course: from the groups just read, else the timetable's.
+        val savedOccurrences = SpectrumStore.occurrences(c)
+        val timetable = Timetable.load(c)
+        fun myOcc(code: String) = savedOccurrences.optInt(code).takeIf { it > 0 } ?: timetable.courses.firstOrNull { it.code == code }?.occ ?: 0
         val items = mutableListOf<JSONObject>()
         for ((f, request) in requests) {
             val course = byId.getValue(f.optInt("course"))
@@ -247,18 +259,22 @@ object SpectrumSync {
             for (d in discussions.objects()) {
                 val created = d.optLong("created").takeIf { it > 0 } ?: d.optLong("timemodified")
                 if (created < since) continue
+                val subject = plain(d.optString("subject").ifBlank { d.optString("name") })
+                val group = d.optInt("groupid", -1)
                 items += JSONObject()
                     .put("id", d.optInt("discussion", d.optInt("id")))
                     .put("courseId", course.getInt("id"))
                     .put("code", course.getString("code"))
                     .put("course", course.getString("name"))
-                    .put("subject", plain(d.optString("subject").ifBlank { d.optString("name") }))
+                    .put("subject", subject)
                     .put("html", d.optString("message"))
                     .put("author", d.optString("userfullname"))
                     .put("time", created * 1000)
                     .put("attachments", JSONArray((d.optJSONArray("attachments") ?: JSONArray()).objects().map { file(it.optString("filename"), it) }))
-                    // Posted to everyone (group -1), to the user's group, or in a course where they have none.
-                    .put("forMe", d.optInt("groupid", -1).let { g -> g <= 0 || myGroups[course.getInt("id")]?.contains(g) != false })
+                    // Posted to the user's group, or in a course where they have none, or to everyone (group -1)
+                    // unless it's addressed to other occurrences only ("… for OCC7, OCC8 and OCC9").
+                    .put("forMe", if (group > 0) myGroups[course.getInt("id")]?.contains(group) != false
+                        else !addressedToOthers(subject, plain(d.optString("message")), myOcc(course.getString("code"))))
             }
         }
         // "Post a copy to all groups" creates one identical discussion per group, and with visible

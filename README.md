@@ -111,8 +111,8 @@ It is a personal replacement for UMscout that keeps everything on the phone:
   `moodle_mobile_app`) inside `LoginActivity`; the `moodlemobile://token=` reply is
   checked against our passport. The token is stored AES-GCM encrypted with an Android
   Keystore key (`SecureStore`) and is only ever sent to spectrum.um.edu.my.
-- `SpectrumSync` fetches courses, announcements from the past 14 days (news forums; older ones
-  are on each course page; other occurrences' folded), deadlines (calendar action events), today's
+- `SpectrumSync` fetches courses, announcements from the past 30 days (news forums; older ones
+  are on each course page; other occurrences' behind News's For me / All switch), deadlines (calendar action events), today's
   attendance sessions, and grades (alongside the sync, never holding it up); it runs every 30 min (`SpectrumSyncJob`),
   every 10 min during timetabled classes (`AttendanceWatch`), and sets reminders 24 h and
   2 h before each deadline (`Reminders`).

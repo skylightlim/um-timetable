@@ -18,6 +18,35 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (Show more crashed the app; News for my occurrence only, a month, same-size posts)
+
+**Asked for:** For me to show only the user's occurrence, including course-wide posts that concern
+it; the newest post no larger than the rest (as 1m's rows); a shorter drop-down animation; Show more
+"does not work"; News covering a month.
+
+**Found (Show more):** it crashed the app. The phone's crash log (`dumpsys dropbox --print
+data_app_crash`) had four crashes at 00:24–00:28: `ClassCastException: TextView cannot be cast to
+ViewParent` in `Motion.resize`, which walked up from the tapped view by casting it to `ViewParent`.
+The folds pass a row (a ViewGroup, so it worked); Show more passes its TextView. The bug is in
+1.1.0-beta.1 as published. The crashes were in the foreground, so the app wasn't marked bad.
+
+**Change:**
+- `Motion.resize` walks up from the view itself (`it.parent as? View`). The debug renderer's
+  `--ez tapMore true` taps the first Show more before drawing; it now runs without crashing.
+- Folds open and close faster: `Motion.QUICK` (about 250 ms, was SMOOTH's 420 ms) for the resize,
+  `Motion.FOLD` (about 340 ms, was BOUNCY's 640 ms) for the chevron.
+- `SpectrumSync.addressedToOthers`: a course-wide announcement whose subject names occurrences, none of
+  them the user's (or, if the subject names none, whose first 160 characters do: "Dear OCC7, OCC8,
+  and OCC9 Students") is `forMe: false`. Posts naming the user's occurrence or none at all stay.
+  Group posts are unchanged. Because the sync sets it, the News badge and notifications follow too.
+  Covered in `NamesTest.announcementsForOtherOccurrences`.
+- `NEWS_DAYS` 14 → 30, and the News texts say "past month". After a sync: 10 announcements (nothing
+  older yet: teaching began 5 Oct), 4 for other occurrences, For me · 6.
+- News has no lead story: every post is the same ruled row, newest first, opening in place.
+
+**Checked:** a full sync (debug receiver), then News rendered closed (light) and with everything open
+and Show more tapped (dark).
+
 ## 14 October 2026 (News as in redesign 1m; pull to sync)
 
 **Asked for:** News laid out as 1m, synced as on Grades.

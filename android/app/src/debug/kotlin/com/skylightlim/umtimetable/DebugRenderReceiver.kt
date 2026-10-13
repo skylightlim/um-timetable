@@ -60,6 +60,12 @@ class DebugRenderReceiver : BroadcastReceiver() {
             }
             else -> DayScreen.build(host, intent.getIntExtra("day", homeDay(Timetable.load(context), now)))
         }
+        // --ez tapMore true: taps the first "Show more" before drawing, to check the toggle itself.
+        if (intent.getBooleanExtra("tapMore", false)) {
+            fun find(v: View): View? = if (v is android.widget.TextView && v.text.toString() == "Show more") v
+                else (v as? android.view.ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { find(g.getChildAt(it)) } }
+            Log.i("UMTimetable", "debug render: tapMore ${find(page)?.performClick()}")
+        }
         val frame = FrameLayout(c).apply {
             setBackgroundColor(host.ui.p.ground)
             // A sheet runs edge to edge, from the bottom of the screen.
