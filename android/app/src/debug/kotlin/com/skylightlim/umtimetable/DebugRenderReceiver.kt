@@ -39,6 +39,8 @@ class DebugRenderReceiver : BroadcastReceiver() {
         if (intent.hasExtra("bench")) return bench(context, intent.getIntExtra("bench", 20))
         if (intent.getStringExtra("view") == "icon") return icon(context)
         if (intent.getStringExtra("view") == "tabicons") return tabIcons(context)
+        if (intent.getStringExtra("view") == "duel") return duel(context, intent.getBooleanExtra("dark", false))
+        if (intent.getStringExtra("view") == "duelloop") return duelLoop(context)
         val view = intent.getStringExtra("view") ?: "files"
         val dark = intent.getBooleanExtra("dark", false)
         val width = intent.getIntExtra("width", context.resources.displayMetrics.widthPixels)
@@ -143,6 +145,48 @@ class DebugRenderReceiver : BroadcastReceiver() {
         fun session(i: Int, startMin: Long, lengthMin: Long, listed: Boolean) = org.json.JSONObject().put("code", code(i)).put("name", "Attendance OCC 1")
             .put("start", now + startMin * 60_000L).put("end", now + (startMin + lengthMin) * 60_000L).put("listed", listed).put("url", "")
         return SpectrumScreens.due(host, due, listOf(session(0, -20, 120, true), session(1, 50, 60, true), session(2, -10, 60, false)))
+    }
+
+    /** The cow and horse duel at steps of the pull (duel.png), the last with its spark half grown. */
+    private fun duel(context: Context, dark: Boolean) {
+        val c = ContextThemeWrapper(context, R.style.Theme_UMTimetable)
+        val ui = Ui(c, Scheme.load(context).applyTo(if (dark) Palette.DARK else Palette.LIGHT), Fonts(c))
+        val steps = listOf(0f, 0.25f, 0.4f, 0.55f, 0.75f, 0.9f, 1f)
+        val view = DuelView(ui)
+        view.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        view.layout(0, 0, view.measuredWidth, view.measuredHeight)
+        val pad = ui.dp(8)
+        val sheet = Bitmap.createBitmap(view.measuredWidth + pad * 2, (view.measuredHeight + pad) * steps.size + pad, Bitmap.Config.ARGB_8888).apply { eraseColor(ui.p.ground) }
+        val canvas = Canvas(sheet)
+        steps.forEachIndexed { i, p ->
+            view.progress = p
+            view.sparkAge = if (p >= 1f) 0.35f else 2f
+            canvas.save(); canvas.translate(pad.toFloat(), (pad + i * (view.measuredHeight + pad)).toFloat()); view.draw(canvas); canvas.restore()
+        }
+        save(context, sheet, "duel${if (dark) "-dark" else ""}")
+    }
+
+    /** The duel's loading loop (duelloop.png): a frame every 100 ms for 1.2 s, then [DuelView.finish]. */
+    private fun duelLoop(context: Context) {
+        val pending = goAsync()
+        val c = ContextThemeWrapper(context, R.style.Theme_UMTimetable)
+        val ui = Ui(c, Scheme.load(context).applyTo(Palette.LIGHT), Fonts(c))
+        val view = DuelView(ui)
+        view.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        view.layout(0, 0, view.measuredWidth, view.measuredHeight)
+        val frames = 14
+        val cols = 2
+        val w = view.measuredWidth; val h = view.measuredHeight
+        val sheet = Bitmap.createBitmap(w * cols, h * ((frames + cols - 1) / cols), Bitmap.Config.ARGB_8888).apply { eraseColor(ui.p.ground) }
+        val canvas = Canvas(sheet)
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        view.loop()
+        val start = android.os.SystemClock.uptimeMillis()
+        for (i in 0 until frames) handler.postAtTime({
+            if (i == 12) view.finish()
+            canvas.save(); canvas.translate((i % cols * w).toFloat(), (i / cols * h).toFloat()); view.draw(canvas); canvas.restore()
+            if (i == frames - 1) { view.stop(); save(context, sheet, "duelloop"); pending.finish() }
+        }, start + i * 100L)
     }
 
     /**

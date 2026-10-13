@@ -161,6 +161,18 @@ object SpectrumScreens {
         }
     }
 
+    /** Waiting on Spectrum: the cow and the horse fighting over [text]. */
+    private fun loading(ui: Ui, text: String) = ui.column().apply {
+        gravity = Gravity.CENTER_HORIZONTAL
+        setPadding(ui.dp(8), ui.dp(28), ui.dp(8), ui.dp(28))
+        addView(DuelView(ui).apply { loopWhileShown = true })
+        addView(ui.text(text, 15f, ui.p.muted), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(10) })
+    }
+
+    /** What to show while a page has nothing: [done] once Spectrum has synced, else the loader. */
+    private fun emptyOrLoading(ui: Ui, done: String): View =
+        if (SpectrumStore.lastSync(ui.context) > 0) empty(ui, done) else loading(ui, "Syncing with Spectrum…")
+
     private fun empty(ui: Ui, text: String) = ui.text(text, 15f, ui.p.muted).apply {
         gravity = Gravity.CENTER
         setPadding(ui.dp(8), ui.dp(32), ui.dp(8), ui.dp(32))
@@ -190,7 +202,7 @@ object SpectrumScreens {
         backgroundTip(h, page)
         attendance(h, page, sessions)
         if (items.isEmpty()) {
-            page.addView(empty(ui, if (SpectrumStore.lastSync(ui.context) > 0) "Nothing due on Spectrum right now." else "Syncing with Spectrum…"))
+            page.addView(emptyOrLoading(ui, "Nothing due on Spectrum right now."))
             return page
         }
         // Ruled inside only, as in 1i: lines between the rows and down the middle, none above or below.
@@ -331,7 +343,7 @@ object SpectrumScreens {
         }
         problem(h, page)
         if (all.isEmpty()) {
-            page.addView(empty(ui, if (SpectrumStore.lastSync(ui.context) > 0) "Spectrum lists no grade items for your courses." else "Syncing with Spectrum…"))
+            page.addView(emptyOrLoading(ui, "Spectrum lists no grade items for your courses."))
             return page
         }
         val byCourse = all.groupBy { it.getInt("courseId") }
@@ -505,11 +517,11 @@ object SpectrumScreens {
         val list = if (showAll) all else mine
         if (list.isEmpty()) {
             val synced = SpectrumStore.lastSync(ui.context) > 0
-            page.addView(empty(ui, when {
-                !synced -> "Syncing with Spectrum…"
-                all.isEmpty() -> "No announcements in the past month."
-                else -> "Nothing for your occurrence in the past month. All shows the others' too."
-            }))
+            page.addView(when {
+                !synced -> loading(ui, "Syncing with Spectrum…")
+                all.isEmpty() -> empty(ui, "No announcements in the past month.")
+                else -> empty(ui, "Nothing for your occurrence in the past month. All shows the others' too.")
+            })
             if (synced) page.addView(olderNews(h))
             return page
         }
@@ -599,7 +611,7 @@ object SpectrumScreens {
         h.openCourse?.let { id -> courses.firstOrNull { it.getInt("id") == id }?.let { return coursePage(h, it) } }
         problem(h, page)
         backgroundTip(h, page)
-        if (courses.isEmpty()) page.addView(empty(ui, if (SpectrumStore.lastSync(ui.context) > 0) "No current courses found on Spectrum." else "Syncing with Spectrum…"))
+        if (courses.isEmpty()) page.addView(emptyOrLoading(ui, "No current courses found on Spectrum."))
         val occurrences = SpectrumStore.occurrences(ui.context)
         // Ruled inside only: a line between courses, none above the first or below the last.
         for ((n, c) in courses.withIndex()) {
@@ -647,7 +659,7 @@ object SpectrumScreens {
             return page
         }
         val sections = h.courseContents(id) ?: run {
-            page.addView(empty(ui, "Loading the course page…"))
+            page.addView(loading(ui, "Loading the course page…"))
             return page
         }
         val folder = code.ifEmpty { "Spectrum" }

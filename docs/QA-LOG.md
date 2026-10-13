@@ -18,6 +18,32 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (the cow and the horse: loader and pull-to-sync mark)
+
+**Asked for:** a monochrome cow and horse (after two reference pictures, any style) that draw swords
+and fight, as the loading and refresh mark; their swords meeting means the loading has finished, or
+the pull has gone far enough to sync. (马大牛逼: the horse and the cow are in the app's name.)
+
+**Change** (`DuelView`, `PullIndicator`, `SpectrumScreens.loading`):
+- `DuelView` draws both in one colour of rounded line art (2.2-unit strokes, the text colour, the page
+  colour masking what's behind heads and necks) in a 136 × 60 box at 124 × 56dp. The cow at the left,
+  facing right: horns, square muzzle with nostrils, a solid spot, tufted tail. The horse at the right,
+  facing left: long head, solid mane, ear, saddle, flowing solid tail. Each raises a front hoof with a
+  sword (pommel, grip, crossguard, blade).
+- `progress` 0–1: 0.15–0.5 the blades come out of the hilts, held back over the shoulders; 0.5–1 the
+  hooves rise, the animals lean in 2.5 units and the swords sweep forward until the blades cross at the
+  middle (68, 11), where an eight-ray spark flies out and fades (420 ms) each time they cross.
+- Pull to sync: the mark replaces the turning refresh icon; the pull's fraction of the 72dp threshold
+  is the progress, so the blades cross (and the existing vibration bumps) exactly where letting go
+  syncs. Syncing: `loop()` (swing in, clash with a spark, back to guard, every 0.9 s). Done:
+  `finish()`, one last clash with its spark, then "Synced" and the page goes back up.
+- Loading: "Syncing with Spectrum…" (Due, Grades, News, Courses before the first sync) and "Loading
+  the course page…" show the duel fighting above the text while it's on screen.
+- Debug: `--es view duel [--ez dark true]` draws the pull steps; `--es view duelloop` the loop and finish.
+
+**Checked:** the pull steps (light, dark) and the loop. The first draft had the two nose to nose with
+the swords hidden behind the horse's head; they now stand at the ends and the swords draw over all.
+
 ## 14 October 2026 (three accent themes in Settings)
 
 **Asked for:** a choice of three themes in Settings, the current one as the default plus two more.

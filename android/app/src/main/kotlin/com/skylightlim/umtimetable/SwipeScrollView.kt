@@ -1,6 +1,5 @@
 package com.skylightlim.umtimetable
 
-import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.view.Gravity
@@ -8,7 +7,6 @@ import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
-import android.view.animation.LinearInterpolator
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import com.skylightlim.umtimetable.Motion.spring
@@ -140,7 +138,7 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
             MotionEvent.ACTION_MOVE -> {
                 page.animate().cancel()
                 page.translationY = d
-                pullIndicator?.pulled(d, d >= pullDistance)
+                pullIndicator?.pulled(d, d / pullDistance)
                 if ((d >= pullDistance) != past) {
                     past = !past
                     Haptics.threshold(this, past)
@@ -201,22 +199,22 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
 }
 
 /**
- * What pulling a page down uncovers: a refresh icon that turns with the pull and spins while the sync
- * runs, what letting go will do, and when Spectrum last synced ([lastSync]).
+ * What pulling a page down uncovers: the cow and the horse ([DuelView]) drawing their swords as the
+ * page comes down, crossing them when it's far enough to sync, fighting while the sync runs and
+ * clashing once more when it's done; with what letting go will do and when Spectrum last synced.
  */
 @SuppressLint("ViewConstructor")
 class PullIndicator(private val ui: Ui, private val lastSync: () -> String) : LinearLayout(ui.context) {
-    private val icon = ui.icon(R.drawable.ic_refresh, ui.p.muted, 20f)
+    private val duel = DuelView(ui)
     private val title = ui.text("Pull to sync", 13f, ui.p.text, ui.f.bodySemi)
     private val sub = ui.text("", 12f, ui.p.muted)
-    private var spin: ObjectAnimator? = null
 
     init {
         orientation = VERTICAL
         gravity = Gravity.CENTER_HORIZONTAL
-        setPadding(0, ui.dp(12), 0, ui.dp(12))
-        addView(icon)
-        addView(title, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(6) })
+        setPadding(0, ui.dp(10), 0, ui.dp(12))
+        addView(duel)
+        addView(title, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(4) })
         addView(sub, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(2) })
         alpha = 0f
     }
@@ -227,37 +225,23 @@ class PullIndicator(private val ui: Ui, private val lastSync: () -> String) : Li
         alpha = if (height == 0) 0f else (y / height).coerceIn(0f, 1f)
     }
 
-    /** Being pulled, [y] down; [armed] past the threshold. */
-    fun pulled(y: Float, armed: Boolean) {
-        stopSpin()
-        title.text = if (armed) "Release to sync" else "Pull to sync"
+    /** Being pulled, [y] down, [fraction] of the way to syncing (1 and over: let go to sync). */
+    fun pulled(y: Float, fraction: Float) {
+        duel.stop()
+        duel.progress = fraction
+        title.text = if (fraction >= 1f) "Release to sync" else "Pull to sync"
         sub.text = lastSync()
-        icon.imageTintList = android.content.res.ColorStateList.valueOf(if (armed) ui.p.accentText else ui.p.muted)
-        icon.rotation = y * 2f
         follow(y)
     }
 
     fun syncing() {
         title.text = "Syncing…"
-        icon.imageTintList = android.content.res.ColorStateList.valueOf(ui.p.accentText)
-        stopSpin()
-        if (Motion.enabled) spin = ObjectAnimator.ofFloat(icon, View.ROTATION, icon.rotation, icon.rotation + 360f).apply {
-            duration = 800
-            repeatCount = ObjectAnimator.INFINITE
-            interpolator = LinearInterpolator()
-            start()
-        }
+        duel.loop()
     }
 
     fun done() {
-        stopSpin()
+        duel.finish()
         title.text = "Synced"
         sub.text = lastSync()
-        icon.imageTintList = android.content.res.ColorStateList.valueOf(ui.p.muted)
-    }
-
-    private fun stopSpin() {
-        spin?.cancel()
-        spin = null
     }
 }
