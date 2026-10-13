@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Due tab's clipboard, chosen: it settles and the tick draws itself. At rest it's ic_tab_due. -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <aapt:attr name="android:drawable">
+        <vector android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+            <group android:name="board" android:pivotX="12" android:pivotY="12">
+                <path android:pathData="M7.5,4.5 h9.0 a2.5,2.5 0 0 1 2.5,2.5 v11.0 a2.5,2.5 0 0 1 -2.5,2.5 h-9.0 a2.5,2.5 0 0 1 -2.5,-2.5 v-11.0 a2.5,2.5 0 0 1 2.5,-2.5 z M9,4.5v-1h6v1" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                <path android:name="tick" android:pathData="M8.8,12.3l2.1,2.1 4.4,-4.4" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
+            </group>
+        </vector>
+    </aapt:attr>
+    <target android:name="board"><aapt:attr name="android:animation">
+        <set>
+            <objectAnimator android:duration="300" android:interpolator="@android:anim/overshoot_interpolator" android:propertyName="scaleX" android:valueFrom="0.9" android:valueTo="1" android:valueType="floatType" />
+            <objectAnimator android:duration="300" android:interpolator="@android:anim/overshoot_interpolator" android:propertyName="scaleY" android:valueFrom="0.9" android:valueTo="1" android:valueType="floatType" />
+        </set>
+    </aapt:attr></target>
+    <!-- Empty from the start, then drawn stroke by stroke after 120 ms. -->
+    <target android:name="tick"><aapt:attr name="android:animation">
+        <objectAnimator android:duration="420"><propertyValuesHolder android:propertyName="trimPathEnd">
+            <keyframe android:fraction="0" android:value="0" /><keyframe android:fraction="0.28" android:value="0" />
+            <keyframe android:fraction="1" android:value="1" android:interpolator="@android:interpolator/fast_out_slow_in" />
+        </propertyValuesHolder></objectAnimator>
+    </aapt:attr></target>
+</animated-vector>

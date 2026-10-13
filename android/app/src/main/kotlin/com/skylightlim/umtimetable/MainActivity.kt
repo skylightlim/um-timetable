@@ -569,9 +569,10 @@ class MainActivity : Activity(), SpectrumHost {
             }
             badgeCounts[id] = n
         }
-        // The pill glides to the lit tab, whose icon gives a small hop.
+        // The pill glides to the lit tab, whose icon plays its little scene: Day's list writes itself in,
+        // Grades' medal and ribbon meet, Due's tick draws, News' bell rings, a page drops into Courses' folder.
         val shown = TABS[lit].first
-        if (tabShown != null && tabShown != shown) tabViews[shown]?.second?.let { Motion.pop(it, 0.7f) }
+        if (tabShown != null && tabShown != shown && Motion.enabled) (tabViews[shown]?.second?.drawable as? android.graphics.drawable.AnimatedVectorDrawable)?.start()
         tabShown = shown
         tabGlider.moveTo(lit, p.surface)
     }
@@ -764,11 +765,12 @@ class MainActivity : Activity(), SpectrumHost {
         private const val REQ_MAYA = 3
         private const val REQ_TIMEEDIT = 4
         private val TABS = listOf(
-            Triple("day", "Day", R.drawable.ic_tab_day),
-            Triple("grades", "Grades", R.drawable.ic_tab_grades),
-            Triple("due", "Due", R.drawable.ic_tab_due),
-            Triple("news", "News", R.drawable.ic_tab_news),
-            Triple("files", "Courses", R.drawable.ic_tab_courses),
+            // Animated icons (res/drawable/avd_tab_*): at rest each is its ic_tab_* drawing.
+            Triple("day", "Day", R.drawable.avd_tab_day),
+            Triple("grades", "Grades", R.drawable.avd_tab_grades),
+            Triple("due", "Due", R.drawable.avd_tab_due),
+            Triple("news", "News", R.drawable.avd_tab_news),
+            Triple("files", "Courses", R.drawable.avd_tab_courses),
         )
         /** The Spectrum tabs' names, shown large in the top bar. */
         private val PAGE_TITLES = mapOf("grades" to "Grades", "due" to "Due", "news" to "News", "files" to "Courses")

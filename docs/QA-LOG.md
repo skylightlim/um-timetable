@@ -18,6 +18,25 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (animated tab icons)
+
+**Asked for:** the tab icons animated when their tab is chosen: Day's rearranging, Grades' in two parts,
+a tick appearing on Due, News' ringing, Courses saving a file into the folder.
+
+**Change** (`res/drawable/avd_tab_*.xml`, `MainActivity.renderTabs`): each tab icon is an animated
+vector whose resting frame is its old `ic_tab_*` drawing; it plays once when its tab becomes the lit
+one (by tap or swipe; not on opening the app; not with animations off), in place of the old hop.
+- Day (≈400 ms): the three rows write themselves in, 70 ms apart (dot, then the line drawn from the
+  left while the row slides 3 units in).
+- Grades (420 ms): the medal comes down and the ribbon up, overshooting a little as they meet.
+- Due (420 ms): the clipboard settles from 90%, then the tick draws itself.
+- News (720 ms): the bell swings from its top (-16°, 14°, -9°, 5°) with the clapper lagging.
+- Courses (640 ms): a page drops in from above, waits, then slides into the folder (clipped above the
+  folder's top edge, so it vanishes behind it); the folder dips to 88% as it lands.
+Delays are flat keyframes from 0 so nothing shows before its turn. `--es view tabicons` draws a
+contact sheet of every animation, a frame each 80 ms (the first sheet showed the Courses page's edge
+peeking in at the top for two frames; it now starts further up).
+
 ## 14 October 2026 (swipe across the tab bar)
 
 **Asked for:** the bottom bar scrollable too, one section per swipe left or right.

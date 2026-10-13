@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Courses tab's folder, chosen: a page drops in from above and slides into the folder (it's clipped
+  to the space above the folder's top, so it vanishes behind it), and the folder dips as it lands.
+  At rest it's ic_tab_courses: the page waits out of sight below the clip.
+-->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <aapt:attr name="android:drawable">
+        <vector android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+            <group>
+                <clip-path android:pathData="M0,0h24v6.8h-24z" />
+                <group android:name="page" android:translateY="9">
+                    <path android:pathData="M9.6,0.6h3.4l1.8,1.8v4.4h-5.2z" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                </group>
+            </group>
+            <group android:name="folder" android:pivotX="12" android:pivotY="19.5">
+                <path android:pathData="M3.5,7.5a2,2 0 0,1 2,-2h4l2,2h7a2,2 0 0,1 2,2v8a2,2 0 0,1 -2,2h-13a2,2 0 0,1 -2,-2z" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
+            </group>
+        </vector>
+    </aapt:attr>
+    <target android:name="page"><aapt:attr name="android:animation">
+        <objectAnimator android:duration="640"><propertyValuesHolder android:propertyName="translateY">
+            <keyframe android:fraction="0" android:value="-9" />
+            <keyframe android:fraction="0.45" android:value="0" android:interpolator="@android:interpolator/fast_out_slow_in" />
+            <keyframe android:fraction="0.55" android:value="0" />
+            <keyframe android:fraction="0.85" android:value="9" android:interpolator="@android:interpolator/fast_out_linear_in" />
+            <keyframe android:fraction="1" android:value="9" />
+        </propertyValuesHolder></objectAnimator>
+    </aapt:attr></target>
+    <target android:name="folder"><aapt:attr name="android:animation">
+        <objectAnimator android:duration="640"><propertyValuesHolder android:propertyName="scaleY">
+            <keyframe android:fraction="0" android:value="1" />
+            <keyframe android:fraction="0.78" android:value="1" />
+            <keyframe android:fraction="0.88" android:value="0.88" />
+            <keyframe android:fraction="1" android:value="1" android:interpolator="@android:anim/overshoot_interpolator" />
+        </propertyValuesHolder></objectAnimator>
+    </aapt:attr></target>
+</animated-vector>

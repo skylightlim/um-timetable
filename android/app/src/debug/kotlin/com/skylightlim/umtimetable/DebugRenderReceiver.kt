@@ -37,6 +37,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.hasExtra("bench")) return bench(context, intent.getIntExtra("bench", 20))
         if (intent.getStringExtra("view") == "icon") return icon(context)
+        if (intent.getStringExtra("view") == "tabicons") return tabIcons(context)
         val view = intent.getStringExtra("view") ?: "files"
         val dark = intent.getBooleanExtra("dark", false)
         val width = intent.getIntExtra("width", context.resources.displayMetrics.widthPixels)
@@ -139,6 +140,44 @@ class DebugRenderReceiver : BroadcastReceiver() {
         fun session(i: Int, startMin: Long, lengthMin: Long, listed: Boolean) = org.json.JSONObject().put("code", code(i)).put("name", "Attendance OCC 1")
             .put("start", now + startMin * 60_000L).put("end", now + (startMin + lengthMin) * 60_000L).put("listed", listed).put("url", "")
         return SpectrumScreens.due(host, due, listOf(session(0, -20, 120, true), session(1, 50, 60, true), session(2, -10, 60, false)))
+    }
+
+    /**
+     * The tab icons' animations as a contact sheet (tabicons.png): one row per icon, a frame every 80 ms
+     * from the start. Drawn on a software canvas, so each animation runs on this thread.
+     */
+    private fun tabIcons(context: Context) {
+        val pending = goAsync()
+        val ids = listOf(R.drawable.avd_tab_day, R.drawable.avd_tab_grades, R.drawable.avd_tab_due, R.drawable.avd_tab_news, R.drawable.avd_tab_courses)
+        val times = (0..9).map { it * 80L }
+        val cell = 120
+        val sheet = Bitmap.createBitmap(cell * times.size, cell * ids.size, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFFEEF1F4.toInt()) }
+        val canvas = Canvas(sheet)
+        val icons = ids.map { id ->
+            (context.getDrawable(id) as android.graphics.drawable.AnimatedVectorDrawable).apply {
+                setBounds(0, 0, cell - 24, cell - 24)
+                setTint(0xFF141A22.toInt())
+            }
+        }
+        // A first software draw moves each animation onto this thread; then start them together.
+        val scratch = Canvas(Bitmap.createBitmap(cell, cell, Bitmap.Config.ARGB_8888))
+        icons.forEach { it.start(); it.draw(scratch) }
+        val start = android.os.SystemClock.uptimeMillis()
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        times.forEachIndexed { col, t ->
+            handler.postAtTime({
+                icons.forEachIndexed { row, d ->
+                    canvas.save()
+                    canvas.translate(col * cell + 12f, row * cell + 12f)
+                    d.draw(canvas)
+                    canvas.restore()
+                }
+                if (col == times.lastIndex) {
+                    save(context, sheet, "tabicons")
+                    pending.finish()
+                }
+            }, start + t)
+        }
     }
 
     private fun save(context: Context, bitmap: Bitmap, name: String) {
