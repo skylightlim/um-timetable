@@ -17,6 +17,27 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 `view` is day, week, due, news or files (the Courses tab). Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 13 October 2026 (signed out several times: why)
+
+**Asked:** the app signed out several times today; accidental taps or a bug?
+
+**Found** (Android's events log, the app's files, the package's install time): every one had a cause
+outside the app's own logic: app data cleared twice (the reset checks; "stop … due to clear data"),
+the Courses tab's **Sign out** link once (Spectrum's data and settings wiped with the app running; it's
+the only code that does that), and the move to the beta (uninstall, then a fresh install at 16:59).
+
+**Weak spots fixed anyway:**
+- **Sign out asks first** ("Sign out of Spectrum?", saying what it removes; the timetable stays). It
+  was a bare link under "Import timetable from MAYA instead", just above the tab bar.
+- **A Keystore hiccup no longer signs the user out:** `SecureStore.get` deleted the token on *any*
+  decryption error. Now only a value the key can never open (wrong key, key gone or invalidated) is
+  dropped; a passing error keeps it for the next try, and errors are logged. `get` no longer makes a
+  new key (which would have orphaned the stored token).
+- **The app remembers why it last signed out** (`SpectrumStore.noteSignOut`, in prefs that signing out
+  doesn't clear); the Connect Spectrum card says "Signed out today 16:03: you tapped Sign out." or
+  "…: the phone could no longer open the saved sign-in." Clearing data or reinstalling erases it too,
+  so a card with no such line after a sign-out means one of those.
+
 ## 13 October 2026 (1.1.0-beta.1: first public beta)
 
 - **Version** 1.1.0-beta.1 (versionCode 2).

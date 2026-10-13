@@ -3,6 +3,7 @@ package com.skylightlim.umtimetable
 import android.Manifest
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
+import android.app.AlertDialog
 import android.app.Activity
 import android.content.Intent
 import android.content.res.ColorStateList
@@ -559,7 +560,18 @@ class MainActivity : Activity(), SpectrumHost {
     @Suppress("DEPRECATION")
     override fun signIn() = startActivityForResult(Intent(this, LoginActivity::class.java), REQ_LOGIN)
 
+    /** One tap on a link at the bottom of Courses shouldn't wipe the sign-in: ask first. */
     override fun signOut() {
+        AlertDialog.Builder(this)
+            .setTitle("Sign out of Spectrum?")
+            .setMessage("The app forgets your sign-in and what it saved from Spectrum: courses, announcements, deadlines and marks. Your timetable stays. TimeEdit is signed out too.")
+            .setPositiveButton("Sign out") { _, _ -> signOutNow() }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun signOutNow() {
+        SpectrumStore.noteSignOut(this, "you tapped Sign out")
         SpectrumStore.signOut(this)
         SpectrumSyncJob.cancel(this)
         Reminders.schedule(this)

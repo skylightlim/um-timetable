@@ -78,7 +78,7 @@ object SpectrumStore {
     private fun prefs(c: Context) = c.getSharedPreferences("spectrum", Context.MODE_PRIVATE)
     private fun dir(c: Context) = File(c.noBackupFilesDir, "spectrum").apply { mkdirs() }
 
-    fun token(c: Context): String? = SecureStore.get(c, "token")
+    fun token(c: Context): String? = SecureStore.get(c, "token") { noteSignOut(c, "the phone could no longer open the saved sign-in") }
     fun signedIn(c: Context) = SecureStore.has(c, "token")
     fun userId(c: Context) = prefs(c).getInt("userid", 0)
     fun name(c: Context): String = prefs(c).getString("fullname", "") ?: ""
@@ -92,6 +92,21 @@ object SpectrumStore {
             .putString("fullname", siteInfo.optString("fullname"))
             .putStringSet("functions", fns)
             .apply()
+    }
+
+    // Why the sign-in last ended, kept apart from what signing out deletes (the user wondered whether
+    // sign-outs were their own taps or a bug).
+    private fun account(c: Context) = c.getSharedPreferences("account", Context.MODE_PRIVATE)
+
+    fun noteSignOut(c: Context, why: String) {
+        account(c).edit().putLong("signedOutAt", System.currentTimeMillis()).putString("signedOutWhy", why).apply()
+        android.util.Log.i("UMTimetable", "signed out: $why")
+    }
+
+    /** "today 16:03: you tapped Sign out", or null if the app has never been signed out. */
+    fun lastSignOut(c: Context): String? {
+        val at = account(c).getLong("signedOutAt", 0).takeIf { it > 0 } ?: return null
+        return "${dayWord(at, System.currentTimeMillis())} ${hm(at)}: ${account(c).getString("signedOutWhy", "")}"
     }
 
     fun signOut(c: Context) {

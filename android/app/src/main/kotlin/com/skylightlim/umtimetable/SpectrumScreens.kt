@@ -121,6 +121,7 @@ object SpectrumScreens {
         val ui = h.ui
         addView(ui.text("Connect Spectrum", 20f, ui.p.text, ui.f.bodyBold))
         addView(ui.text("$what Sign in once with your SiswaMail. Your login stays on this phone, and the app only talks to spectrum.um.edu.my.", 14.5f, ui.p.muted), ui.wide(top = 6f, bottom = 16f))
+        SpectrumStore.lastSignOut(ui.context)?.let { addView(ui.text("Signed out $it.", 13f, ui.p.faint), ui.wide(top = -8f, bottom = 14f)) }
         addView(button(ui, "Sign in to Spectrum") { h.signIn() })
     }
 

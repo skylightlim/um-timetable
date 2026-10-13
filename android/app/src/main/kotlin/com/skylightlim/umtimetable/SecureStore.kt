@@ -3,8 +3,12 @@ package com.skylightlim.umtimetable
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.util.Base64
+import android.util.Log
 import java.security.KeyStore
+import java.security.UnrecoverableKeyException
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -24,9 +28,13 @@ object SecureStore {
     /** Whether a value is stored, without decrypting it. */
     fun has(context: Context, name: String) = plain.containsKey(name) || context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).contains(name)
 
-    private fun key(): SecretKey {
+    private class MissingKey : Exception("no key")
+
+    /** The Keystore key; made when [create] and there's none yet (only when storing a value). */
+    private fun key(create: Boolean = true): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (ks.getEntry(ALIAS, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
+        if (!create) throw MissingKey()
         val gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
         gen.init(
             KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
@@ -50,18 +58,29 @@ object SecureStore {
         plain[name] = value
     }
 
-    fun get(context: Context, name: String): String? {
+    /**
+     * The value, or null. A value the key can never open (the key is gone, reset or invalidated) is
+     * dropped, so has() agrees, and [onDropped] is told. Any other failure (a passing Keystore error)
+     * keeps it for the next try: dropping it then signed the user out for nothing.
+     */
+    fun get(context: Context, name: String, onDropped: () -> Unit = {}): String? {
         plain[name]?.let { return it }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val stored = prefs.getString(name, null) ?: return null
         return runCatching {
             val sealed = Base64.decode(stored, Base64.NO_WRAP)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, sealed, 0, 12))
+            cipher.init(Cipher.DECRYPT_MODE, key(create = false), GCMParameterSpec(128, sealed, 0, 12))
             String(cipher.doFinal(sealed, 12, sealed.size - 12))
         }.onSuccess { plain[name] = it }
-            // A value the key can no longer open (e.g. the key was reset) is dropped, so has() agrees.
-            .onFailure { prefs.edit().remove(name).apply() }
+            .onFailure { e ->
+                val never = e is AEADBadTagException || e is MissingKey || e is KeyPermanentlyInvalidatedException || e is UnrecoverableKeyException
+                Log.w("UMTimetable", "SecureStore: couldn't open $name (${if (never) "dropped" else "kept for the next try"}): $e")
+                if (never) {
+                    prefs.edit().remove(name).apply()
+                    onDropped()
+                }
+            }
             .getOrNull()
     }
 }
