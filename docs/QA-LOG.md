@@ -18,6 +18,29 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (Courses as in redesign 1n; a Settings sheet as in 1p)
+
+**Asked for:** Courses as 1n, and "the other thing" (everything under the course list) in a new
+Settings panel.
+
+**Change:**
+- Courses (`SpectrumScreens.courses`): the COURSES heading alone (no summary, no sync button, no
+  top-bar date; pull to sync), then a ruled list (lines between rows only): 12dp dot, "WIX1002 · Occ 16"
+  (code in the course colour, occurrence faint, from the Spectrum groups or the timetable), the name
+  (15sp semibold), a chevron. A row opens the course page as before. Signed out: the sign-in card only.
+- `SettingsSheet` (1p), from a sliders button at the right of the top bar, which replaces the
+  Auto/Light/Dark pill: Settings (Big Shoulders 34sp) and a close button; APPEARANCE Auto / Light /
+  Dark (the sheet goes and the theme spreads from the button, `Host.setLook`); TIMETABLE "Get timetable
+  from TimeEdit" (with "11 classes a week · Sem 1 2026/27") and "Import from MAYA instead"; NOTIFICATIONS
+  "Deadlines, marks and news" On/Off (Android owns it: off asks for the permission, on opens the app's
+  notification settings); VIBRATION Off / Light / Medium / Strong (choosing plays the new strength);
+  ACCOUNT the student's name, "Spectrum · last synced 00:37" and Sign out (still asks first), or Sign in.
+- `Ui.segmented` is shared (News' For me / All, Appearance, Vibration) and restyles in place.
+- The debug renderer draws the sheet: `--es view settings`.
+
+**Checked:** Courses rendered (light) and Settings (light, dark). The top bar's button isn't in the
+renderer.
+
 ## 14 October 2026 (Show more crashed the app; News for my occurrence only, a month, same-size posts)
 
 **Asked for:** For me to show only the user's occurrence, including course-wide posts that concern

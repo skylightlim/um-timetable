@@ -46,7 +46,10 @@ class MainActivity : Activity(), SpectrumHost {
 
     override lateinit var ui: Ui
     private lateinit var fonts: Fonts
-    private var look = Look.AUTO
+    override var look = Look.AUTO
+        private set
+    /** The top bar's settings button: the Settings sheet opens from it, and a new theme spreads from it. */
+    private var settingsButton: View? = null
 
     override val timetable: Timetable get() = Timetable.load(this)
     override fun now() = Now.current()
@@ -327,25 +330,14 @@ class MainActivity : Activity(), SpectrumHost {
         val tt = timetable
         showTitle(n)
         while (titleRow.childCount > 1) titleRow.removeViewAt(1)
-        val pill = ui.row(gap = 5f)
-        titleRow.addView(pill.apply {
-            background = ui.pressable(ui.shape(p.surface, 99f, p.line), 99f)
-            setPadding(ui.dp(8), ui.dp(4), ui.dp(10), ui.dp(4))
-            contentDescription = "Theme: ${look.label}. Switch to ${look.next.label}."
-            addView(ui.icon(look.icon, p.muted, 14f))
-            addView(ui.text(look.label, 11.5f, p.muted, ui.f.bodySemi))
-            setOnClickListener { switchLook(this) }
-        })
-        // The pill is about 24dp tall; a delegate on the top bar gives it a 48dp touch area.
-        val bar = titleRow.parent as View
-        bar.post {
-            val r = android.graphics.Rect()
-            pill.getHitRect(r)
-            r.offset(titleRow.left, titleRow.top)
-            val grow = maxOf(0, (ui.dp(48) - r.height()) / 2)
-            r.inset(-ui.dp(4), -grow)
-            bar.touchDelegate = android.view.TouchDelegate(r, pill)
-        }
+        // Settings (theme, imports, notifications, vibration, account) open from here, as in redesign 1p.
+        titleRow.addView(FrameLayout(this).apply {
+            background = ui.pressable(ui.shape(Color.TRANSPARENT, 99f), 99f)
+            contentDescription = "Settings"
+            addView(ui.icon(R.drawable.ic_settings, p.text, 20f), FrameLayout.LayoutParams(ui.dp(20), ui.dp(20), Gravity.CENTER))
+            setOnClickListener { Haptics.tick(this); SettingsSheet.show(this@MainActivity, this@MainActivity) }
+            settingsButton = this
+        }, LinearLayout.LayoutParams(ui.dp(44), ui.dp(44)).apply { marginEnd = -ui.dp(10) })
         stripFrame.visibility = if (view == "day" || view == "week") View.VISIBLE else View.GONE
         if (stripFrame.visibility != View.VISIBLE) return
         strip.removeAllViews()
@@ -433,7 +425,7 @@ class MainActivity : Activity(), SpectrumHost {
         val words = when (view) {
             "day" -> listOf(DAY_NAMES[sel], dateText(days))
             "week" -> listOf(weekRange(daysFromToday(tt, n, 1)))
-            "grades", "due", "news" -> emptyList()
+            "grades", "due", "news", "files" -> emptyList()
             else -> listOf("${DAY_NAMES[n.dow]} ${dateText(0)}")
         }
         val today = view == "day" && days == 0
@@ -451,9 +443,12 @@ class MainActivity : Activity(), SpectrumHost {
         Motion.retitle(old, title, pendingSlide * ui.dp(32f).toFloat(), ui.dp(10f).toFloat())
     }
 
-    /** The new theme spreads out from the theme pill, over a picture of the old one. */
-    private fun switchLook(from: View) {
-        Haptics.tick(from)
+    override fun setLook(look: Look) {
+        if (look != this.look) switchLook(settingsButton ?: shell, look)
+    }
+
+    /** The new theme spreads out from [from] (the settings button), over a picture of the old one. */
+    private fun switchLook(from: View, to: Look) {
         val old = shell
         val y = scroll.scrollY
         val picture = if (Motion.enabled && old.width > 0 && old.height > 0)
@@ -461,7 +456,7 @@ class MainActivity : Activity(), SpectrumHost {
         val at = IntArray(2).also(from::getLocationInWindow)
         val cx = at[0] + from.width / 2
         val cy = at[1] + from.height / 2
-        look = look.next
+        look = to
         Look.save(this, look)
         buildShell()
         render(keepScroll = false)

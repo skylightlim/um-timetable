@@ -192,6 +192,43 @@ class Ui(val context: Context, val p: Palette, val f: Fonts) {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(4))
     }
 
+    /**
+     * A segmented switch: options in a row, the chosen one filled in the accent colour. [fill] shares
+     * the row's width equally. A tap restyles it in place, calls [onChoose], then vibrates (after, so
+     * choosing a vibration strength plays the new one).
+     */
+    fun segmented(options: List<String>, chosen: Int, fill: Boolean = false, onChoose: (Int) -> Unit): LinearLayout {
+        var current = chosen
+        val views = mutableListOf<TextView>()
+        fun style() = views.forEachIndexed { i, v ->
+            val on = i == current
+            v.setTextColor(if (on) p.accentInk else p.muted)
+            v.background = if (on) shape(p.accent, 10f) else pressable(shape(Color.TRANSPARENT, 10f), 10f)
+            v.contentDescription = "${options[i]}${if (on) ", chosen" else ""}"
+        }
+        return row(gap = 2f).apply {
+            background = shape(p.surface2, 12f)
+            setPadding(dp(3), dp(3), dp(3), dp(3))
+            for ((i, label) in options.withIndex()) {
+                val v = text(label, 13f, p.muted, f.bodySemi).apply {
+                    gravity = Gravity.CENTER
+                    minHeight = dp(if (fill) 40 else 36)
+                    setPadding(dp(12), 0, dp(12), 0)
+                    setOnClickListener {
+                        if (i == current) return@setOnClickListener
+                        current = i
+                        style()
+                        onChoose(i)
+                        Haptics.tick(this)
+                    }
+                }
+                views += v
+                addView(v, if (fill) LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) else LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
+            style()
+        }
+    }
+
     /** A rounded pill, e.g. LECTURE / TODAY. */
     fun chip(value: String, fill: Int, color: Int, size: Float = 10.5f) = text(value, size, color, f.bodyBold, caps = true, spacing = 0.1f).apply {
         background = shape(fill, 99f)

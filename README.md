@@ -132,7 +132,7 @@ It is a personal replacement for UMscout that keeps everything on the phone:
   "Sign in with SSO", and Microsoft lets it through with the same SiswaMail session, so the user
   types nothing. The lookup runs inside TimeEdit's page (`assets/timeedit-lookup.js`);
   `TimeEditTimetable` builds the timetable and, when the app already has one, shows what would
-  change before using it. "Get timetable from TimeEdit" in Courses does the same any time; "Import
+  change before using it. "Get timetable from TimeEdit" in Settings (the top bar's sliders button) does the same any time; "Import
   timetable from MAYA instead" is the fallback (MAYA has no single sign-on: the user signs in there).
 
 Signing out deletes the token and cached data on the phone. To also revoke the token on

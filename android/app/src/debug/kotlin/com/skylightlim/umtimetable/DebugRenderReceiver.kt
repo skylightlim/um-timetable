@@ -29,6 +29,7 @@ import java.io.File
  * view due with --ez sample true draws made-up deadlines (late, minutes, hours, days) and attendance
  * (open, about to open, not in Spectrum's calendar).
  * --ez open true draws every fold and "Show more" opened.
+ * view settings draws the Settings sheet.
  * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
  * Nth class of the week (0 first).
  */
@@ -51,6 +52,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
             "news" -> SpectrumScreens.news(host)
             "files" -> SpectrumScreens.courses(host)
             "grades" -> if (intent.getBooleanExtra("sample", false)) SpectrumScreens.grades(host, sampleGrades(context)) else SpectrumScreens.grades(host)
+            "settings" -> SettingsSheet.build(host, c) {}
             "sheet" -> {
                 val tt = Timetable.load(context)
                 val course = tt.courses.first { it.code == intent.getStringExtra("code") }
@@ -69,7 +71,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val frame = FrameLayout(c).apply {
             setBackgroundColor(host.ui.p.ground)
             // A sheet runs edge to edge, from the bottom of the screen.
-            if (view != "sheet") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
+            if (view != "sheet" && view != "settings") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
             addView(page)
         }
         frame.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
@@ -214,6 +216,8 @@ class DebugRenderReceiver : BroadcastReceiver() {
         override fun openUrl(url: String) = Unit
         override fun openFile(file: org.json.JSONObject, folder: String) = Unit
         override fun showCourse(id: Int) = Unit
+        override val look = Look.AUTO
+        override fun setLook(look: Look) = Unit
         override val syncing = false
         override var openCourse: Int? = null
         override var expanded: MutableSet<String> = mutableSetOf()

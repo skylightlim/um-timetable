@@ -30,6 +30,9 @@ interface SpectrumHost : Host {
     fun openTimeEdit()
     fun enableNotifications()
     fun openAppSettings()
+    /** The theme, and choosing one (Settings). */
+    val look: Look
+    fun setLook(look: Look)
 }
 
 object SpectrumScreens {
@@ -512,7 +515,7 @@ object SpectrumScreens {
         val mine = all.filter { it.optBoolean("forMe", true) }
         val prefs = ui.context.getSharedPreferences("ui", android.content.Context.MODE_PRIVATE)
         val showAll = prefs.getBoolean("newsAll", false)
-        val switch = segmented(ui, listOf("For me · ${mine.size}", "All · ${all.size}"), if (showAll) 1 else 0) { i ->
+        val switch = ui.segmented(listOf("For me · ${mine.size}", "All · ${all.size}"), if (showAll) 1 else 0) { i ->
             prefs.edit().putBoolean("newsAll", i == 1).apply()
             h.render()
         }
@@ -536,23 +539,6 @@ object SpectrumScreens {
         }
         page.addView(olderNews(h), ui.wide(top = 8f))
         return page
-    }
-
-    /** A row of options with the chosen one filled in the accent colour (1m's For me / All switch). */
-    private fun segmented(ui: Ui, options: List<String>, chosen: Int, onChoose: (Int) -> Unit) = ui.row(gap = 2f).apply {
-        background = ui.shape(ui.p.surface2, 12f)
-        setPadding(ui.dp(3), ui.dp(3), ui.dp(3), ui.dp(3))
-        for ((i, label) in options.withIndex()) {
-            val on = i == chosen
-            addView(ui.text(label, 13f, if (on) ui.p.accentInk else ui.p.muted, ui.f.bodySemi).apply {
-                gravity = Gravity.CENTER
-                minHeight = ui.dp(36)
-                setPadding(ui.dp(12), 0, ui.dp(12), 0)
-                background = if (on) ui.shape(ui.p.accent, 10f) else ui.pressable(ui.shape(Color.TRANSPARENT, 10f), 10f)
-                contentDescription = "$label${if (on) ", shown" else ""}"
-                if (!on) setOnClickListener { Haptics.tick(this); onChoose(i) }
-            })
-        }
     }
 
     /** "NEW  WIX1002 ··· Today 09:12": a post's first line; [extra] goes at the end (a row's chevron). */
@@ -616,6 +602,10 @@ object SpectrumScreens {
 
     // --- Courses ---------------------------------------------------------------------------
 
+    /**
+     * The courses, as in redesign 1n: a plain ruled list (dot, code and occurrence, name), each opening
+     * its course page. The account, imports and other settings are in the Settings sheet. Pull to sync.
+     */
     fun courses(h: SpectrumHost): View {
         val ui = h.ui
         val p = ui.p
@@ -623,96 +613,43 @@ object SpectrumScreens {
         if (!SpectrumStore.signedIn(ui.context)) {
             page.addView(header(h, "Courses", "Your Spectrum course pages"))
             page.addView(connect(h, "Read each course page and open its slides and notes in one tap."))
-            // The timetable imports don't need Spectrum, and the Day tab sends first-time users here for them.
-            page.addView(appActions(h, signedIn = false))
             return page
         }
         val courses = SpectrumStore.array(ui.context, "courses").objects()
         h.openCourse?.let { id -> courses.firstOrNull { it.getInt("id") == id }?.let { return coursePage(h, it) } }
-        page.addView(header(h, "Courses", "${courses.size} courses · ${synced(h)}"))
+        page.addView(pageHeader(ui, "Courses", null))
         problem(h, page)
         backgroundTip(h, page)
         if (courses.isEmpty()) page.addView(empty(ui, if (SpectrumStore.lastSync(ui.context) > 0) "No current courses found on Spectrum." else "Syncing with Spectrum…"))
-        for (c in courses) {
+        val occurrences = SpectrumStore.occurrences(ui.context)
+        // Ruled inside only: a line between courses, none above the first or below the last.
+        for ((n, c) in courses.withIndex()) {
+            if (n > 0) page.addView(rule(ui))
             val code = c.optString("code")
-            // Dot, code and name share the first line, so a name that wraps keeps them together.
-            val row = ui.row(gap = 12f, center = false).apply {
-                setPadding(ui.dp(2), ui.dp(17), ui.dp(2), ui.dp(17))
+            val occ = occurrences.optInt(code).takeIf { it > 0 } ?: h.timetable.courses.firstOrNull { it.code == code }?.occ
+            val row = ui.row(gap = 12f).apply {
+                minimumHeight = ui.dp(60)
+                setPadding(0, ui.dp(10), 0, ui.dp(10))
                 background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
                 setOnClickListener { Haptics.tick(this); h.openCourse = c.getInt("id"); h.render() }
             }
-            val name = ui.text(courseName(h, c.optString("name"), code), 15f, p.text, ui.f.bodySemi)
-            val codeText = code.takeIf { it.isNotEmpty() }?.let { ui.text(it, 14f, p.courseText(colorOf(h, code)), ui.f.monoBold) }
-            row.addView(courseDot(ui, colorOf(h, code), codeText ?: name))
-            row.addView(ui.row(gap = 8f, center = false).apply {
-                codeText?.let { addView(it) }
-                addView(name, ui.grow())
-                // The row lines the dot up with this row's first baseline.
-                baselineAlignedChildIndex = 0
+            row.addView(View(ui.context).apply { background = ui.shape(colorOf(h, code), 99f) }, LinearLayout.LayoutParams(ui.dp(12), ui.dp(12)))
+            row.addView(ui.column().apply {
+                if (code.isNotEmpty()) addView(ui.row().apply {
+                    addView(ui.text(code, 12f, p.courseText(colorOf(h, code)), ui.f.monoBold))
+                    occ?.let { addView(ui.text(" · Occ $it", 12f, p.faint, ui.f.mono)) }
+                })
+                addView(ui.text(courseName(h, c.optString("name"), code), 15f, p.text, ui.f.bodySemi), ui.wide(top = 2f))
             }, ui.grow())
-            row.addView(ui.icon(R.drawable.ic_chevron, p.faint).apply {
-                layoutParams = LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)).apply { gravity = Gravity.CENTER_VERTICAL }
-            })
+            row.addView(ui.icon(R.drawable.ic_chevron, p.faint).apply { layoutParams = LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)) })
             page.addView(row)
-            page.addView(View(ui.context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
         }
-        page.addView(appActions(h, signedIn = true))
         return page
     }
 
-    /** Timetable imports, and the Spectrum account when signed in. */
-    private fun appActions(h: SpectrumHost, signedIn: Boolean) = h.ui.column(gap = 2f).apply {
-        val ui = h.ui
-        setPadding(0, ui.dp(22), 0, 0)
-        if (signedIn) {
-            val name = SpectrumStore.name(ui.context).replace(TRAILING_DOT, "").let { if (it == it.uppercase()) MayaImport.titleCase(it) else it }
-            addView(ui.text("Signed in as ${name.ifBlank { "you" }}", 13f, ui.p.muted))
-            if (!Notify.allowed(ui.context)) addView(link(ui, "Turn on notifications") { h.enableNotifications() })
-        }
-        addView(link(ui, "Get timetable from TimeEdit") { h.openTimeEdit() })
-        addView(link(ui, "Import timetable from MAYA instead") { h.openMaya() })
-        addView(vibrationLevel(ui), ui.wide(top = 6f, bottom = 6f))
-        if (signedIn) addView(link(ui, "Sign out") { h.signOut() })
-    }
-
-    /**
-     * The vibration strength ([Haptics]): each tap on the row steps Off → Light → Medium → Strong → Off
-     * and plays the new strength. A three-bar meter and the name show where it is.
-     */
-    private fun vibrationLevel(ui: Ui): View {
-        val p = ui.p
-        val name = ui.text("", 14f, p.text, ui.f.bodySemi).apply { accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE }
-        val bars = List(3) { View(ui.context) }
-        val meter = LinearLayout(ui.context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.BOTTOM
-            bars.forEachIndexed { i, b -> addView(b, LinearLayout.LayoutParams(ui.dp(5), ui.dp(7 + i * 5)).apply { if (i > 0) marginStart = ui.dp(3) }) }
-        }
-        fun show(level: Haptics.Level) {
-            name.text = level.label
-            bars.forEachIndexed { i, b -> b.background = ui.shape(if (i < level.ordinal) p.accent else p.line, 2f) }
-        }
-        show(Haptics.level(ui.context))
-        return ui.row(gap = 12f).apply {
-            minimumHeight = ui.dp(56)
-            background = ui.pressable(ui.shape(Color.TRANSPARENT, 12f), 12f)
-            addView(ui.column(gap = 2f).apply {
-                addView(ui.text("Vibration", 15f, p.text, ui.f.bodySemi))
-                addView(ui.text("When you change page, go back, or swipe days. Tap to change.", 12.5f, p.muted))
-            }, ui.grow())
-            addView(name)
-            addView(meter, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ui.dp(17)))
-            contentDescription = "Vibration: ${Haptics.level(context).label}. Tap to change."
-            setOnClickListener {
-                val level = Haptics.next(Haptics.level(context))
-                Haptics.setLevel(context, level)
-                show(level)
-                Motion.pop(meter, 0.75f)
-                Haptics.tick(this)
-                contentDescription = "Vibration: ${level.label}. Tap to change."
-            }
-        }
-    }
+    /** The signed-in student's name as Spectrum gives it, in title case when Spectrum shouts it. */
+    fun accountName(c: android.content.Context): String =
+        SpectrumStore.name(c).replace(TRAILING_DOT, "").let { if (it == it.uppercase()) MayaImport.titleCase(it) else it }
 
     private fun coursePage(h: SpectrumHost, c: JSONObject): View {
         val ui = h.ui
