@@ -18,6 +18,29 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (Due as in redesign 1i, in the app's fonts; pull to sync)
+
+**Asked for:** Due laid out as 1i but in the app's current fonts; no "Wednesday 14 Oct" in the top bar;
+sync as on Grades (pull down, no button, last sync shown in the pull).
+
+**Change** (`SpectrumScreens.due`, `attendance`, `whenDue`, `span`):
+- DUE heading alone, a rule under it. The sync button and the "2 upcoming · synced" line are gone;
+  pull to sync was already on for Due.
+- Attendance as 1i's band: yellow (accent, dark ink) while a session is open to mark: "ATTENDANCE
+  OPEN · UNTIL 13:00", "Mark WIX2001 lecture" (Big Shoulders 26sp; the class kind comes from the
+  timetable class at that time), an arrow. Before it opens, or when Spectrum's calendar doesn't list
+  the session, the same band on the surface colour ("Attendance at 14:00 · in 50 min", "Check …" with
+  the explanation).
+- Deadlines as 1i's ruled rows, flat and soonest first (no day groups): an 80dp column with how long
+  is left (Big Shoulders 34sp number with a 16sp unit: "40 min", "12 h", "3 d"; "Late" in red once
+  overdue), yellow when under 24 h, and when it's due in mono 11sp ("today 23:59", "Wed 17:00",
+  "24 Oct"), a vertical rule, then dot and code, the name (16sp) and "Assignment · course" as before.
+- No date in the top bar on Due.
+- The debug renderer's `--es view due --ez sample true` draws made-up deadlines and attendance.
+
+**Checked:** rendered from the synced data (two deadlines) and the sample, light and dark. "today
+00:45" wrapped in a 76dp column: widened to 80dp.
+
 ## 13 October 2026 (Grades: other occurrences' items hidden, fold chevron, award icon)
 
 **Asked for:** hide other occurrences' items; the fold's arrow looked cut off; the Grades tab icon

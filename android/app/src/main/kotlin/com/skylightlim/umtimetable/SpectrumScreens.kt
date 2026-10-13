@@ -51,13 +51,17 @@ object SpectrumScreens {
 
     private fun rel(ms: Long): String {
         val m = Math.round((ms - System.currentTimeMillis()) / 60_000.0)
-        val a = Math.abs(m)
-        val t = when {
+        return if (m >= 0) "in ${span(ms)}" else "${span(ms)} ago"
+    }
+
+    /** How far [ms] is from now, either way: "40 min", "12 h", "3 d". */
+    private fun span(ms: Long): String {
+        val a = Math.abs(Math.round((ms - System.currentTimeMillis()) / 60_000.0))
+        return when {
             a < 60 -> "$a min"
             a < 1440 -> "${Math.round(a / 60.0)} h"
             else -> "${Math.round(a / 1440.0)} d"
         }
-        return if (m >= 0) "in $t" else "$t ago"
     }
 
     /** "Last synced 11:32" (today), "Last synced yesterday", "Last synced Mon 12 Oct", or not yet. */
@@ -176,7 +180,15 @@ object SpectrumScreens {
 
     // --- Due -------------------------------------------------------------------------------
 
-    fun due(h: SpectrumHost): View {
+    /**
+     * What's due, as in redesign 1i (in the app's own fonts): open attendance as a band to tap, then
+     * one ruled row per deadline, led by how long is left. Pull down to sync.
+     */
+    fun due(
+        h: SpectrumHost,
+        dueItems: List<JSONObject> = SpectrumStore.array(h.ui.context, "due").objects(),
+        sessions: List<JSONObject> = SpectrumStore.array(h.ui.context, "attendance").objects(),
+    ): View {
         val ui = h.ui
         val p = ui.p
         val page = ui.column()
@@ -186,84 +198,121 @@ object SpectrumScreens {
             return page
         }
         val now = System.currentTimeMillis()
-        val items = SpectrumStore.array(ui.context, "due").objects().sortedBy { it.getLong("due") }
-        page.addView(header(h, "Due", "${items.count { !it.optBoolean("overdue") && it.getLong("due") > now }} upcoming · ${synced(h)}"))
+        val items = dueItems.sortedBy { it.getLong("due") }
+        page.addView(pageHeader(ui, "Due", null))
+        page.addView(rule(ui))
         problem(h, page)
         backgroundTip(h, page)
-        attendance(h, page)
+        attendance(h, page, sessions)
         if (items.isEmpty()) {
             page.addView(empty(ui, if (SpectrumStore.lastSync(ui.context) > 0) "Nothing due on Spectrum right now." else "Syncing with Spectrum…"))
             return page
         }
-        var group = ""
         for (i in items) {
             val due = i.getLong("due")
             val overdue = i.optBoolean("overdue") || due <= now
-            val label = if (overdue) "Overdue" else dayLabel(due)
-            if (label != group) {
-                page.addView(ui.label(label), ui.wide(top = if (group.isEmpty()) 0f else 14f, bottom = 8f))
-                group = label
-            }
             val code = i.optString("code")
-            val c = colorOf(h, code)
-            val item = ui.column(gap = 4f).apply {
-                background = ui.pressable(ui.shape(p.surface, 14f, p.line), 14f)
-                setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
+            val color = when {
+                overdue -> LATE
+                due - now < 24 * 3_600_000L -> p.accentText
+                else -> p.text
+            }
+            val row = ui.row().apply {
+                background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
                 setOnClickListener { h.openUrl(i.optString("url")) }
             }
-            item.addView(ui.row(gap = 8f).apply {
-                addView(ui.text(code.ifEmpty { "Spectrum" }, 12f, p.courseText(c), ui.f.monoBold), ui.grow())
-                addView(ui.text("${hm(due)} · ${rel(due)}", 12f, if (overdue) 0xFFE5534B.toInt() else p.muted, ui.f.mono))
-            })
-            item.addView(ui.text(i.optString("name"), 16f, p.text, ui.f.bodySemi))
-            item.addView(ui.text(listOf(i.optString("moduleLabel"), courseName(h, i.optString("course"), code)).filter { it.isNotBlank() }.joinToString(" · "), 12.5f, p.muted))
-            page.addView(item, ui.wide(bottom = 8f))
+            // Left: how long is left, large, and when it's due.
+            row.addView(ui.column().apply {
+                setPadding(0, ui.dp(14), ui.dp(4), ui.dp(14))
+                if (overdue) {
+                    addView(ui.text("Late", 34f, color, ui.f.sign))
+                } else {
+                    val (n, unit) = span(due).split(" ")
+                    addView(ui.row(gap = 2f, center = false).apply {
+                        addView(ui.text(n, 34f, color, ui.f.sign))
+                        addView(ui.text(unit, 16f, color, ui.f.sign))
+                    })
+                }
+                addView(ui.text(whenDue(due), 11f, p.muted, ui.f.mono), ui.wide(top = 4f))
+            }, LinearLayout.LayoutParams(ui.dp(80), ViewGroup.LayoutParams.WRAP_CONTENT))
+            row.addView(View(ui.context).apply { setBackgroundColor(p.line) }, LinearLayout.LayoutParams(1, ViewGroup.LayoutParams.MATCH_PARENT))
+            // Right: course, name, and what kind of activity it is.
+            row.addView(ui.column().apply {
+                setPadding(ui.dp(16), ui.dp(14), 0, ui.dp(14))
+                addView(ui.row(gap = 6f).apply {
+                    addView(View(ui.context).apply { background = ui.shape(colorOf(h, code), 99f) }, LinearLayout.LayoutParams(ui.dp(8), ui.dp(8)))
+                    addView(ui.text(code.ifEmpty { "Spectrum" }, 12f, p.courseText(colorOf(h, code)), ui.f.monoBold))
+                })
+                addView(ui.text(i.optString("name"), 16f, p.text, ui.f.bodySemi), ui.wide(top = 4f))
+                addView(ui.text(listOf(i.optString("moduleLabel"), courseName(h, i.optString("course"), code)).filter { it.isNotBlank() }.joinToString(" · "), 12.5f, p.muted), ui.wide(top = 2f))
+            }, ui.grow())
+            page.addView(row)
+            page.addView(rule(ui))
         }
         return page
     }
 
+    private const val LATE = 0xFFE5534B.toInt()
+
+    /** When a deadline is: "today 23:59", "Wed 17:00" within the week, else "26 Oct". */
+    private fun whenDue(ms: Long): String {
+        val days = Math.round((startOfDay(ms) - startOfDay(System.currentTimeMillis())) / 86_400_000.0)
+        val d = Calendar.getInstance().apply { timeInMillis = ms }
+        return when {
+            days == 0L -> "today ${hm(ms)}"
+            days in -6..6 -> "${DAY_SHORT[d.get(Calendar.DAY_OF_WEEK) - 1]} ${hm(ms)}"
+            else -> "${d.get(Calendar.DAY_OF_MONTH)} ${MONTHS[d.get(Calendar.MONTH)]}"
+        }
+    }
+
     /**
-     * Attendance sessions open now or starting within 3 hours. One that isn't in Spectrum's calendar
-     * (`listed: false`) is the attendance page of the user's class: it may or may not be open.
+     * Attendance sessions open now or starting within 3 hours, as 1i's band: yellow while one is open
+     * to mark, plain before it opens. One that isn't in Spectrum's calendar (`listed: false`) is the
+     * attendance page of the user's class: it may or may not be open.
      */
-    private fun attendance(h: SpectrumHost, into: LinearLayout) {
+    private fun attendance(h: SpectrumHost, into: LinearLayout, sessions: List<JSONObject>) {
         val ui = h.ui
         val p = ui.p
         val now = System.currentTimeMillis()
-        for (a in SpectrumStore.array(ui.context, "attendance").objects()) {
+        var bands = 0
+        for (a in sessions) {
             val start = a.getLong("start")
             val end = a.getLong("end")
             if (end <= now || start - now >= 3 * 3_600_000L) continue
             val live = start <= now
             val listed = a.optBoolean("listed", true)
+            val open = live && listed
             val code = a.optString("code")
-            val box = ui.column(gap = 3f).apply {
-                background = ui.pressable(ui.shape(p.surface, 16f, if (live && listed) p.accent else p.line, if (live && listed) 2f else 1f), 16f)
-                setPadding(ui.dp(16), ui.dp(12), ui.dp(16), ui.dp(12))
+            // "WIX2001 lecture": the timetable's class at that time, if there is one.
+            val at = Calendar.getInstance().apply { timeInMillis = start }
+            val from = at.get(Calendar.HOUR_OF_DAY) * 60 + at.get(Calendar.MINUTE)
+            val to = from + ((end - start) / 60_000L).toInt()
+            val session = h.timetable.day(at.get(Calendar.DAY_OF_WEEK) - 1).firstOrNull { it.course.code == code && it.start < to && it.end > from }
+            val what = listOfNotNull(code.ifEmpty { null }, session?.type?.lowercase()).joinToString(" ").ifEmpty { a.optString("name") }
+            val ink = if (open) p.accentInk else p.text
+            val band = ui.row(gap = 12f).apply {
+                background = ui.pressable(if (open) ui.shape(p.accent, 16f) else ui.shape(p.surface, 16f, p.line), 16f)
+                setPadding(ui.dp(16), ui.dp(16), ui.dp(16), ui.dp(16))
+                contentDescription = "${a.optString("name")}. Opens the attendance page."
                 setOnClickListener { h.openUrl(a.optString("url")) }
             }
-            box.addView(ui.label(
-                when {
-                    !listed -> "Attendance · class ${if (live) "until ${hm(end)}" else "at ${hm(start)}"}"
-                    live -> "Attendance open · until ${hm(end)}"
-                    else -> "Attendance at ${hm(start)}"
-                },
-                p.accentText,
-            ))
-            box.addView(ui.row(gap = 8f).apply {
-                addView(ui.text(code, 13f, p.courseText(colorOf(h, code)), ui.f.monoBold))
-                addView(ui.text(a.optString("name"), 16f, p.text, ui.f.bodySemi), ui.grow())
-            })
-            box.addView(ui.text(
-                when {
-                    !listed -> "Spectrum's calendar doesn't list today's session. Tap to check your class's attendance page."
-                    live -> "Tap to mark it in Spectrum"
-                    else -> "Opens ${rel(start)}"
-                },
-                13f, p.muted,
-            ))
-            into.addView(box, ui.wide(bottom = 12f))
+            band.addView(ui.column().apply {
+                addView(ui.label(
+                    when {
+                        !listed -> "Attendance · class ${if (live) "until ${hm(end)}" else "at ${hm(start)}"}"
+                        live -> "Attendance open · until ${hm(end)}"
+                        else -> "Attendance at ${hm(start)} · ${rel(start)}"
+                    },
+                    if (open) ink else p.accentText, 11f,
+                ))
+                addView(ui.text(if (open) "Mark $what" else if (!listed) "Check $what" else what.replaceFirstChar { it.uppercase() }, 26f, ink, ui.f.sign).apply { setLineSpacing(0f, 1f) }, ui.wide(top = 4f))
+                if (!listed) addView(ui.text("Spectrum's calendar doesn't list today's session: tap to check your class's attendance page.", 13f, p.muted), ui.wide(top = 4f))
+            }, ui.grow())
+            band.addView(ui.icon(R.drawable.ic_arrow, ink, 28f))
+            into.addView(band, ui.wide(top = 12f))
+            bands++
         }
+        if (bands > 0) into.addView(ui.space(h = ui.dp(12)))
     }
 
     fun openAttendance(context: android.content.Context): Int {

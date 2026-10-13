@@ -433,7 +433,7 @@ class MainActivity : Activity(), SpectrumHost {
         val words = when (view) {
             "day" -> listOf(DAY_NAMES[sel], dateText(days))
             "week" -> listOf(weekRange(daysFromToday(tt, n, 1)))
-            "grades" -> emptyList()
+            "grades", "due" -> emptyList()
             else -> listOf("${DAY_NAMES[n.dow]} ${dateText(0)}")
         }
         val today = view == "day" && days == 0
