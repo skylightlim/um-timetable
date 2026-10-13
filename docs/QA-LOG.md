@@ -18,6 +18,24 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (News as in redesign 1m; pull to sync)
+
+**Asked for:** News laid out as 1m, synced as on Grades.
+
+**Change** (`SpectrumScreens.news`, `segmented`, `lead`, `newsRow`, `newsTop`, `newsBody`):
+- NEWS heading with 1m's switch beside it: "For me · 7" / "All · 10", the chosen side filled yellow.
+  For me leaves out posts made only to other occurrences' groups (they used to sit behind a fold at
+  the end; the fold is gone). All shows them, marked "other occurrence". The choice is kept
+  (`ui` prefs `newsAll`).
+- The newest post is a lead story: NEW tag while unseen, code, when; the subject in Big Shoulders 30sp;
+  the author; the text (5 lines, Show more) and its files as bordered rows.
+- Older posts are ruled rows (lines between them only, as on Due): NEW, code, when and a chevron; the
+  subject (16sp, as before); the author. A row opens its text and files in place.
+- No sync button, summary line or top-bar date; pull to sync was already on. The two-weeks note and
+  Open Courses link stay at the end.
+
+**Checked:** rendered from the synced announcements (7 for me, 10 in all), light and dark.
+
 ## 14 October 2026 (Due as in redesign 1i, in the app's fonts; pull to sync)
 
 **Asked for:** Due laid out as 1i but in the app's current fonts; no "Wednesday 14 Oct" in the top bar;

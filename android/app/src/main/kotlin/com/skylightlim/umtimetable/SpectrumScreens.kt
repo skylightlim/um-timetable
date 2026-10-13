@@ -494,6 +494,11 @@ object SpectrumScreens {
 
     // --- News ------------------------------------------------------------------------------
 
+    /**
+     * Announcements as in redesign 1m: a For me / All switch by the heading, the newest post as a lead
+     * story with its text and files, then the rest as ruled rows that open in place. "For me" leaves out
+     * posts made only to other occurrences' groups. Pull down to sync.
+     */
     fun news(h: SpectrumHost): View {
         val ui = h.ui
         val p = ui.p
@@ -503,77 +508,112 @@ object SpectrumScreens {
             page.addView(connect(h, "Get a notification when a lecturer posts an announcement."))
             return page
         }
-        val all = SpectrumStore.array(ui.context, "news").objects()
-        // Announcements posted only to other occurrences' groups go in one folded row at the end.
-        val list = all.filter { it.optBoolean("forMe", true) }
-        val others = all - list.toSet()
-        val unread = list.count { it.getInt("id").toString() !in h.seenNews }
-        page.addView(header(h, "News", "${if (unread > 0) "$unread new · " else ""}${synced(h)}"))
+        val all = SpectrumStore.array(ui.context, "news").objects().sortedByDescending { it.getLong("time") }
+        val mine = all.filter { it.optBoolean("forMe", true) }
+        val prefs = ui.context.getSharedPreferences("ui", android.content.Context.MODE_PRIVATE)
+        val showAll = prefs.getBoolean("newsAll", false)
+        val switch = segmented(ui, listOf("For me · ${mine.size}", "All · ${all.size}"), if (showAll) 1 else 0) { i ->
+            prefs.edit().putBoolean("newsAll", i == 1).apply()
+            h.render()
+        }
+        page.addView(pageHeader(ui, "News", null, action = switch))
         problem(h, page)
-        if (all.isEmpty()) {
+        val list = if (showAll) all else mine
+        if (list.isEmpty()) {
             val synced = SpectrumStore.lastSync(ui.context) > 0
-            page.addView(empty(ui, if (synced) "No announcements in the past two weeks." else "Syncing with Spectrum…"))
+            page.addView(empty(ui, when {
+                !synced -> "Syncing with Spectrum…"
+                all.isEmpty() -> "No announcements in the past two weeks."
+                else -> "Nothing for your occurrences in the past two weeks. All shows the others' too."
+            }))
             if (synced) page.addView(olderNews(h))
             return page
         }
-        list.forEach { page.addView(newsCard(h, it), ui.wide(bottom = 10f)) }
-        if (others.isNotEmpty()) page.addView(otherOccurrences(h, others))
-        page.addView(olderNews(h))
+        page.addView(lead(h, list.first()))
+        // Ruled inside only: a line between posts, none above the first or below the last.
+        for (a in list.drop(1)) {
+            page.addView(rule(ui))
+            page.addView(newsRow(h, a))
+        }
+        page.addView(olderNews(h), ui.wide(top = 8f))
         return page
     }
 
-    /** Announcements for other occurrences, behind one row that opens in place. */
-    private fun otherOccurrences(h: SpectrumHost, items: List<JSONObject>): View {
+    /** A row of options with the chosen one filled in the accent colour (1m's For me / All switch). */
+    private fun segmented(ui: Ui, options: List<String>, chosen: Int, onChoose: (Int) -> Unit) = ui.row(gap = 2f).apply {
+        background = ui.shape(ui.p.surface2, 12f)
+        setPadding(ui.dp(3), ui.dp(3), ui.dp(3), ui.dp(3))
+        for ((i, label) in options.withIndex()) {
+            val on = i == chosen
+            addView(ui.text(label, 13f, if (on) ui.p.accentInk else ui.p.muted, ui.f.bodySemi).apply {
+                gravity = Gravity.CENTER
+                minHeight = ui.dp(36)
+                setPadding(ui.dp(12), 0, ui.dp(12), 0)
+                background = if (on) ui.shape(ui.p.accent, 10f) else ui.pressable(ui.shape(Color.TRANSPARENT, 10f), 10f)
+                contentDescription = "$label${if (on) ", shown" else ""}"
+                if (!on) setOnClickListener { Haptics.tick(this); onChoose(i) }
+            })
+        }
+    }
+
+    /** "NEW  WIX1002 ··· Today 09:12": a post's first line; [extra] goes at the end (a row's chevron). */
+    private fun newsTop(h: SpectrumHost, a: JSONObject, size: Float, extra: View? = null) = h.ui.row(gap = 8f).apply {
         val ui = h.ui
-        val box = ui.column()
-        val cards = ui.column().apply { items.forEach { addView(newsCard(h, it), ui.wide(bottom = 10f)) } }
-        val label = ui.text("For other occurrences · ${items.size} ${if (items.size == 1) "announcement" else "announcements"}", 13.5f, ui.p.muted, ui.f.bodySemi)
-        val key = "news-others"
-        val chevron = Motion.chevron(ui, key in h.expanded)
-        cards.visibility = if (key in h.expanded) View.VISIBLE else View.GONE
-        box.addView(ui.row().apply {
-            minimumHeight = ui.dp(48)
-            background = ui.pressable(ui.shape(ui.p.surface2, 12f), 12f)
-            setPadding(ui.dp(14), 0, ui.dp(16), 0)
-            addView(label, ui.grow())
-            addView(chevron, LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)))
+        val code = a.optString("code")
+        if (a.getInt("id").toString() !in h.seenNews) addView(ui.chip("New", ui.p.accent, ui.p.accentInk).apply { setPadding(ui.dp(6), ui.dp(1), ui.dp(6), ui.dp(1)) })
+        addView(ui.text(code.ifEmpty { "Spectrum" }, size, ui.p.courseText(colorOf(h, code)), ui.f.monoBold))
+        if (!a.optBoolean("forMe", true)) addView(ui.text("other occurrence", 11f, ui.p.muted))
+        addView(ui.space(), ui.spacer())
+        addView(ui.text("${dayLabel(a.getLong("time"))} ${hm(a.getLong("time"))}", size, ui.p.muted, ui.f.mono))
+        extra?.let { addView(it) }
+    }
+
+    private fun author(a: JSONObject) = listOf(a.optString("author").replace(TRAILING_DOT, ""), if (a.optString("code").isEmpty()) a.optString("course") else "")
+        .filter { it.isNotBlank() }.joinToString(" · ")
+
+    /** A post's text and files. */
+    private fun newsBody(h: SpectrumHost, a: JSONObject, into: LinearLayout) {
+        val ui = h.ui
+        val code = a.optString("code")
+        into.addView(RichText.view(h, a.optString("html"), "n${a.getInt("id")}", code.ifEmpty { "Spectrum" }, 5, expanded = h.expanded), ui.wide(top = 8f))
+        for (f in a.optJSONArray("attachments")?.objects().orEmpty()) into.addView(fileButton(h, f, code), ui.wide(top = 8f))
+    }
+
+    /** The newest post, open: its subject large, the text, who posted it and its files. */
+    private fun lead(h: SpectrumHost, a: JSONObject) = h.ui.column().apply {
+        val ui = h.ui
+        setPadding(0, ui.dp(4), 0, ui.dp(16))
+        addView(newsTop(h, a, 12f))
+        addView(ui.text(a.optString("subject"), 30f, ui.p.text, ui.f.sign).apply { setLineSpacing(0f, 1f) }, ui.wide(top = 10f))
+        author(a).takeIf { it.isNotEmpty() }?.let { addView(ui.text(it, 12.5f, ui.p.muted), ui.wide(top = 4f)) }
+        newsBody(h, a, this)
+    }
+
+    /** An older post as a ruled row: course, when, subject and author; tapping it opens its text in place. */
+    private fun newsRow(h: SpectrumHost, a: JSONObject): View {
+        val ui = h.ui
+        val key = "news-open-${a.getInt("id")}"
+        val shown = key in h.expanded
+        val chevron = Motion.chevron(ui, shown, ui.p.faint)
+        val body = ui.column().apply { visibility = if (shown) View.VISIBLE else View.GONE }
+        newsBody(h, a, body)
+        val head = ui.column().apply {
+            setPadding(0, ui.dp(14), 0, ui.dp(14))
+            background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
+            addView(newsTop(h, a, 11f, chevron.apply { layoutParams = LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)) }))
+            addView(ui.text(a.optString("subject"), 16f, ui.p.text, ui.f.bodySemi), ui.wide(top = 4f))
+            author(a).takeIf { it.isNotEmpty() }?.let { addView(ui.text(it, 12.5f, ui.p.muted), ui.wide(top = 2f)) }
             setOnClickListener {
                 Motion.resize(this)
                 val open = h.expanded.add(key) || !h.expanded.remove(key)
-                cards.visibility = if (open) View.VISIBLE else View.GONE
+                body.visibility = if (open) View.VISIBLE else View.GONE
                 Motion.turn(chevron, open)
             }
-        }, ui.wide(bottom = 10f))
-        box.addView(cards)
-        return box
-    }
-
-    private fun newsCard(h: SpectrumHost, a: JSONObject): View {
-        val ui = h.ui
-        val p = ui.p
-        val code = a.optString("code")
-        val c = colorOf(h, code)
-        val isNew = a.getInt("id").toString() !in h.seenNews
-        val box = ui.column(gap = 6f).apply {
-            background = ui.shape(p.surface, 16f, p.line)
-            setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(14))
         }
-        box.addView(ui.row(gap = 8f).apply {
-            addView(ui.text(code.ifEmpty { "Spectrum" }, 12f, p.courseText(c), ui.f.monoBold), ui.grow())
-            addView(ui.text("${dayLabel(a.getLong("time"))} · ${hm(a.getLong("time"))}", 12f, p.muted, ui.f.mono))
-            if (isNew) addView(View(ui.context).apply { background = ui.shape(p.accent, 99f) }, LinearLayout.LayoutParams(ui.dp(8), ui.dp(8)))
-        })
-        box.addView(ui.text(a.optString("subject"), 16f, p.text, ui.f.bodySemi))
-        val author = a.optString("author").replace(TRAILING_DOT, "")
-        box.addView(ui.text(listOf(author, if (code.isEmpty()) a.optString("course") else "").filter { it.isNotBlank() }.joinToString(" · "), 12.5f, p.muted))
-        box.addView(RichText.view(h, a.optString("html"), "n${a.getInt("id")}", code.ifEmpty { "Spectrum" }, 5, expanded = h.expanded))
-        val files = a.optJSONArray("attachments")?.objects().orEmpty()
-        if (files.isNotEmpty()) {
-            val row = ui.column(gap = 6f)
-            for (f in files) row.addView(fileButton(h, f, code, compact = true))
-            box.addView(row)
+        return ui.column().apply {
+            addView(head)
+            addView(body.apply { setPadding(0, 0, 0, ui.dp(14)) })
         }
-        return box
     }
 
     /** The end of News: it only reaches back [SpectrumSync.NEWS_DAYS] days. */
