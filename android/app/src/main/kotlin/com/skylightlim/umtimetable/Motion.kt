@@ -19,6 +19,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.ScrollView
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
@@ -124,6 +125,61 @@ object Motion {
      * track stretch it to the whole screen.
      */
     class RowFrame(context: android.content.Context) : FrameLayout(context) {
+        /**
+         * A sideways swipe across the row, one item per swipe: +1 for a swipe to the left (the next
+         * item), -1 to the right. A tap still reaches the item under it.
+         */
+        var onSwipe: ((Int) -> Unit)? = null
+        private val slop = ViewConfiguration.get(context).scaledTouchSlop
+        private val density = context.resources.displayMetrics.density
+        private var downX = 0f
+        private var downY = 0f
+        private var swiping = false
+        private var velocity: android.view.VelocityTracker? = null
+
+        private fun startsSwipe(e: MotionEvent) = (e.x - downX).let { dx -> abs(dx) > slop && abs(dx) > abs(e.y - downY) * 1.5f }
+
+        override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
+            if (onSwipe == null) return false
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = e.x
+                    downY = e.y
+                    swiping = false
+                    velocity = (velocity ?: android.view.VelocityTracker.obtain()).apply { clear(); addMovement(e) }
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    velocity?.addMovement(e)
+                    if (!swiping && startsSwipe(e)) { swiping = true; return true }
+                }
+            }
+            return false
+        }
+
+        @android.annotation.SuppressLint("ClickableViewAccessibility")
+        override fun onTouchEvent(e: MotionEvent): Boolean {
+            val swipe = onSwipe ?: return super.onTouchEvent(e)
+            velocity?.addMovement(e)
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = e.x
+                    downY = e.y
+                    swiping = false
+                    velocity = (velocity ?: android.view.VelocityTracker.obtain()).apply { clear(); addMovement(e) }
+                }
+                MotionEvent.ACTION_MOVE -> if (!swiping && startsSwipe(e)) swiping = true
+                MotionEvent.ACTION_UP -> {
+                    val dx = e.x - downX
+                    velocity?.computeCurrentVelocity(1000)
+                    val flick = abs(velocity?.xVelocity ?: 0f) > 700 * density
+                    if (swiping && (abs(dx) > 40 * density || flick)) swipe(if (dx < 0) 1 else -1)
+                    swiping = false
+                }
+                MotionEvent.ACTION_CANCEL -> swiping = false
+            }
+            return true
+        }
+
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             val row = getChildAt(childCount - 1) ?: return super.onMeasure(widthMeasureSpec, heightMeasureSpec)
             measureChild(row, widthMeasureSpec, heightMeasureSpec)

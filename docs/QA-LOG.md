@@ -18,6 +18,20 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (swipe across the tab bar)
+
+**Asked for:** the bottom bar scrollable too, one section per swipe left or right.
+
+**Change** (`Motion.RowFrame.onSwipe`, `MainActivity.buildShell`): a sideways drag on the tab bar
+(past the touch slop and more sideways than up or down) is taken from the tabs; let go after 40dp, or
+flick faster than 700dp/s, and it moves one tab: to the left goes to the next tab (Day → Grades →
+Due → News → Courses), to the right the previous, as day swipes do. No wrap at the ends. Week counts
+as Day. The new page and its title slide in from that side (as another day does), the pill glides,
+and it vibrates as a tap on a tab does. A tap still opens its tab; a short sideways wobble does
+nothing. The day strip (also a RowFrame) is unchanged.
+
+**Checked:** builds; the gesture needs the phone.
+
 ## 14 October 2026 (Day and Week: a line under the title)
 
 **Asked for:** something in the empty line under Day's and Week's titles (where the other tabs show

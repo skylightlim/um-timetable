@@ -208,6 +208,15 @@ class MainActivity : Activity(), SpectrumHost {
             background = LayerDrawable(arrayOf(ui.shape(p.line, 0f), ui.shape(p.ground, 0f))).apply { setLayerInset(1, 0, 1, 0, 0) }
             addView(tabs, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
+        // Swiping across the tab bar moves one tab, and the page slides in from that side.
+        tabBar.onSwipe = { dir ->
+            val here = TABS.indexOfFirst { it.first == if (view == "week") "day" else view }
+            TABS.getOrNull(here + dir)?.let { next ->
+                pendingSlide = dir
+                slideFar = true
+                setView(next.first)
+            }
+        }
         tabGlider = Motion.Glider(tabBar, tabs, ui.dp(12f).toFloat(), 0)
         tabShown = null
         buildTabs()
