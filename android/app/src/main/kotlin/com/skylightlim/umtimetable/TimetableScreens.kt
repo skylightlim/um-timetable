@@ -82,15 +82,13 @@ fun pageTitle(ui: Ui, name: String, line: String?): LinearLayout = ui.column().a
 }
 
 /**
- * Day's title: the day's name, then its date with the Today chip. Two lines, since "Wednesday 30 Sep"
- * at 56sp is wider than the room beside the settings button.
+ * Day's title on one line: the short day name and the date ("Wed 14 Oct"), with the Today chip. The full
+ * name doesn't fit at 56sp ("Wednesday 30 Sep" is 387dp of the 361dp beside the settings button);
+ * "Wed 30 Sep" and the chip take 313dp.
  */
-fun dayTitle(ui: Ui, day: String, date: String, today: Boolean): LinearLayout = ui.column().apply {
-    addView(titleText(ui, day))
-    addView(ui.row(gap = 12f).apply {
-        addView(titleText(ui, date))
-        if (today) addView(ui.chip("Today", ui.p.accent, ui.p.accentInk, 11f).apply { setPadding(ui.dp(8), ui.dp(3), ui.dp(8), ui.dp(3)) })
-    }, ui.wide(top = -6f))
+fun dayTitle(ui: Ui, day: String, date: String, today: Boolean): LinearLayout = ui.row(gap = 12f).apply {
+    addView(titleText(ui, "$day $date"))
+    if (today) addView(ui.chip("Today", ui.p.accent, ui.p.accentInk, 11f).apply { setPadding(ui.dp(8), ui.dp(3), ui.dp(8), ui.dp(3)) })
 }
 
 /** Week's title: the dates of the strip's week on one line. */

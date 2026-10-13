@@ -60,7 +60,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
                 setPadding(host.ui.dp(0), host.ui.dp(22), 0, host.ui.dp(10))
                 val page = intent.getStringExtra("page") ?: "Grades"
                 addView(when (page) {
-                    "day" -> dayTitle(host.ui, "Wednesday", "30 Sep", true)
+                    "day" -> dayTitle(host.ui, "Wed", "30 Sep", true)
                     "week" -> weekTitle(host.ui, "28 Sep – 2 Oct")
                     else -> pageTitle(host.ui, page, listOfNotNull(semesterWeek(), "Wednesday 14 Oct").joinToString(" · "))
                 }, host.ui.grow())

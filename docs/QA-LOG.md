@@ -32,6 +32,10 @@ titles.
 
 **Checked:** the three rendered (light).
 
+Follow-up (user: "one line only"): Day's title is one line again, still 56sp, with the short day name:
+"Wed 14 Oct" and the Today chip ("Wed 30 Sep" and the chip take 313 of the 361dp). The full name at
+56sp can't fit even without the chip.
+
 ## 14 October 2026 (Spectrum tabs: name and week of the semester in the top bar)
 
 **Asked for:** suggestions 1 and 2 for the empty top of Grades, Due, News and Courses (the page's name

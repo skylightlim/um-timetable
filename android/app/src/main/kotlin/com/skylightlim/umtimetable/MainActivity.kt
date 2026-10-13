@@ -439,7 +439,7 @@ class MainActivity : Activity(), SpectrumHost {
         titleKey = key
         val title: ViewGroup = when {
             page != null -> pageTitle(ui, page, line)
-            view == "day" -> dayTitle(ui, DAY_NAMES[sel], dateText(days), today)
+            view == "day" -> dayTitle(ui, DAY_SHORT[sel], dateText(days), today)
             view == "week" -> weekTitle(ui, words.first())
             else -> ui.row().apply { addView(ui.label(words.first(), p.muted, 11f)) }
         }
