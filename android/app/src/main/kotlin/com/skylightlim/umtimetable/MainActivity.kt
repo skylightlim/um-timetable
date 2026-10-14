@@ -463,10 +463,10 @@ class MainActivity : Activity(), SpectrumHost {
             page != null -> listOf(page)
             else -> listOf("${DAY_NAMES[n.dow]} ${dateText(0)}")
         }
-        // The small line under the title. The other tabs: the week of the semester and today's date; Day:
-        // the day at a glance; Week: its Spectrum deadlines.
+        // The small line under the title, each page's own summary. The Spectrum tabs: what's on them
+        // ("3 due · next in 1d"); Day: the day at a glance; Week: its Spectrum deadlines.
         val line = when {
-            page != null -> listOfNotNull(semesterWeek(), "${DAY_NAMES[n.dow]} ${dateText(0)}").joinToString(" · ")
+            page != null -> SpectrumScreens.summary(this, view)
             view == "day" -> dayGlance(tt.day(sel))
             view == "week" -> weekDeadlines(daysFromToday(tt, n, 1))
             else -> null

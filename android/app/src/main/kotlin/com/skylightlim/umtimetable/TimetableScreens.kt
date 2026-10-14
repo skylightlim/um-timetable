@@ -82,6 +82,12 @@ private const val DAY_WIDEST = "Wednesday 30 Sep"
  * change. On a 427dp-wide phone they all fit at 56sp in the 395dp the title has (no settings button
  * beside it any more); at 360dp Day's come out at about 47sp.
  */
+/**
+ * The small line's place under a title: wrapping its text too. A full-width child in a column whose other
+ * child (the title) wraps gets the column's width, which comes from the title alone, and was cut short.
+ */
+private fun underTitle(ui: Ui) = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(4) }
+
 private fun titleText(ui: Ui, text: String, widest: String = text) =
     ui.fitText(text, TITLE_SIZE, ui.p.text, ui.f.sign, widest = widest, lines = 1).apply {
         setLineSpacing(0f, 1f)
@@ -93,7 +99,7 @@ private fun titleText(ui: Ui, text: String, widest: String = text) =
 /** A Spectrum tab's name for the top bar, over a small line (the week of the semester and today's date). */
 fun pageTitle(ui: Ui, name: String, line: String?): LinearLayout = ui.column().apply {
     addView(titleText(ui, name))
-    line?.let { addView(ui.label(it, ui.p.muted, 11f), ui.wide(top = 4f)) }
+    line?.let { addView(ui.label(it, ui.p.muted, 11f), underTitle(ui)) }
 }
 
 /**
@@ -111,13 +117,13 @@ fun dayTitle(ui: Ui, day: String, date: String, today: Boolean, line: String?): 
         isAllCaps = false
         visibility = View.VISIBLE
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
-    }, ui.wide(top = 4f))
+    }, underTitle(ui))
 }
 
 /** Week's title: the dates of the strip's week, with [line] (its deadlines) under them. */
 fun weekTitle(ui: Ui, range: String, line: String?): LinearLayout = ui.column().apply {
     addView(titleText(ui, range))
-    addView(smallLine(ui, line), ui.wide(top = 4f))
+    addView(smallLine(ui, line), underTitle(ui))
 }
 
 /**
@@ -134,16 +140,6 @@ private fun smallLine(ui: Ui, text: String?) = ui.label(text ?: "Week", ui.p.mut
 /** Day at a glance: "3 classes · 08:00–19:00", or "No classes". */
 fun dayGlance(list: List<Session>): String =
     if (list.isEmpty()) "No classes" else "${list.size} ${if (list.size == 1) "class" else "classes"} · ${clockText(list.first().start)}–${clockText(list.last().end)}"
-
-/** Today in the semester: "Week 2 of 14", the break, revision or exams; null outside the calendar. */
-fun semesterWeek(): String? = AcademicCalendar.week(java.time.LocalDate.now())?.let { w ->
-    when (w.kind) {
-        AcademicCalendar.Kind.TEACHING -> "Week ${w.n} of ${w.of}"
-        AcademicCalendar.Kind.BREAK -> "Mid-semester break"
-        AcademicCalendar.Kind.REVISION -> "Revision week"
-        AcademicCalendar.Kind.EXAMS -> "Exams"
-    }
-}
 
 object DayScreen {
     fun build(h: Host, day: Int): View {

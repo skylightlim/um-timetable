@@ -74,7 +74,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
                 addView(when (page) {
                     "day" -> dayTitle(host.ui, "Wednesday", "30 Sep", true, dayGlance(Timetable.load(context).day(2)))
                     "week" -> weekTitle(host.ui, "28 Sep – 2 Oct", "3 deadlines this week")
-                    else -> pageTitle(host.ui, page, listOfNotNull(semesterWeek(), "Wednesday 14 Oct").joinToString(" · "))
+                    else -> pageTitle(host.ui, page, SpectrumScreens.summary(host, mapOf("Courses" to "files").getOrElse(page) { page.lowercase() }))
                 }, host.ui.grow())
             }
             "signout" -> ConfirmDialog.card(host.ui, MainActivity.SIGN_OUT_TITLE, MainActivity.SIGN_OUT_BODY, "Sign out", {}, {})

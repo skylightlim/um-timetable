@@ -70,6 +70,59 @@ object SpectrumScreens {
         }
     }
 
+    /**
+     * The small line under a Spectrum tab's name: what that page holds, at a glance. It used to be the
+     * week of the semester and today's date on every tab; the week is on Day's strip. Counted as the
+     * pages count: Grades leaves out attendance and other occurrences' items, News counts posts for you.
+     */
+    fun summary(h: SpectrumHost, view: String): String {
+        val c = h.ui.context
+        if (!SpectrumStore.signedIn(c)) return "Not signed in"
+        if (SpectrumStore.lastSync(c) == 0L) return "Not synced yet"
+        val parts = when (view) {
+            "grades" -> {
+                val occurrences = SpectrumStore.occurrences(c)
+                fun mine(code: String) = occurrences.optInt(code).takeIf { it > 0 } ?: h.timetable.courses.firstOrNull { it.code == code }?.occ ?: 0
+                val items = SpectrumStore.array(c, "grades").objects().filter { g ->
+                    !g.optBoolean("total") && !SpectrumSync.isAttendance(g) &&
+                        !(g.isNull("raw") && AttendanceMatch.othersOnly(g.optString("name"), mine(g.optString("code"))))
+                }
+                val marked = items.filter { !it.isNull("raw") }
+                val fresh = marked.count { SpectrumSync.gradeKey(it) !in h.seenGrades }
+                val waiting = items.size - marked.size
+                listOfNotNull(
+                    if (marked.isEmpty()) "No marks yet" else count(marked.size, "mark"),
+                    if (fresh > 0) "$fresh new" else waiting.takeIf { it > 0 }?.let { "$it to be marked" },
+                )
+            }
+            "due" -> {
+                val now = System.currentTimeMillis()
+                val (late, coming) = SpectrumStore.array(c, "due").objects().partition { it.optBoolean("overdue") || it.getLong("due") <= now }
+                val next = coming.minOfOrNull { it.getLong("due") }
+                listOfNotNull(
+                    "Attendance open".takeIf { openAttendance(c) > 0 },
+                    if (coming.isEmpty() && late.isEmpty()) "Nothing due" else coming.size.takeIf { it > 0 }?.let { "$it due" },
+                    next?.let { "next in ${span(it).replace(" ", "")}" },
+                    late.size.takeIf { it > 0 }?.let { "$it late" },
+                ).take(3)
+            }
+            "news" -> {
+                val mine = SpectrumStore.array(c, "news").objects().filter { it.optBoolean("forMe", true) }
+                val unread = mine.count { it.getInt("id").toString() !in h.seenNews }
+                val latest = mine.maxOfOrNull { it.getLong("time") }
+                if (latest == null) listOf("No announcements for you")
+                else listOf(
+                    if (unread > 0) "$unread unread" else "All read",
+                    "latest ${dayLabel(latest).let { if (it == "Today" || it == "Yesterday") "${it.lowercase()} ${hm(latest)}" else it }}",
+                )
+            }
+            else -> listOf(count(SpectrumStore.array(c, "courses").length(), "course"), lastSynced(c).replaceFirstChar { it.lowercase() })
+        }
+        return parts.joinToString(" · ")
+    }
+
+    private fun count(n: Int, what: String) = "$n $what${if (n == 1) "" else "s"}"
+
     /** "Last synced 11:32" (today), "Last synced yesterday", "Last synced Mon 12 Oct", or not yet. */
     fun lastSynced(c: android.content.Context): String {
         val t = SpectrumStore.lastSync(c)
@@ -246,26 +299,15 @@ object SpectrumScreens {
     }
 
     /**
-     * "2 d", "12 h", "40 min" or "Late" in the display face, as large as [width] allows (at most 56sp).
-     * The number is full size and its unit half that, close up on the same baseline: at full size a
-     * word space between them gaped.
+     * "1d", "12h", "40min" or "Late" in the display face, number and unit the same size, as large as fills
+     * [width]: "1d" about 90sp, "40min" about 34sp. (With the unit at half size, "d" was too small.)
      */
     private fun countdown(ui: Ui, text: String, color: Int, width: Int): View {
-        val max = ui.dp(56f).toFloat()
-        val words = text.split(" ")
-        val number = ui.text(words[0], 34f, color, ui.f.sign)
-        if (words.size == 1) return number.apply { setTextSize(TypedValue.COMPLEX_UNIT_PX, minOf(max, textSize * width / paint.measureText(words[0]))) }
-        val unit = ui.text(words[1], 17f, color, ui.f.sign)
-        val gap = ui.dp(2)
-        // Both scale together: the number's width per pixel of size, plus half that size's for the unit.
-        val perPx = number.paint.measureText(words[0]) / number.textSize + unit.paint.measureText(words[1]) / unit.textSize / 2
-        val size = minOf(max, (width - gap) / perPx)
-        number.setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
-        unit.setTextSize(TypedValue.COMPLEX_UNIT_PX, size / 2)
-        // A plain row: its children line up on their baselines (a centred one wouldn't).
-        return LinearLayout(ui.context).apply {
-            addView(number)
-            addView(unit, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = gap })
+        val label = text.replace(" ", "")
+        // 96% of the width, on one line: sized to the exact width, "1d" broke into "1" and "d".
+        return ui.text(label, 34f, color, ui.f.sign).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, textSize * width * 0.96f / paint.measureText(label))
+            maxLines = 1
         }
     }
 

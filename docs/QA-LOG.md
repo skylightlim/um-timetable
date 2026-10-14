@@ -18,6 +18,32 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (each tab's own summary under its title; Due's countdown fills its cell)
+
+**Asked for:** the line under the title on most tabs said "Week 2 of 14 · Wednesday 14 Oct". Each page
+should have its own summary instead. And Due's "1d" was too small (the "d" most), so it should fill
+its cell.
+
+**Change:**
+- `SpectrumScreens.summary` counts what each page shows:
+  - Grades: "5 marks · 2 new", or "No marks yet · 4 to be marked". It leaves out attendance and
+    other occurrences' items, as the page does.
+  - Due: "Attendance open · 3 due · next in 12h", "1 late". At most three parts.
+  - News: "2 unread · latest today 14:02", or "All read · …". Posts for you only.
+  - Courses: "7 courses · last synced 21:43".
+  - "Not signed in" before sign-in, "Not synced yet" before the first sync.
+  - Day and Week keep their lines: the day at a glance, the week's deadlines. The semester week is on
+    the strip's W chip. `semesterWeek()` is gone.
+- Due's countdown is one piece of text ("1d", "12h", "40min", "Late"), number and unit the same size,
+  scaled to 96% of the cell's width on one line. At the exact width, "1d" broke into "1" and "d".
+  "1d" comes out about 90sp and makes its row taller.
+- The small line under a title wraps its text. With the title wrapping too (the previous fix), a
+  full-width line got the title's width and was cut ("3 DUE ·").
+
+**Checked** on `Test_API37` with made-up deadlines, announcements, courses, grade items and a sync
+time: each tab's title and line, Day, Week, and the Due list ("Late", "12h", "1d", "10d", each across
+its cell).
+
 ## 14 October 2026 (Day's titles all one size)
 
 **Reported:** the day titles weren't the same size; all should be as big as Wednesday's.
