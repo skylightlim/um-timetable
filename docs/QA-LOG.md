@@ -18,6 +18,16 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (status-bar icon: the shield)
+
+**Asked for:** the notification icon as the app icon's shield, without 马.
+
+**Change:** `crest.py` also draws `ic_notify.xml`: the same UM shield outline, 16.6 × 20 in the
+24-unit box with a 2-unit rim, white. `seal.py` is gone, so no font glyphs remain in the app's icons
+and the AR PL UKai credit left THIRD_PARTY_NOTICES.
+
+**Checked:** `preview-notify.svg` at 72 px (24dp on the phone) and larger, on a dark status-bar grey.
+
 ## 15 October 2026 (new launcher icon: the cow and the horse holding up UM's shield)
 
 **Asked for:** the app icon as the duel's two animals standing like the tigers on Malaysia's coat of

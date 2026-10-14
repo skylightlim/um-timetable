@@ -4,8 +4,8 @@ gold of UM's shield rim, on its blue (the adaptive icon's background, @color/ic_
 
     uv run --with skia-pathops python crest.py ../app/src/main/res/drawable [key=value ...]
 
-Writes ic_fg.xml and ic_mono.xml there, and preview-circle.svg / preview-squircle.svg here (with no
-directory, only the previews). The status-bar icon is still seal.py's.
+Writes ic_fg.xml, ic_mono.xml and the status-bar icon ic_notify.xml (the shield alone) there, and
+preview-circle.svg / preview-squircle.svg here (with no directory, only the previews).
 
 The animals are DuelView's shapes (its 120 × 60 box) as solid gold silhouettes, like the crest's yellow
 tigers: a blue gap round each piece where it covers another, and blue showing through for the eyes,
@@ -19,7 +19,7 @@ import sys
 from pathops import LineCap, LineJoin, Path, PathOp, decompose_quadratic_segment, op
 
 P = dict(
-    blue="#223E99", gold="#BB9632",  # seal.py's UM crest colours
+    blue="#223E99", gold="#BB9632",  # UM crest colours: the shield and its rim
     line=1.0,       # the gaps between pieces, in icon units (dp in the 108-unit icon)
     scale=0.55,     # the animals: icon units per DuelView unit
     rim=2.4,        # the shield's gold rim
@@ -210,23 +210,33 @@ far = max(math.hypot(x - 54, y - 54) for _, pts in g.shapes["gold"].segments for
 print(f"farthest point from the centre: {far:.1f} (the safe zone is 33, a round mask shows 36)", file=sys.stderr)
 
 
-def vector(comment, color):
+# The status-bar icon, 24 units: the shield alone, its rim in one colour (the animals can't be read at
+# that size).
+N = dict(w=16.6, h=20.0, rim=2.0)
+small = shield(12, 12 - N["h"] / 2, N["w"], N["h"])
+notify = data(op(stroked(small, 2 * N["rim"]), small, PathOp.INTERSECTION))
+
+
+def vector(comment, color, path, box=108):
     return ('<?xml version="1.0" encoding="utf-8"?>\n'
             f"<!-- {comment} Drawn by android/icon/crest.py; edit that, not this. -->\n"
             '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
-            '    android:width="108dp" android:height="108dp"\n'
-            '    android:viewportWidth="108" android:viewportHeight="108">\n'
-            f'    <path android:fillColor="{color}" android:pathData="{gold}" />\n'
+            f'    android:width="{box}dp" android:height="{box}dp"\n'
+            f'    android:viewportWidth="{box}" android:viewportHeight="{box}">\n'
+            f'    <path android:fillColor="{color}" android:pathData="{path}" />\n'
             "</vector>\n")
 
 
 if res:
     open(f"{res}/ic_fg.xml", "w").write(vector(
         "The cow and the horse holding up UM's shield, in its gold, on the blue of @color/ic_bg.",
-        "#FF" + P["gold"][1:].upper()))
-    open(f"{res}/ic_mono.xml", "w").write(vector("Themed icon: the same drawing in one colour.", "#FFFFFFFF"))
+        "#FF" + P["gold"][1:].upper(), gold))
+    open(f"{res}/ic_mono.xml", "w").write(vector("Themed icon: the same drawing in one colour.", "#FFFFFFFF", gold))
+    open(f"{res}/ic_notify.xml", "w").write(vector("Status-bar icon: UM's shield, in one colour.", "#FFFFFFFF", notify, 24))
 
 body = f'<rect width="108" height="108" fill="{P["blue"]}"/><path fill="{P["gold"]}" d="{gold}"/>'
+open("preview-notify.svg", "w").write(
+    f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#FFFFFF" d="{notify}"/></svg>')
 for name, mask in (("circle", '<circle cx="54" cy="54" r="36"/>'),
                    ("squircle", '<rect x="18" y="18" width="72" height="72" rx="22"/>')):
     open(f"preview-{name}.svg", "w").write(
