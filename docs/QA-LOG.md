@@ -18,6 +18,32 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (1.2.0-beta.1 published; the update tried end to end)
+
+**Published:** `main` on GitHub got one release commit with this tree, "UM Timetable 1.2.0-beta.1"
+(a417c76), on top of 1.1.0-beta.1's, as that one was published. The local history had the user's real
+occurrence in three places, now made up. The local `public` branch points at the release commit.
+Pre-release `v3`, titled "1.2.0-beta.1", carries `UM-Timetable-1.2.0-beta.1.apk`. It was built from a
+clean checkout of that commit: versionCode 3, signed with the release key (SHA-256 bf:c0:58…b2:94:20).
+
+**Tried on `Test_API37`:** the same code built as versionCode 2.
+- At launch, the update card offered 1.2.0-beta.1 by itself.
+- Download showed the progress bar, then "Downloaded" and Install. The 605,181-byte APK passed the
+  package and version check.
+- Install opened Android's "Install unknown apps" page, with the toast. With it allowed, Back and
+  Install again brought up Android's "Update this app?". Update.
+- Play Protect then offered to scan the app ("Play Protect hasn't seen this app before"). Under "More
+  details" was "Install without scanning". Expect this on phones with Play Protect.
+- The app was then versionCode 3, 1.2.0-beta.1, and opened with its timetable. No crash.
+
+**Fixed after:**
+- The card showed the notes' Markdown as written ("**Android 12:**"). `Updater.plain` strips it:
+  bold, code and link marks go, bullets become "•", and headings and blank lines are dropped. The
+  card shows at most 10 lines, with the size under them.
+- A downloaded APK is deleted once its version (or a later one) is installed.
+- Both ship in the next release. 1.2.0-beta.1 shows Markdown marks in a later release's notes, so keep
+  the first lines plain.
+
 ## 14 October 2026 (updates from GitHub Releases; 1.2.0-beta.1)
 
 **Asked for:** an in-app updater backed by GitHub Releases. A release's tag is its version code ("v3" is

@@ -28,4 +28,9 @@ class UpdaterTest {
         assertNull(Updater.pick("[${release("v1.1.0-beta.1")}, ${release("v7", apk = false)}, ${release("release-8")}]"))
         assertNull(Updater.pick("[]"))
     }
+
+    @Test fun notesWithoutMarkdown() {
+        val notes = "The app updates itself.\n\n## New\n- **Android 12:** opens there\n* See [the README](https://example.com) and `Settings`\n"
+        assertEquals("The app updates itself.\n• Android 12: opens there\n• See the README and Settings", Updater.plain(notes))
+    }
 }

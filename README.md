@@ -80,7 +80,8 @@ The widget updates itself after an install, so there's no need to remove and re-
 To publish a release the app can update to: raise `versionCode` (and `versionName`) in
 `android/app/build.gradle.kts`, build the release, and make a GitHub release tagged `v` + versionCode
 (`v3`) with the APK attached. Pre-releases count. The release's title is the version shown in the app's
-update card, and the first lines of its notes are shown under it.
+update card, and the first lines of its notes are shown under it (1.2.0-beta.1 shows Markdown marks as
+written, so keep the first lines plain).
 
 ## Tests
 
