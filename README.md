@@ -8,7 +8,10 @@ A UM student's timetable and Spectrum companion: an Android app with a home-scre
 ## Beta
 
 Download the APK from [Releases](../../releases) (Android 12 or newer) and open it on your phone;
-Android asks once to allow installs from your browser or file app.
+Android asks once to allow installs from your browser or file app. After that the app updates itself:
+when a newer release is out it offers it (at most every 12 hours, or Settings › Check for updates),
+downloads it, and hands it to Android's installer. The first time, Android asks you to allow 马大牛逼
+to install apps.
 
 1. Open **Courses** and tap **Connect Spectrum**. Sign in with your SiswaMail (Microsoft); the app
    never sees your password, only the token Spectrum's own mobile sign-in gives it.
@@ -18,7 +21,8 @@ Android asks once to allow installs from your browser or file app.
 
 Where your data goes: your sign-in goes only to Microsoft and UM. The token, your timetable, courses,
 announcements and marks stay in the app's private storage on your phone; nothing is sent anywhere
-else, and there's no server. Signing out deletes them.
+else, and there's no server. Signing out deletes them. The update check asks GitHub for this project's
+list of releases, without signing in and without anything about you.
 
 Known gaps in this beta: the app follows Semester 1 2026/27 classes as TimeEdit lists them;
 attendance links for sessions Spectrum's calendar doesn't list are a best guess from activity names;
@@ -72,6 +76,11 @@ Two traps:
   compiles `kotlin.srcDirs`; a `java.srcDirs` entry is ignored).
 
 The widget updates itself after an install, so there's no need to remove and re-add it.
+
+To publish a release the app can update to: raise `versionCode` (and `versionName`) in
+`android/app/build.gradle.kts`, build the release, and make a GitHub release tagged `v` + versionCode
+(`v3`) with the APK attached. Pre-releases count. The release's title is the version shown in the app's
+update card, and the first lines of its notes are shown under it.
 
 ## Tests
 

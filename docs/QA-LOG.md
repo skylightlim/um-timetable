@@ -18,6 +18,40 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (updates from GitHub Releases; 1.2.0-beta.1)
+
+**Asked for:** an in-app updater backed by GitHub Releases. A release's tag is its version code ("v3" is
+versionCode 3).
+
+**Change:**
+- `Updater` reads `/repos/skylightlim/um-timetable/releases`, not `/releases/latest`. GitHub's "latest"
+  leaves out pre-releases, and every release so far is one, so the updater would never have found
+  an update. It drops drafts and takes the highest `vN` tag that has an `.apk` asset (`Updater.pick`,
+  tested in `UpdaterTest`).
+- If that's newer than the installed versionCode, it offers it in the app's dialog card: the release's
+  title, the first lines of its notes, its size, then Later or Download. A progress bar shows while
+  it downloads.
+- The APK goes into the app's external files folder (`updates/`), and older downloads are deleted
+  first. It's checked to be this package at the release's versionCode, then handed to Android's
+  installer (`ACTION_VIEW`) through `UpdateProvider`. That's a small read-only content provider: the
+  app has no AndroidX, so no FileProvider.
+- The first time, Android has to allow the app to install apps. Its settings page opens, and Install is
+  tapped again on coming back.
+- At launch it checks at most every 12 hours, and says nothing unless there's a newer release. "Later"
+  hides that version until a manual check: Settings › About › Check for updates, whose subtitle is the
+  installed version. Sign out deletes a downloaded update too.
+- Version 1.2.0-beta.1, versionCode 3. The README says how to publish a release and that the check
+  asks GitHub, signed out and without anything about the user.
+- `ConfirmDialog` now has `frame`, `button` and `present` (shows any card, closes it and then runs the
+  action), so the update card is the same card as Sign out's.
+
+**Checked:**
+- `UpdaterTest`: the highest code wins, pre-releases count, drafts don't, and tags that aren't `vN` or
+  releases without an APK are skipped.
+- On `Test_API37` against the real GitHub API (no `vN` release yet): Settings shows "Check for updates /
+  Version 1.2.0-beta.1". Tapping it showed "Checking for updates…", then "You're up to date
+  (1.2.0-beta.1)".
+
 ## 14 October 2026 (each tab's own summary under its title; Due's countdown fills its cell)
 
 **Asked for:** the line under the title on most tabs said "Week 2 of 14 · Wednesday 14 Oct". Each page

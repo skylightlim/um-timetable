@@ -31,6 +31,8 @@ interface SpectrumHost : Host {
     fun openTimeEdit()
     fun enableNotifications()
     fun openAppSettings()
+    /** Settings' Check for updates: asks GitHub, and says how it went. */
+    fun checkForUpdates()
     /** Light or dark, and the accent scheme, and choosing them (Settings). */
     val look: Look
     fun setLook(look: Look)

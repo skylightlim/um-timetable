@@ -343,5 +343,6 @@ class DebugRenderReceiver : BroadcastReceiver() {
         override fun openTimeEdit() = Unit
         override fun enableNotifications() = Unit
         override fun openAppSettings() = Unit
+        override fun checkForUpdates() = Unit
     }
 }

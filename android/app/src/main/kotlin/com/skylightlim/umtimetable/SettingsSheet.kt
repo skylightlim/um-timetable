@@ -133,6 +133,11 @@ object SettingsSheet {
         label("Vibration")
         sheet.addView(ui.segmented(Haptics.Level.entries.map { it.label }, Haptics.level(context).ordinal, fill = true) { i -> Haptics.setLevel(context, Haptics.Level.entries[i]) })
 
+        // The app's version, and the newest one on GitHub (Updater).
+        section("About", listOf(
+            row("Check for updates", "Version ${Updater.installed(context).second}", chevron()) { close { h.checkForUpdates() } },
+        ))
+
         section("Account", listOf(
             if (signedIn) {
                 row(SpectrumScreens.accountName(context).ifBlank { "Signed in" }, null, button("Sign out") { close { h.signOut() } }, null)

@@ -136,6 +136,8 @@ class MainActivity : Activity(), SpectrumHost {
         buildShell()
         render()
         if (!SpectrumStore.signedIn(this) && timetable.sessions.isEmpty()) showWelcome()
+        // A newer release on GitHub? Asked at most every 12 hours, and only said when there is one.
+        else Updater.check(this, ui, quiet = true)
         fresh = true
         SpectrumSyncJob.ensure(this)
         // Launch timing: Android logs "Fully drawn" with the time since the app started.
@@ -766,6 +768,8 @@ class MainActivity : Activity(), SpectrumHost {
         // Android 12 has no notification permission to ask for: they're on unless turned off in Settings.
         if (Build.VERSION.SDK_INT >= 33 && !Notify.allowed(this)) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFY)
     }
+
+    override fun checkForUpdates() = Updater.check(this, ui, quiet = false)
 
     override fun openAppSettings() = startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
 

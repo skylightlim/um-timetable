@@ -28,7 +28,8 @@ object AppReset {
                 c.deleteSharedPreferences(name)
             }
         // WebView's own cache folder is left to clearCache: deleting it under a running WebView breaks it.
-        for (dir in listOf(c.filesDir, c.noBackupFilesDir, c.cacheDir)) {
+        // The external files folder holds a downloaded update, if any.
+        for (dir in listOfNotNull(c.filesDir, c.noBackupFilesDir, c.cacheDir, c.getExternalFilesDir(null))) {
             dir.listFiles()?.forEach { if (it.name != "WebView") it.deleteRecursively() }
         }
         CookieManager.getInstance().apply { removeAllCookies(null); flush() }
