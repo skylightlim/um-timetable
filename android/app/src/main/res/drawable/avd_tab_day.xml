@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Day tab's list, chosen: each row writes itself in, one after another. At rest it's ic_tab_day. -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <aapt:attr name="android:drawable">
+        <vector android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+            <group android:name="row1">
+                <path android:name="line1" android:pathData="M9,6h11" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" />
+                <path android:name="dot1" android:pathData="M4.5,4.8 a1.2,1.2 0 1,0 0,2.4 a1.2,1.2 0 1,0 0,-2.4 z" android:fillColor="#FFFFFFFF" />
+            </group>
+            <group android:name="row2">
+                <path android:name="line2" android:pathData="M9,12h11" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" />
+                <path android:name="dot2" android:pathData="M4.5,10.8 a1.2,1.2 0 1,0 0,2.4 a1.2,1.2 0 1,0 0,-2.4 z" android:fillColor="#FFFFFFFF" />
+            </group>
+            <group android:name="row3">
+                <path android:name="line3" android:pathData="M9,18h11" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" />
+                <path android:name="dot3" android:pathData="M4.5,16.8 a1.2,1.2 0 1,0 0,2.4 a1.2,1.2 0 1,0 0,-2.4 z" android:fillColor="#FFFFFFFF" />
+            </group>
+        </vector>
+    </aapt:attr>
+    <!-- Row n waits n × 70 ms (as a flat keyframe, so it's empty from the start), then draws in 260 ms. -->
+    <target android:name="line1"><aapt:attr name="android:animation">
+        <objectAnimator android:duration="260" android:interpolator="@android:interpolator/fast_out_slow_in" android:propertyName="trimPathEnd" android:valueFrom="0" android:valueTo="1" android:valueType="floatType" />
+    </aapt:attr></target>
+    <target android:name="row1"><aapt:attr name="android:animation">
+        <objectAnimator android:duration="260" android:interpolator="@android:interpolator/fast_out_slow_in" android:propertyName="translateX" android:valueFrom="-3" android:valueTo="0" android:valueType="floatType" />
+    </aapt:attr></target>
+    <target android:name="line2"><aapt:attr name="android:animation">
+        <objectAnimator android:duration="330"><propertyValuesHolder android:propertyName="trimPathEnd">
+            <keyframe android:fraction="0" android:value="0" /><keyframe android:fraction="0.21" android:value="0" />
+            <keyframe android:fraction="1" android:value="1" android:interpolator="@android:interpolator/fast_out_slow_in" />
+        </propertyValuesHolder></objectAnimator>
+    </aapt:attr></target>
+    <target android:name="row2"><aapt:attr name="android:animation">
+        <objectAnimator android:duration="330"><propertyValuesHolder android:propertyName="translateX">
+            <keyframe android:fraction="0" android:value="-3" /><keyframe android:fraction="0.21" android:value="-3" />
+            <keyframe android:fraction="1" android:value="0" android:interpolator="@android:interpolator/fast_out_slow_in" />
+        </propertyValuesHolder></objectAnimator>
+    </aapt:attr></target>
+    <target android:name="dot2"><aapt:attr name="android:animation">
+        <objectAnimator android:duration="330"><propertyValuesHolder android:propertyName="fillAlpha">
+            <keyframe android:fraction="0" android:value="0" /><keyframe android:fraction="0.21" android:value="0" />
+            <keyframe android:fraction="0.5" android:value="1" />
+            <keyframe android:fraction="1" android:value="1" />
+        </propertyValuesHolder></objectAnimator>
+    </aapt:attr></target>
+    <target android:name="line3"><aapt:attr name="android:animation">
+        <objectAnimator android:duration="400"><propertyValuesHolder android:propertyName="trimPathEnd">
+            <keyframe android:fraction="0" android:value="0" /><keyframe android:fraction="0.35" android:value="0" />
+            <keyframe android:fraction="1" android:value="1" android:interpolator="@android:interpolator/fast_out_slow_in" />
+        </propertyValuesHolder></objectAnimator>
+    </aapt:attr></target>
+    <target android:name="row3"><aapt:attr name="android:animation">
+        <objectAnimator android:duration="400"><propertyValuesHolder android:propertyName="translateX">
+            <keyframe android:fraction="0" android:value="-3" /><keyframe android:fraction="0.35" android:value="-3" />
+            <keyframe android:fraction="1" android:value="0" android:interpolator="@android:interpolator/fast_out_slow_in" />
+        </propertyValuesHolder></objectAnimator>
+    </aapt:attr></target>
+    <target android:name="dot3"><aapt:attr name="android:animation">
+        <objectAnimator android:duration="400"><propertyValuesHolder android:propertyName="fillAlpha">
+            <keyframe android:fraction="0" android:value="0" /><keyframe android:fraction="0.35" android:value="0" />
+            <keyframe android:fraction="0.6" android:value="1" />
+            <keyframe android:fraction="1" android:value="1" />
+        </propertyValuesHolder></objectAnimator>
+    </aapt:attr></target>
+</animated-vector>

@@ -104,6 +104,8 @@ class BottomSheet(context: Context, private val content: View, darkSheet: Boolea
         private var downX = 0f
         private var downY = 0f
         private var dragging = false
+        /** Dragged past the point where letting go closes it (vibrates on crossing it either way). */
+        private var past = false
         private var velocity: VelocityTracker? = null
 
         override fun dispatchTouchEvent(e: MotionEvent): Boolean {
@@ -115,7 +117,7 @@ class BottomSheet(context: Context, private val content: View, darkSheet: Boolea
 
         override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
             when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { downX = e.rawX; downY = e.rawY; dragging = false }
+                MotionEvent.ACTION_DOWN -> { downX = e.rawX; downY = e.rawY; dragging = false; past = false }
                 MotionEvent.ACTION_MOVE -> {
                     val dy = e.rawY - downY
                     if (!closing && dy > slop && dy > abs(e.rawX - downX) && !body.canScrollVertically(-1) && onBody(e)) {
@@ -135,6 +137,10 @@ class BottomSheet(context: Context, private val content: View, darkSheet: Boolea
                 MotionEvent.ACTION_MOVE -> {
                     body.translationY = dy
                     scrim.alpha = 1f - (dy / body.height.coerceAtLeast(1)).coerceAtMost(1f) * 0.8f
+                    if ((dy > body.height / 4f) != past) {
+                        past = !past
+                        Haptics.threshold(this, past)
+                    }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     dragging = false

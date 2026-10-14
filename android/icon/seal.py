@@ -8,7 +8,8 @@ characters in AR PL UKai CN (文鼎 PL 楷书, Arphic Public License).
     tar --zstd -xf ttf-arphic-ukai-*.pkg.tar.zst usr/share/fonts/TTF/ukai.ttc
     uv run --with fonttools python seal.py usr/share/fonts/TTF/ukai.ttc ../app/src/main/res/drawable [key=value ...]
 
-Writes ic_fg.xml and ic_mono.xml there, and preview-circle.svg / preview-squircle.svg here.
+Writes ic_fg.xml and ic_mono.xml there, the status-bar icon ic_notify.xml (the rim and 马 alone), and
+preview-circle.svg / preview-squircle.svg here.
 """
 import sys
 
@@ -75,12 +76,12 @@ def argb(c):
     return "#FF" + c[1:].upper()
 
 
-def vector(comment, paths):
+def vector(comment, paths, box=108):
     return ('<?xml version="1.0" encoding="utf-8"?>\n'
             f"<!-- {comment} Drawn by android/icon/seal.py; edit that, not this. -->\n"
             '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
-            '    android:width="108dp" android:height="108dp"\n'
-            '    android:viewportWidth="108" android:viewportHeight="108">\n'
+            f'    android:width="{box}dp" android:height="{box}dp"\n'
+            f'    android:viewportWidth="{box}" android:viewportHeight="{box}">\n'
             + "".join(f"    <path {p} />\n" for p in paths) + "</vector>\n")
 
 
@@ -98,6 +99,24 @@ open(f"{res}/ic_mono.xml", "w").write(vector(
     "Themed icon: the seal's rim and characters.",
     [f'android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="{gold}{red}"',
      chars("#FFFFFFFF")]))
+
+# The status-bar icon, 24 units: the seal's rim and 马 alone (马大 is UM). Four characters can't be read
+# at that size, and a notification icon is one colour, so the seal is a ring with the character inside.
+N = dict(side=20.0, radius=3.4, rim=1.7, pad=1.4, bold=0.45)
+nx = 12 - N["side"] / 2
+ring = rrect(nx, N["side"], N["radius"]) + rrect(nx + N["rim"], N["side"] - 2 * N["rim"], N["radius"] - N["rim"])
+g = glyphs[cmap[ord("马")]]
+b = BoundsPen(glyphs)
+g.draw(b)
+bx, by = (b.bounds[0] + b.bounds[2]) / 2, (b.bounds[1] + b.bounds[3]) / 2
+nscale = (N["side"] - 2 * (N["rim"] + N["pad"])) * P["size"] / em
+pen = SVGPathPen(glyphs, ntos=num)
+g.draw(TransformPen(pen, (nscale, 0, 0, -nscale, 12 - bx * nscale, 12 + by * nscale)))
+open(f"{res}/ic_notify.xml", "w").write(vector(
+    "Status-bar icon: the seal's rim and 马 (马大, UM), in one colour.",
+    [f'android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="{ring}"',
+     f'android:fillColor="#FFFFFFFF" android:strokeColor="#FFFFFFFF" android:strokeWidth="{num(N["bold"])}" '
+     f'android:strokeLineJoin="round" android:pathData="{pen.getCommands()}"'], box=24))
 
 body = (f'<rect width="108" height="108" fill="{P["blue"]}"/><path fill="{P["gold"]}" d="{gold}"/>'
         f'<path fill="{P["red"]}" d="{red}"/><path fill="{P["yellow"]}" stroke="{P["yellow"]}" '

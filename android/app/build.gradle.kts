@@ -16,8 +16,9 @@ android {
         // week grid: setViewLayoutHeight/Margin and responsive size mappings.
         minSdk = 31
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.1.0-beta.1"
+        // The release's tag is "v" + versionCode ("v3"): the in-app updater reads it from there.
+        versionCode = 3
+        versionName = "1.2.0-beta.1"
     }
 
     // The release key lives outside the project and is never committed: ~/.android/um-timetable-release.properties

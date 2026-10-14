@@ -8,7 +8,10 @@ A UM student's timetable and Spectrum companion: an Android app with a home-scre
 ## Beta
 
 Download the APK from [Releases](../../releases) (Android 12 or newer) and open it on your phone;
-Android asks once to allow installs from your browser or file app.
+Android asks once to allow installs from your browser or file app. After that the app updates itself:
+when a newer release is out it offers it (at most every 12 hours, or Settings › Check for updates),
+downloads it, and hands it to Android's installer. The first time, Android asks you to allow 马大牛逼
+to install apps.
 
 1. Open **Courses** and tap **Connect Spectrum**. Sign in with your SiswaMail (Microsoft); the app
    never sees your password, only the token Spectrum's own mobile sign-in gives it.
@@ -18,7 +21,8 @@ Android asks once to allow installs from your browser or file app.
 
 Where your data goes: your sign-in goes only to Microsoft and UM. The token, your timetable, courses,
 announcements and marks stay in the app's private storage on your phone; nothing is sent anywhere
-else, and there's no server. Signing out deletes them.
+else, and there's no server. Signing out deletes them. The update check asks GitHub for this project's
+list of releases, without signing in and without anything about you.
 
 Known gaps in this beta: the app follows Semester 1 2026/27 classes as TimeEdit lists them;
 attendance links for sessions Spectrum's calendar doesn't list are a best guess from activity names;
@@ -73,6 +77,11 @@ Two traps:
 
 The widget updates itself after an install, so there's no need to remove and re-add it.
 
+To publish a release the app can update to: raise `versionCode` (and `versionName`) in
+`android/app/build.gradle.kts`, build the release, and make a GitHub release tagged `v` + versionCode
+(`v3`) with the APK attached. Pre-releases count. The release's title is the version shown in the app's
+update card, and the first lines of its notes are shown under it.
+
 ## Tests
 
 The rules that read names run as JVM tests in a few seconds, without the phone:
@@ -111,8 +120,8 @@ It is a personal replacement for UMscout that keeps everything on the phone:
   `moodle_mobile_app`) inside `LoginActivity`; the `moodlemobile://token=` reply is
   checked against our passport. The token is stored AES-GCM encrypted with an Android
   Keystore key (`SecureStore`) and is only ever sent to spectrum.um.edu.my.
-- `SpectrumSync` fetches courses, announcements from the past 14 days (news forums; older ones
-  are on each course page; other occurrences' folded), deadlines (calendar action events), today's
+- `SpectrumSync` fetches courses, announcements from the past 30 days (news forums; older ones
+  are on each course page; other occurrences' behind News's For me / All switch), deadlines (calendar action events), today's
   attendance sessions, and grades (alongside the sync, never holding it up); it runs every 30 min (`SpectrumSyncJob`),
   every 10 min during timetabled classes (`AttendanceWatch`), and sets reminders 24 h and
   2 h before each deadline (`Reminders`).
@@ -132,7 +141,7 @@ It is a personal replacement for UMscout that keeps everything on the phone:
   "Sign in with SSO", and Microsoft lets it through with the same SiswaMail session, so the user
   types nothing. The lookup runs inside TimeEdit's page (`assets/timeedit-lookup.js`);
   `TimeEditTimetable` builds the timetable and, when the app already has one, shows what would
-  change before using it. "Get timetable from TimeEdit" in Courses does the same any time; "Import
+  change before using it. "Get timetable from TimeEdit" in Settings (the top bar's sliders button) does the same any time; "Import
   timetable from MAYA instead" is the fallback (MAYA has no single sign-on: the user signs in there).
 
 Signing out deletes the token and cached data on the phone. To also revoke the token on

@@ -1,6 +1,7 @@
 package com.skylightlim.umtimetable
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.app.Activity
@@ -11,6 +12,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.drawable.LayerDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -23,7 +25,7 @@ import android.view.ViewAnimationUtils
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
-import android.webkit.CookieManager
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -32,6 +34,8 @@ import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.LocalDate
+import java.util.Calendar
 import kotlin.concurrent.thread
 import kotlin.math.hypot
 
@@ -43,7 +47,12 @@ class MainActivity : Activity(), SpectrumHost {
 
     override lateinit var ui: Ui
     private lateinit var fonts: Fonts
-    private var look = Look.AUTO
+    override var look = Look.AUTO
+        private set
+    override var scheme = Scheme.GOLD
+        private set
+    /** The sign-in poster over the app on first run (see [showWelcome]). */
+    private var welcome: View? = null
 
     override val timetable: Timetable get() = Timetable.load(this)
     override fun now() = Now.current()
@@ -64,7 +73,10 @@ class MainActivity : Activity(), SpectrumHost {
     private val contentErrors = mutableMapOf<Int, String>()
     private val loading = mutableSetOf<Int>()
 
-    private lateinit var eyebrowRow: LinearLayout
+    private lateinit var titleRow: LinearLayout
+    private lateinit var titleBox: FrameLayout
+    /** What the title says now, so a redraw that doesn't change it doesn't animate it. */
+    private var titleKey: String? = null
     private lateinit var strip: LinearLayout
     private lateinit var scroll: SwipeScrollView
     private lateinit var content: FrameLayout
@@ -109,8 +121,12 @@ class MainActivity : Activity(), SpectrumHost {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
         }
+        // Draw behind the status and navigation bars (the insets listener pads for them), as Android 15+
+        // does by itself: on 12 to 14 the bars would otherwise be bare grey strips.
+        window.setDecorFitsSystemWindows(false)
         fonts = Fonts(this)
         look = Look.load(this)
+        scheme = Scheme.load(this)
         seenNews = prefs().getStringSet("newsSeen", emptySet()) ?: emptySet()
         seenGrades = prefs().getStringSet("gradesSeen", emptySet()) ?: emptySet()
         sel = homeDay(timetable, now())
@@ -119,6 +135,9 @@ class MainActivity : Activity(), SpectrumHost {
         intent.getIntExtra(EXTRA_COURSE, 0).takeIf { it > 0 }?.let { view = "files"; openCourse = it }
         buildShell()
         render()
+        if (!SpectrumStore.signedIn(this) && timetable.sessions.isEmpty()) showWelcome()
+        // A newer release on GitHub? Asked at most every 12 hours, and only said when there is one.
+        else Updater.check(this, ui, quiet = true)
         fresh = true
         SpectrumSyncJob.ensure(this)
         // Launch timing: Android logs "Fully drawn" with the time since the app started.
@@ -131,7 +150,7 @@ class MainActivity : Activity(), SpectrumHost {
         intent.getIntExtra(EXTRA_COURSE, 0).takeIf { it > 0 }?.let { openCourse = it; setView("files"); return }
         intent.getStringExtra(EXTRA_VIEW)?.takeIf { it in VIEWS }?.let {
             if (it == "day") { pickedDay = false; sel = homeDay(timetable, now()) }
-            setView(it)
+            go(it, null)
         }
     }
 
@@ -162,13 +181,26 @@ class MainActivity : Activity(), SpectrumHost {
     // --- shell -----------------------------------------------------------------------------
 
     private fun buildShell() {
-        ui = Ui(this, look.palette(this), fonts)
+        ui = Ui(this, look.palette(this, scheme), fonts)
         val p = ui.p
         window.decorView.setBackgroundColor(p.ground)
         val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
         window.insetsController?.setSystemBarsAppearance(if (p.dark) 0 else lightBars, lightBars)
 
-        eyebrowRow = ui.row()
+        // Settings open from a long press on the title (there's no button; the title has the whole width),
+        // or from pulling the Courses list up. TalkBack offers the long press as "Open settings".
+        titleBox = FrameLayout(this).apply {
+            isHapticFeedbackEnabled = false // the app's own vibration instead, at the user's level
+            setOnLongClickListener { Haptics.threshold(it, true); openSettings(); true }
+            accessibilityDelegate = object : View.AccessibilityDelegate() {
+                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.addAction(AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_LONG_CLICK, "Open settings"))
+                }
+            }
+        }
+        titleRow = ui.row().apply { addView(titleBox, ui.grow()) }
+        titleKey = null
         // The day strip: a track of slots, the selection pill gliding over it, and the chips on top.
         strip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         stripTrack = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -179,10 +211,16 @@ class MainActivity : Activity(), SpectrumHost {
         stripGlider = Motion.Glider(stripFrame, strip, ui.dp(12f).toFloat(), 1)
         stripIndex = -1
         val top = ui.column().apply {
-            addView(eyebrowRow)
-            addView(stripFrame, ui.wide(top = 10f))
+            addView(titleRow)
+            // 16dp under the title, as the Spectrum tabs' pages start 10dp + 6dp under theirs.
+            addView(stripFrame, ui.wide(top = 16f))
         }
-        content = FrameLayout(this).apply { setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(24)) }
+        // Not clipped to its padding: a card sliding in with another day, or springing back from a press,
+        // passes through the 16dp margins, and was cut off there as if it went behind something.
+        content = FrameLayout(this).apply {
+            setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(24))
+            clipToPadding = false
+        }
         scroll = SwipeScrollView(this).apply {
             isFillViewport = true
             isVerticalScrollBarEnabled = false
@@ -194,6 +232,15 @@ class MainActivity : Activity(), SpectrumHost {
             background = LayerDrawable(arrayOf(ui.shape(p.line, 0f), ui.shape(p.ground, 0f))).apply { setLayerInset(1, 0, 1, 0, 0) }
             addView(tabs, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
+        // Swiping across the tab bar moves one tab, and the page slides in from that side.
+        tabBar.onSwipe = { dir ->
+            val here = TABS.indexOfFirst { it.first == if (view == "week") "day" else view }
+            TABS.getOrNull(here + dir)?.let { next ->
+                pendingSlide = dir
+                slideFar = true
+                setView(next.first)
+            }
+        }
         tabGlider = Motion.Glider(tabBar, tabs, ui.dp(12f).toFloat(), 0)
         tabShown = null
         buildTabs()
@@ -202,14 +249,24 @@ class MainActivity : Activity(), SpectrumHost {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(p.ground)
             addView(top)
-            addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            // The pull-to-sync indicator sits behind the page, uncovered as the page is pulled down.
+            val pull = PullIndicator(ui) { SpectrumScreens.lastSynced(this@MainActivity) }
+            scroll.pullIndicator = pull
+            // And the settings gear below it, uncovered as the Courses list is pulled up.
+            val pullUp = PullUpIndicator(ui)
+            scroll.pullUpIndicator = pullUp
+            addView(FrameLayout(this@MainActivity).apply {
+                addView(pull, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
+                addView(pullUp, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+                addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             addView(tabBar)
         }
         shell = root
         presser = Motion.Presser(root)
         root.setOnApplyWindowInsetsListener { _, insets ->
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-            top.setPadding(ui.dp(16) + bars.left, ui.dp(12) + bars.top, ui.dp(16) + bars.right, ui.dp(10))
+            top.setPadding(ui.dp(16) + bars.left, ui.dp(22) + bars.top, ui.dp(16) + bars.right, ui.dp(10))
             tabs.setPadding(ui.dp(16) + bars.left, ui.dp(8), ui.dp(16) + bars.right, ui.dp(8) + bars.bottom)
             WindowInsets.CONSUMED
         }
@@ -236,7 +293,8 @@ class MainActivity : Activity(), SpectrumHost {
                 addView(icon, FrameLayout.LayoutParams(ui.dp(22), ui.dp(22), Gravity.CENTER))
                 addView(badge, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END))
             }
-            val text = ui.text(label, 11.5f, p.muted, ui.f.bodySemi).apply { letterSpacing = 0.04f }
+            // One line, shrinking if it must: at a large system font size on a narrow phone "Courses" wrapped to "Course / s".
+            val text = ui.fitText(label, 11.5f, p.muted, ui.f.bodySemi, lines = 1).apply { letterSpacing = 0.04f }
             val tab = ui.column().apply {
                 gravity = Gravity.CENTER_HORIZONTAL
                 setPadding(0, ui.dp(6), 0, ui.dp(6))
@@ -248,9 +306,11 @@ class MainActivity : Activity(), SpectrumHost {
                     // Tapping Courses while inside a course goes back to the course list;
                     // tapping Day while on Day goes back to the day of the next class.
                     if (id == view && id == "files" && openCourse != null) {
+                        Haptics.back(this)
                         openCourse = null
                         render()
                     } else if (id == view && id == "day" && pickedDay) {
+                        Haptics.back(this)
                         pickedDay = false
                         sel = homeDay(timetable, now())
                         render()
@@ -290,8 +350,14 @@ class MainActivity : Activity(), SpectrumHost {
             ui.text("Something went wrong showing this page: ${e.message}", 15f, ui.p.muted)
         }
         content.removeAllViews()
+        // Nor is the page clipped: its cards rise into place, and spring back after a press, a little past its edges.
+        (page as? ViewGroup)?.clipChildren = false
         content.addView(page)
         scroll.onSwipe = if (view == "day") { dir -> slideFar = true; goDay(sel + dir, dir) } else null
+        // Spectrum's tabs sync when pulled down.
+        scroll.onPull = if (view in setOf("grades", "due", "news", "files") && SpectrumStore.signedIn(this)) ::refresh else null
+        // The Courses list (where Settings used to sit, under the courses) opens them when pulled up.
+        scroll.onPullUp = if (view == "files" && openCourse == null) ::openSettings else null
         if (pendingSlide != 0) {
             // Another day: from the side it was swiped in from, or from close by after a tap.
             Motion.slideIn(page, pendingSlide * if (slideFar) scroll.width * 0.35f else ui.dp(40f).toFloat())
@@ -306,27 +372,8 @@ class MainActivity : Activity(), SpectrumHost {
 
     private fun renderTop(n: Now) {
         val p = ui.p
-        eyebrowRow.removeAllViews()
-        eyebrowRow.addView(ui.label(listOfNotNull("UM", timetable.term).joinToString(" · "), p.muted, 11f), ui.grow())
-        val pill = ui.row(gap = 5f)
-        eyebrowRow.addView(pill.apply {
-            background = ui.pressable(ui.shape(p.surface, 99f, p.line), 99f)
-            setPadding(ui.dp(8), ui.dp(4), ui.dp(10), ui.dp(4))
-            contentDescription = "Theme: ${look.label}. Switch to ${look.next.label}."
-            addView(ui.icon(look.icon, p.muted, 14f))
-            addView(ui.text(look.label, 11.5f, p.muted, ui.f.bodySemi))
-            setOnClickListener { switchLook(this) }
-        })
-        // The pill is about 24dp tall; a delegate on the top bar gives it a 48dp touch area.
-        val bar = eyebrowRow.parent as View
-        bar.post {
-            val r = android.graphics.Rect()
-            pill.getHitRect(r)
-            r.offset(eyebrowRow.left, eyebrowRow.top)
-            val grow = maxOf(0, (ui.dp(48) - r.height()) / 2)
-            r.inset(-ui.dp(4), -grow)
-            bar.touchDelegate = android.view.TouchDelegate(r, pill)
-        }
+        val tt = timetable
+        showTitle(n)
         stripFrame.visibility = if (view == "day" || view == "week") View.VISIBLE else View.GONE
         if (stripFrame.visibility != View.VISIBLE) return
         strip.removeAllViews()
@@ -334,57 +381,173 @@ class MainActivity : Activity(), SpectrumHost {
         val index = if (view == "week") 5 else sel - 1
         // The pill glides; the two labels it leaves and reaches change colour with it.
         val moved = stripIndex != -1 && stripIndex != index
-        fun fg(d: Int, selected: Boolean) = when {
-            selected && d == n.dow -> p.accentInk
+        fun fg(today: Boolean, selected: Boolean) = when {
+            selected && today -> p.accentInk
             selected -> p.ground
-            d == n.dow -> p.accentText
+            today -> p.accentText
             else -> p.text
         }
         for (i in 0..5) {
             stripTrack.addView(View(this).apply { background = ui.shape(p.surface, 12f) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, if (i == 5) 1.15f else 1f).apply { if (i > 0) marginStart = ui.dp(6) })
         }
-        for (d in 1..5) {
-            val selected = index == d - 1
-            val label = ui.text(DAY_SHORT[d], 13f, fg(d, selected), ui.f.bodySemi).apply { gravity = Gravity.CENTER }
-            if (moved && selected) Motion.tint(label, fg(d, false), fg(d, true))
-            if (moved && stripIndex == d - 1) Motion.tint(label, fg(d, true), fg(d, false), 90)
-            val dots = ui.row(gap = 3f).apply {
-                gravity = Gravity.CENTER
-                for (s in timetable.day(d)) addView(View(context).apply { background = ui.shape(s.course.color, 99f) }, LinearLayout.LayoutParams(ui.dp(6), ui.dp(6)))
-            }
-            strip.addView(ui.column().apply {
-                gravity = Gravity.CENTER
-                background = ui.pressable(ui.shape(Color.TRANSPARENT, 12f), 12f)
-                minimumHeight = ui.dp(48)
-                setPadding(0, ui.dp(8), 0, ui.dp(7))
-                contentDescription = timetable.day(d).size.let { n -> "${DAY_NAMES[d]}, $n ${if (n == 1) "class" else "classes"}" }
-                addView(label)
-                addView(dots, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ui.dp(6)).apply { topMargin = ui.dp(5) })
-                setOnClickListener { pickedDay = true; goDay(d) }
-            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (d > 1) marginStart = ui.dp(6) })
-        }
-        // The week grid lives under Day: one more chip after Friday.
-        val week = index == 5
-        val weekText = ui.text("Week", 13f, if (week) p.ground else p.text, ui.f.bodySemi).apply { gravity = Gravity.CENTER }
-        val weekIcon = ui.icon(R.drawable.ic_tab_week, if (week) p.ground else p.muted, 12f)
-        if (moved && week) { Motion.tint(weekText, p.text, p.ground); Motion.tint(weekIcon, p.muted, p.ground) }
-        if (moved && stripIndex == 5) { Motion.tint(weekText, p.ground, p.text, 90); Motion.tint(weekIcon, p.ground, p.muted, 90) }
-        strip.addView(ui.column().apply {
+        // Every chip is as tall as the tallest (match parent in the strip), so the pill covers the Week chip too.
+        fun chip(description: String, vararg parts: View) = ui.column().apply {
             gravity = Gravity.CENTER
             background = ui.pressable(ui.shape(Color.TRANSPARENT, 12f), 12f)
-            minimumHeight = ui.dp(48)
-            setPadding(0, ui.dp(8), 0, ui.dp(7))
-            contentDescription = "Week, ${timetable.sessions.size} classes"
-            addView(weekText)
-            addView(weekIcon, LinearLayout.LayoutParams(ui.dp(12), ui.dp(12)).apply { topMargin = ui.dp(2) })
+            minimumHeight = ui.dp(60)
+            setPadding(ui.dp(4), ui.dp(8), ui.dp(4), ui.dp(8))
+            contentDescription = description
+            for ((k, part) in parts.withIndex()) {
+                val lp = part.layoutParams as? LinearLayout.LayoutParams ?: LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                addView(part, lp.apply { if (k > 0) topMargin = ui.dp(if (k == 1) 2 else 5) })
+            }
+        }
+        for (d in 1..5) {
+            val selected = index == d - 1
+            val days = daysFromToday(tt, n, d)
+            val today = days == 0
+            val name = ui.text(DAY_SHORT[d], 10.5f, fg(today, selected), ui.f.bodyBold, caps = true, spacing = 0.1f)
+            val date = ui.text(dateIn(days).get(Calendar.DAY_OF_MONTH).toString(), 22f, fg(today, selected), ui.f.sign)
+            for (t in listOf(name, date)) {
+                if (moved && selected) Motion.tint(t, fg(today, false), fg(today, true))
+                if (moved && stripIndex == d - 1) Motion.tint(t, fg(today, true), fg(today, false), 90)
+            }
+            val dots = ui.row(gap = 3f).apply {
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ui.dp(6))
+                for (s in tt.day(d)) addView(View(context).apply { background = ui.shape(s.course.color, 99f) }, LinearLayout.LayoutParams(ui.dp(6), ui.dp(6)))
+            }
+            val description = tt.day(d).size.let { k -> "${DAY_NAMES[d]} ${dateText(days)}, $k ${if (k == 1) "class" else "classes"}" }
+            strip.addView(chip(description, name, date, dots).apply {
+                setOnClickListener { pickedDay = true; goDay(d) }
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { if (d > 1) marginStart = ui.dp(6) })
+        }
+        // The week grid lives under Day: one more chip after Friday, saying which week of the semester it is.
+        val week = index == 5
+        val semester = AcademicCalendar.week(LocalDate.now().plusDays(daysFromToday(tt, n, 1).toLong()))
+        val (weekName, weekOf) = when (semester?.kind) {
+            AcademicCalendar.Kind.TEACHING -> "W${semester.n}" to "of ${semester.of}"
+            AcademicCalendar.Kind.BREAK -> "Break" to null
+            AcademicCalendar.Kind.REVISION -> "Revision" to null
+            AcademicCalendar.Kind.EXAMS -> "Exams" to null
+            null -> "Week" to null
+        }
+        val weekParts = listOfNotNull(
+            ui.text(weekName, 22f, if (week) p.ground else p.text, ui.f.sign),
+            weekOf?.let { ui.text(it, 10.5f, if (week) p.ground else p.muted, ui.f.bodyBold, caps = true, spacing = 0.1f) },
+        )
+        for ((k, t) in weekParts.withIndex()) {
+            val rest = if (k == 0) p.text else p.muted
+            if (moved && week) Motion.tint(t, rest, p.ground)
+            if (moved && stripIndex == 5) Motion.tint(t, p.ground, rest, 90)
+        }
+        val weekWords = if (semester?.kind == AcademicCalendar.Kind.TEACHING) "Week ${semester.n} of ${semester.of} of the semester" else weekName
+        strip.addView(chip("$weekWords, ${tt.sessions.size} classes a week", *weekParts.toTypedArray()).apply {
             setOnClickListener { setView("week") }
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.15f).apply { marginStart = ui.dp(6) })
-        stripGlider.moveTo(index, if (view == "day" && sel == n.dow) p.accent else p.text)
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.15f).apply { marginStart = ui.dp(6) })
+        stripGlider.moveTo(index, if (view == "day" && daysFromToday(tt, n, sel) == 0) p.accent else p.text)
         stripIndex = index
     }
 
-    /** The new theme spreads out from the theme pill, over a picture of the old one. */
-    private fun switchLook(from: View) {
+    /**
+     * The top bar's title. Day: the chosen day and its date; Week: the dates of the strip's week;
+     * elsewhere today's date, small. A new title's words come in from the side the day moved to (or
+     * rise, for another tab) while the old one slips away.
+     */
+    private fun showTitle(n: Now) {
+        val p = ui.p
+        val tt = timetable
+        val big = view == "day" || view == "week"
+        val page = PAGE_TITLES[view]
+        val days = daysFromToday(tt, n, sel)
+        val words = when {
+            view == "day" -> listOf(DAY_NAMES[sel], dateText(days))
+            view == "week" -> listOf(weekRange(daysFromToday(tt, n, 1)))
+            page != null -> listOf(page)
+            else -> listOf("${DAY_NAMES[n.dow]} ${dateText(0)}")
+        }
+        // The small line under the title, each page's own summary. The Spectrum tabs: what's on them
+        // ("3 due · next in 1d"); Day: the day at a glance; Week: its Spectrum deadlines.
+        val line = when {
+            page != null -> SpectrumScreens.summary(this, view)
+            view == "day" -> dayGlance(tt.day(sel))
+            view == "week" -> weekDeadlines(daysFromToday(tt, n, 1))
+            else -> null
+        }
+        val today = view == "day" && days == 0
+        val key = "$big $today $words $line"
+        if (key == titleKey) return
+        titleKey = key
+        val title: ViewGroup = when {
+            page != null -> pageTitle(ui, page, line)
+            view == "day" -> dayTitle(ui, DAY_NAMES[sel], dateText(days), today, line)
+            view == "week" -> weekTitle(ui, words.first(), line)
+            else -> ui.row().apply { addView(ui.label(words.first(), p.muted, 11f)) }
+        }
+        val old = (0 until titleBox.childCount).map(titleBox::getChildAt)
+        titleBox.addView(title, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+        if (old.isEmpty()) return
+        if (!Motion.enabled) return old.forEach(titleBox::removeView)
+        Motion.retitle(old, title, pendingSlide * ui.dp(32f).toFloat(), ui.dp(10f).toFloat())
+    }
+
+    /** Settings (theme, imports, notifications, vibration, account), as in redesign 1p. */
+    private fun openSettings() = SettingsSheet.show(this, this)
+
+    override fun setLook(look: Look) {
+        if (look != this.look) restyle(titleBox) { this.look = look; Look.save(this, look) }
+    }
+
+    override fun setScheme(scheme: Scheme) {
+        if (scheme != this.scheme) restyle(titleBox) {
+            this.scheme = scheme
+            Scheme.save(this, scheme)
+            TimetableWidget.updateAll(this) // its classes take the theme's course colours too
+        }
+    }
+
+    /** First run (no sign-in, no timetable): the sign-in poster (redesign 1t, in UM's colours) over the app. */
+    private fun showWelcome() {
+        if (welcome != null) return
+        val poster = SignInScreen.build(ui) { signIn() }
+        findViewById<FrameLayout>(android.R.id.content).addView(poster, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        poster.requestApplyInsets()
+        welcome = poster
+        // Light status and navigation icons on UM blue, whatever the theme.
+        val dark = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+        window.insetsController?.setSystemBarsAppearance(0, dark)
+    }
+
+    /** Signed in, or a timetable imported: the poster lifts away to the app. */
+    private fun hideWelcome() {
+        val poster = welcome ?: return
+        welcome = null
+        val dark = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+        window.insetsController?.setSystemBarsAppearance(if (ui.p.dark) 0 else dark, dark)
+        fun remove() { (poster.parent as? ViewGroup)?.removeView(poster) }
+        if (!Motion.enabled) { remove(); return }
+        poster.animate().translationY(-poster.height.toFloat()).setInterpolator(Motion.EXIT).setDuration(320).withEndAction { remove() }.start()
+    }
+
+    /**
+     * The Spectrum deadlines in the strip's week (Monday [monday] days from today, to Sunday) not yet
+     * passed: "3 deadlines this week" (or "next week" once the strip shows it); null when not signed in.
+     */
+    private fun weekDeadlines(monday: Int): String? {
+        if (!SpectrumStore.signedIn(this)) return null
+        val from = startOfDay(dateIn(monday).timeInMillis)
+        val to = startOfDay(dateIn(monday + 7).timeInMillis)
+        val now = System.currentTimeMillis()
+        val n = SpectrumStore.array(this, "due").objects().count { it.getLong("due") in maxOf(from, now) until to }
+        val which = if (monday > 0) "next week" else "this week"
+        return when (n) {
+            0 -> "No deadlines $which"
+            1 -> "1 deadline $which"
+            else -> "$n deadlines $which"
+        }
+    }
+
+    /** A new look or scheme ([change]) spreads out from [from] (the title, where Settings open), over a picture of the old one. */
+    private fun restyle(from: View, change: () -> Unit) {
         val old = shell
         val y = scroll.scrollY
         val picture = if (Motion.enabled && old.width > 0 && old.height > 0)
@@ -392,8 +555,7 @@ class MainActivity : Activity(), SpectrumHost {
         val at = IntArray(2).also(from::getLocationInWindow)
         val cx = at[0] + from.width / 2
         val cy = at[1] + from.height / 2
-        look = look.next
-        Look.save(this, look)
+        change()
         buildShell()
         render(keepScroll = false)
         scroll.post { scroll.scrollTo(0, y) }
@@ -422,7 +584,7 @@ class MainActivity : Activity(), SpectrumHost {
     private fun renderTabs() {
         val p = ui.p
         val unread = SpectrumStore.array(this, "news").objects().count { it.optBoolean("forMe", true) && it.getInt("id").toString() !in seenNews }
-        val newMarks = SpectrumStore.array(this, "grades").objects().count { !it.isNull("raw") && SpectrumSync.gradeKey(it) !in seenGrades }
+        val newMarks = SpectrumStore.array(this, "grades").objects().count { !it.isNull("raw") && !SpectrumSync.isAttendance(it) && SpectrumSync.gradeKey(it) !in seenGrades }
         val counts = mapOf("news" to unread, "grades" to newMarks, "due" to SpectrumScreens.openAttendance(this))
         var lit = 0
         for ((id, views) in tabViews) {
@@ -441,9 +603,10 @@ class MainActivity : Activity(), SpectrumHost {
             }
             badgeCounts[id] = n
         }
-        // The pill glides to the lit tab, whose icon gives a small hop.
+        // The pill glides to the lit tab, whose icon plays its little scene: Day's list writes itself in,
+        // Grades' medal and ribbon meet, Due's tick draws, News' bell rings, a page drops into Courses' folder.
         val shown = TABS[lit].first
-        if (tabShown != null && tabShown != shown) tabViews[shown]?.second?.let { Motion.pop(it, 0.7f) }
+        if (tabShown != null && tabShown != shown && Motion.enabled) (tabViews[shown]?.second?.drawable as? android.graphics.drawable.AnimatedVectorDrawable)?.start()
         tabShown = shown
         tabGlider.moveTo(lit, p.surface)
     }
@@ -470,11 +633,16 @@ class MainActivity : Activity(), SpectrumHost {
 
     // --- navigation ------------------------------------------------------------------------
 
-    override fun setView(view: String) {
+    override fun setView(view: String) = go(view, Haptics::tick)
+
+    /** Shows [view]; [feel] is the vibration for the move (none when the app is only being opened there). */
+    private fun go(view: String, feel: ((View) -> Unit)?) {
         if (view !in VIEWS) return
         val changed = view != this.view
+        if (changed) scroll.resetPull()
         this.view = view
         prefs().edit().putString("view", view).apply()
+        if (changed) feel?.invoke(shell)
         render(keepScroll = false, enter = changed)
     }
 
@@ -487,22 +655,36 @@ class MainActivity : Activity(), SpectrumHost {
         pickedDay = true
         if (d == sel && view == "day") return
         pendingSlide = if (view != "day") 0 else if (dir != 0) dir else if (d > sel) 1 else -1
+        if (view == "day" && !slideFar) Haptics.tick(shell)
         sel = d
         setView("day")
     }
 
-    // Back: leave a course page, then return to Day; on Day, Android's own back leaves the app.
-    private val back = OnBackInvokedCallback {
+    // Back: leave a course page, then return to Day; on Day (false), Android's own back leaves the app.
+    private fun stepBack(): Boolean {
         if (view == "files" && openCourse != null) {
+            Haptics.back(shell)
             openCourse = null
             render()
         } else if (view != "day") {
-            setView("day")
-        }
+            go("day", Haptics::back)
+        } else return false
+        return true
     }
+
+    // Android 13+ sends back to this callback. Android 12 has no such type (making one there
+    // crashes), so it's made on first use and back comes through onBackPressed instead.
+    private val back by lazy { OnBackInvokedCallback { stepBack() } }
     private var backRegistered = false
 
+    @SuppressLint("GestureBackNavigation") // gestures on Android 13+ go to the callback above
+    @Deprecated("Android 12 (and 13 to 15 when the callback isn't used) still calls this")
+    override fun onBackPressed() {
+        if (!stepBack()) super.onBackPressed()
+    }
+
     private fun updateBack() {
+        if (Build.VERSION.SDK_INT < 33) return
         val want = view != "day"
         if (want == backRegistered) return
         backRegistered = want
@@ -511,6 +693,11 @@ class MainActivity : Activity(), SpectrumHost {
     }
 
     override fun openSheet(course: Course, session: Session?) = ClassSheet.show(this, this, course, session)
+
+    override fun showCourse(id: Int) {
+        openCourse = id
+        setView("files")
+    }
 
     // --- Spectrum --------------------------------------------------------------------------
 
@@ -522,6 +709,7 @@ class MainActivity : Activity(), SpectrumHost {
             SpectrumSync.run(applicationContext)
             runOnUiThread {
                 syncing = false
+                scroll.endPull()
                 contents.clear() // course pages refresh the next time they're opened
                 contentErrors.clear()
                 render(keepScroll = true)
@@ -559,16 +747,15 @@ class MainActivity : Activity(), SpectrumHost {
     @Suppress("DEPRECATION")
     override fun signIn() = startActivityForResult(Intent(this, LoginActivity::class.java), REQ_LOGIN)
 
-    override fun signOut() {
-        SpectrumStore.signOut(this)
-        SpectrumSyncJob.cancel(this)
-        Reminders.schedule(this)
-        AttendanceWatch.schedule(this)
-        CookieManager.getInstance().removeAllCookies(null)
-        TimetableWidget.updateAll(this)
-        openCourse = null
-        contents.clear()
-        render()
+    /** One tap on a link at the bottom of Courses shouldn't wipe the sign-in: ask first. */
+    override fun signOut() = ConfirmDialog.show(ui, SIGN_OUT_TITLE, SIGN_OUT_BODY, "Sign out") { signOutNow() }
+
+    /** Sign out deletes everything, and the app starts again at the first-run poster. */
+    private fun signOutNow() {
+        AppReset.run(this)
+        SpectrumStore.noteSignOut(this, "you tapped Sign out")
+        intent = Intent(this, MainActivity::class.java)
+        recreate()
     }
 
     @Suppress("DEPRECATION")
@@ -578,8 +765,11 @@ class MainActivity : Activity(), SpectrumHost {
     override fun openTimeEdit() = startActivityForResult(Intent(this, TimeEditActivity::class.java), REQ_TIMEEDIT)
 
     override fun enableNotifications() {
-        if (!Notify.allowed(this)) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFY)
+        // Android 12 has no notification permission to ask for: they're on unless turned off in Settings.
+        if (Build.VERSION.SDK_INT >= 33 && !Notify.allowed(this)) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFY)
     }
+
+    override fun checkForUpdates() = Updater.check(this, ui, quiet = false)
 
     override fun openAppSettings() = startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
 
@@ -589,12 +779,16 @@ class MainActivity : Activity(), SpectrumHost {
         if (resultCode != RESULT_OK) return
         when (requestCode) {
             REQ_LOGIN -> {
+                hideWelcome()
                 enableNotifications()
                 SpectrumSyncJob.schedule(this)
                 timetableAfterSync = Timetable.load(this).sessions.isEmpty()
                 refresh()
             }
-            REQ_MAYA, REQ_TIMEEDIT -> setView("week")
+            REQ_MAYA, REQ_TIMEEDIT -> {
+                hideWelcome()
+                go("week", null)
+            }
         }
     }
 
@@ -605,6 +799,9 @@ class MainActivity : Activity(), SpectrumHost {
 
     companion object {
         const val EXTRA_VIEW = "view"
+        /** The Sign out question (redesign 1q). Sign out deletes everything ([AppReset]). */
+        const val SIGN_OUT_TITLE = "Sign out?"
+        const val SIGN_OUT_BODY = "All your data in the app will be deleted.\nYou can sign in again any time."
         /** A Spectrum course id to open in the Courses tab. */
         const val EXTRA_COURSE = "course"
         private const val REQ_LOGIN = 1
@@ -612,12 +809,15 @@ class MainActivity : Activity(), SpectrumHost {
         private const val REQ_MAYA = 3
         private const val REQ_TIMEEDIT = 4
         private val TABS = listOf(
-            Triple("day", "Day", R.drawable.ic_tab_day),
-            Triple("grades", "Grades", R.drawable.ic_tab_grades),
-            Triple("due", "Due", R.drawable.ic_tab_due),
-            Triple("news", "News", R.drawable.ic_tab_news),
-            Triple("files", "Courses", R.drawable.ic_tab_courses),
+            // Animated icons (res/drawable/avd_tab_*): at rest each is its ic_tab_* drawing.
+            Triple("day", "Day", R.drawable.avd_tab_day),
+            Triple("grades", "Grades", R.drawable.avd_tab_grades),
+            Triple("due", "Due", R.drawable.avd_tab_due),
+            Triple("news", "News", R.drawable.avd_tab_news),
+            Triple("files", "Courses", R.drawable.avd_tab_courses),
         )
+        /** The Spectrum tabs' names, shown large in the top bar. */
+        private val PAGE_TITLES = mapOf("grades" to "Grades", "due" to "Due", "news" to "News", "files" to "Courses")
         /** The week grid has no tab of its own; it's the Week chip under Day. */
         private val VIEWS = TABS.map { it.first }.toSet() + "week"
     }

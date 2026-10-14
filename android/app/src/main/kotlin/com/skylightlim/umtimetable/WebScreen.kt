@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
@@ -36,7 +37,9 @@ abstract class WebScreen : Activity() {
 
     // On Android 16+ onBackPressed() is no longer called; step back through web history with a
     // callback that's registered only while there is history, so back leaves the screen otherwise.
-    private val historyBack = OnBackInvokedCallback { web.goBack() }
+    // Android 12 has no callback type (making one there crashes): it's made on first use, and
+    // onBackPressed steps back there.
+    private val historyBack by lazy { OnBackInvokedCallback { web.goBack() } }
     private var historyBackRegistered = false
 
     /** The page waiting for files from the picker (an assignment's upload). */
@@ -97,6 +100,7 @@ abstract class WebScreen : Activity() {
             addView(progress, LinearLayout.LayoutParams(-1, -2))
             addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
         }
+        window.setDecorFitsSystemWindows(false) // as on Android 15+: the listener below pads for the bars
         root.setOnApplyWindowInsetsListener { v, insets ->
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime())
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
@@ -119,11 +123,18 @@ abstract class WebScreen : Activity() {
     protected open fun pageFinished(url: String) = Unit
 
     private fun updateHistoryBack() {
+        if (Build.VERSION.SDK_INT < 33) return
         val enabled = web.canGoBack()
         if (enabled == historyBackRegistered) return
         historyBackRegistered = enabled
         if (enabled) onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, historyBack)
         else onBackInvokedDispatcher.unregisterOnBackInvokedCallback(historyBack)
+    }
+
+    @SuppressLint("GestureBackNavigation") // gestures on Android 13+ go to the callback above
+    @Deprecated("Android 12 (and 13 to 15 when the callback isn't used) still calls this")
+    override fun onBackPressed() {
+        if (web.canGoBack()) web.goBack() else super.onBackPressed()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

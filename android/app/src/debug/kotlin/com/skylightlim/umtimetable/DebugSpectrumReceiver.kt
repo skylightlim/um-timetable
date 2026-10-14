@@ -18,6 +18,9 @@ import kotlin.concurrent.thread
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es sso probe [--es site timeedit] [--ez signout true]
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es timeedit build
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es sync full
+ *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es haptic tick|back|cross|uncross
+ *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es fake signin
+ *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es mayaSite http://localhost:8765/
  */
 class DebugSpectrumReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -29,6 +32,14 @@ class DebugSpectrumReceiver : BroadcastReceiver() {
             MayaImport.fillNames(c, SpectrumStore.array(c, "courses"))
             TimetableWidget.updateAll(c)
             Log.i("UMTimetable", "debug: names ${Timetable.load(c).courses.joinToString { "${it.code}=${it.name}" }}")
+            return
+        }
+        // --es fake signin: a made-up Spectrum sign-in and a saved file, to try Sign out without a real
+        // account (keep the network off: Spectrum would refuse the token and sign the app out).
+        if (intent.getStringExtra("fake") == "signin") {
+            SecureStore.put(c, "token", "debug-fake-token")
+            SpectrumStore.write(c, "debug-fake", "{}")
+            Log.i("UMTimetable", "debug: fake sign-in, signedIn=${SpectrumStore.signedIn(c)}")
             return
         }
         intent.getStringExtra("timetable")?.let { mode ->
@@ -48,6 +59,13 @@ class DebugSpectrumReceiver : BroadcastReceiver() {
         }
         // --es maya import: run the importer on no_backup/maya/page.json (a MAYA page pushed with adb,
         // as {"html": "…"}) and use the result. The app itself never saves MAYA pages.
+        // --es mayaSite http://localhost:8765/: the MAYA import against a stand-in MAYA served from the
+        // computer (adb reverse tcp:8765 tcp:8765), to test the steps it takes by itself after sign-in.
+        // Only works with the app in front: Android won't open a screen for an app in the background.
+        intent.getStringExtra("mayaSite")?.let { site ->
+            c.startActivity(Intent(c, MayaActivity::class.java).putExtra(MayaActivity.EXTRA_SITE, site).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return
+        }
         if (intent.getStringExtra("maya") == "import") {
             val latest = File(c.noBackupFilesDir, "maya/page.json").takeIf { it.exists() }
             val found = latest?.let { MayaImport.timetable(c, MayaImport.events(org.json.JSONObject(it.readText()).optString("html"))) }
@@ -63,6 +81,19 @@ class DebugSpectrumReceiver : BroadcastReceiver() {
         // no_backup/spectrum/raw-call.json for inspection with run-as. Delete it afterwards.
         // --es attendance check: every course's attendance activities, whose AttendanceMatch thinks
         // each one is, and which it picks for each of the user's classes. Logged, nothing saved.
+        // --es haptic tick|back|cross|uncross: one vibration at the chosen strength (Haptics). Android
+        // ignores it while the app is in the background, but `dumpsys vibrator_manager` still lists it.
+        intent.getStringExtra("haptic")?.let { kind ->
+            val v = android.view.View(c)
+            when (kind) {
+                "back" -> Haptics.back(v)
+                "cross" -> Haptics.threshold(v, true)
+                "uncross" -> Haptics.threshold(v, false)
+                else -> Haptics.tick(v)
+            }
+            Log.i("UMTimetable", "debug: haptic $kind at ${Haptics.level(c)}")
+            return
+        }
         // --es timeedit build: the timetable TimeEdit would give, compared with the app's (DebugTimeEdit).
         if (intent.getStringExtra("timeedit") == "build") {
             val pending = goAsync()

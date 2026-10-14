@@ -27,6 +27,17 @@ class NamesTest {
     }
 
     /** Spectrum's occurrence groups, in the format seen on 13 Oct 2026. */
+    /** Course-wide announcements, shaped like Spectrum's (subjects and greetings made up), for a student in OCC 12. */
+    @Test fun announcementsForOtherOccurrences() {
+        assertTrue(SpectrumSync.addressedToOthers("Online Tutorials and Lab Sessions for OCC7, OCC8, and OCC9 Until Further Notice", "Dear OCC7, OCC8, and OCC9 Students, …", 12))
+        assertTrue(SpectrumSync.addressedToOthers("Important Announcement", "Dear OCC 3 students, the tutorial moves to Friday.", 12))
+        assertFalse(SpectrumSync.addressedToOthers("Replacement class for OCC 9 and 12", "", 12))
+        assertFalse(SpectrumSync.addressedToOthers("Important Announcement", "Dear OCC 12 students, the tutorial moves to Friday.", 12))
+        assertFalse(SpectrumSync.addressedToOthers("Week 2: no physical class", "Use the slides and videos. OCC 3 will meet on Friday.".padStart(200, ' '), 12))
+        assertFalse(SpectrumSync.addressedToOthers("Lab 3 is released", "Submit by Friday.", 12))
+        assertFalse(SpectrumSync.addressedToOthers("Tutorial for OCC 3", "", 0)) // occurrence unknown: keep it
+    }
+
     @Test fun occurrenceOf() {
         assertEquals(10, SpectrumSync.occurrenceOf(org.json.JSONObject().put("name", "GROUP 10 2026/2027_1").put("idnumber", "2026@2027@1@10")))
         assertEquals(11, SpectrumSync.occurrenceOf(org.json.JSONObject().put("name", "GROUP 11 2026/2027_1").put("idnumber", "")))

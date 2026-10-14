@@ -13,13 +13,13 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
-import android.view.ViewParent
 import android.view.ViewPropertyAnimator
 import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.ScrollView
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
@@ -60,6 +60,10 @@ object Motion {
     val SETTLE = Spring(0.8f, 0.5f)
     /** Growing and shrinking in place, the theme spreading: no overshoot. */
     val SMOOTH = Spring(1f, 0.5f)
+    /** Something opening or closing in place (a fold, Show more): quick, about 250 ms, no overshoot. */
+    val QUICK = Spring(1f, 0.3f)
+    /** A fold's chevron turning: quick, a hint of overshoot. */
+    val FOLD = Spring(0.75f, 0.28f)
     /** Leaving is quicker than arriving, and doesn't bounce. */
     val EXIT = PathInterpolator(0.4f, 0f, 1f, 1f)
     private val PRESS = PathInterpolator(0.2f, 0f, 0f, 1f)
@@ -106,11 +110,21 @@ object Motion {
             pressed = null
         }
 
-        private fun clickableAt(v: View, x: Int, y: Int): View? {
-            if (v.visibility != View.VISIBLE) return null
+        private fun hit(v: View, x: Int, y: Int): Boolean {
+            if (v.visibility != View.VISIBLE) return false
             val r = Rect()
-            if (!v.getGlobalVisibleRect(r) || !r.contains(x, y)) return null
-            if (v is ViewGroup) for (i in v.childCount - 1 downTo 0) clickableAt(v.getChildAt(i), x, y)?.let { return it }
+            return v.getGlobalVisibleRect(r) && r.contains(x, y)
+        }
+
+        private fun clickableAt(v: View, x: Int, y: Int): View? {
+            if (!hit(v, x, y)) return null
+            if (v is ViewGroup) for (i in v.childCount - 1 downTo 0) {
+                val child = v.getChildAt(i)
+                clickableAt(child, x, y)?.let { return it }
+                // A scrolling panel takes every touch on it, so nothing under it is pressed. Without this, a
+                // tap on a sheet's empty space sank the scrim behind it, uncovering light strips at the edges.
+                if (child is ScrollView && hit(child, x, y)) return null
+            }
             return v.takeIf { it.isClickable && it.isEnabled && it.hasOnClickListeners() }
         }
     }
@@ -121,6 +135,61 @@ object Motion {
      * track stretch it to the whole screen.
      */
     class RowFrame(context: android.content.Context) : FrameLayout(context) {
+        /**
+         * A sideways swipe across the row, one item per swipe: +1 for a swipe to the left (the next
+         * item), -1 to the right. A tap still reaches the item under it.
+         */
+        var onSwipe: ((Int) -> Unit)? = null
+        private val slop = ViewConfiguration.get(context).scaledTouchSlop
+        private val density = context.resources.displayMetrics.density
+        private var downX = 0f
+        private var downY = 0f
+        private var swiping = false
+        private var velocity: android.view.VelocityTracker? = null
+
+        private fun startsSwipe(e: MotionEvent) = (e.x - downX).let { dx -> abs(dx) > slop && abs(dx) > abs(e.y - downY) * 1.5f }
+
+        override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
+            if (onSwipe == null) return false
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = e.x
+                    downY = e.y
+                    swiping = false
+                    velocity = (velocity ?: android.view.VelocityTracker.obtain()).apply { clear(); addMovement(e) }
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    velocity?.addMovement(e)
+                    if (!swiping && startsSwipe(e)) { swiping = true; return true }
+                }
+            }
+            return false
+        }
+
+        @android.annotation.SuppressLint("ClickableViewAccessibility")
+        override fun onTouchEvent(e: MotionEvent): Boolean {
+            val swipe = onSwipe ?: return super.onTouchEvent(e)
+            velocity?.addMovement(e)
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = e.x
+                    downY = e.y
+                    swiping = false
+                    velocity = (velocity ?: android.view.VelocityTracker.obtain()).apply { clear(); addMovement(e) }
+                }
+                MotionEvent.ACTION_MOVE -> if (!swiping && startsSwipe(e)) swiping = true
+                MotionEvent.ACTION_UP -> {
+                    val dx = e.x - downX
+                    velocity?.computeCurrentVelocity(1000)
+                    val flick = abs(velocity?.xVelocity ?: 0f) > 700 * density
+                    if (swiping && (abs(dx) > 40 * density || flick)) swipe(if (dx < 0) 1 else -1)
+                    swiping = false
+                }
+                MotionEvent.ACTION_CANCEL -> swiping = false
+            }
+            return true
+        }
+
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
             val row = getChildAt(childCount - 1) ?: return super.onMeasure(widthMeasureSpec, heightMeasureSpec)
             measureChild(row, widthMeasureSpec, heightMeasureSpec)
@@ -226,20 +295,40 @@ object Motion {
     }
 
     /**
+     * A title changing: the [old] one slips away while the [new] one's parts (words, a chip) follow
+     * each other in, 45 ms apart, from [dx] sideways, or rising by [rise] when [dx] is 0. The old views
+     * are removed from their parent when they're gone.
+     */
+    fun retitle(old: List<View>, new: ViewGroup, dx: Float, rise: Float) {
+        for (v in old) v.animate().translationX(-dx * 0.6f).translationY(if (dx == 0f) -rise * 0.6f else 0f).alpha(0f)
+            .setStartDelay(0).setDuration(140).setInterpolator(EXIT).withEndAction { (v.parent as? ViewGroup)?.removeView(v) }.start()
+        for (i in 0 until new.childCount) {
+            val v = new.getChildAt(i)
+            val delay = 40L + i * 45L
+            v.translationX = dx
+            v.translationY = if (dx == 0f) rise else 0f
+            v.alpha = 0f
+            v.animate().translationX(0f).translationY(0f).setStartDelay(delay).spring(SETTLE).start()
+            ObjectAnimator.ofFloat(v, View.ALPHA, 0f, 1f).setDuration(200).apply { interpolator = PRESS; startDelay = delay }.start()
+        }
+    }
+
+    /**
      * Something about to grow or shrink in place (Show more, a folder, a fold): what changes size
      * animates there, and everything below it moves along. Call just before changing it.
      */
     fun resize(from: View) {
         if (!enabled) return
-        val root = generateSequence(from as ViewParent?) { it.parent }.firstOrNull { it.parent is ScrollView } as? ViewGroup ?: return
+        // From the view itself up (casting a TextView like Show more to ViewParent crashed the app).
+        val root = generateSequence(from) { it.parent as? View }.firstOrNull { it.parent is ScrollView } as? ViewGroup ?: return
         TransitionManager.beginDelayedTransition(
             root,
             TransitionSet().apply {
                 ordering = TransitionSet.ORDERING_TOGETHER
                 addTransition(ChangeBounds())
                 addTransition(Fade())
-                duration = SMOOTH.duration
-                interpolator = SMOOTH
+                duration = QUICK.duration
+                interpolator = QUICK
             },
         )
     }
@@ -261,6 +350,6 @@ object Motion {
 
     fun turn(chevron: View, open: Boolean) {
         val to = if (open) -90f else 90f
-        if (!enabled) chevron.rotation = to else chevron.animate().rotation(to).spring(BOUNCY).start()
+        if (!enabled) chevron.rotation = to else chevron.animate().rotation(to).spring(FOLD).start()
     }
 }
