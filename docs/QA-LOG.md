@@ -18,6 +18,28 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (the cow and the horse redrawn after the icon sketch)
+
+**Asked for:** the duel's cow and horse refined and minimal after a reference picture (a round,
+upright cow and horse crossing swords), still monochrome, with fewer states that never show in the app.
+
+**Found:** the pull indicator slides down with the page, so at the 72dp sync threshold only the bottom
+~20dp of the 56dp duel is on screen, and none of it below ~70% of the pull. The sheathed and
+blade-drawing phases (old progress 0–0.5) were never visible; the loop only ran 0.6–1.
+
+**Change** (`DuelView`):
+- Both are small and upright now, each a few outlined pieces (body with legs, head, arm, blade) in a
+  120 × 60 box at 112 × 56dp. The cow is paper-white with solid spots, ears, eye patch and hooves, with
+  faint horns and muzzle. The horse has a faintly tinted coat, a pale muzzle, a solid mane and tail. The
+  tint is the ink mixed 14% into the page colour, so it follows light, dark and the accent themes.
+- Fewer states: `progress` is only the swing, 0 en garde (blades up and apart) to 1 crossed. Each one
+  steps in 4 and leans in 4°. The pose runs on progress², so the tips meet at 0.8 and the strike is fastest
+  into the cross. The loop now runs the whole range (strike, hold, back to en garde), so every pose the
+  pull can show also appears in the loader. The spark is three rays fanning up past the blade tips.
+- Debug: `--es view duel` draws progress 0, 0.5, 0.8, 0.9, 1.
+
+**Checked:** `duel.png` (light and dark) and `duelloop.png` on `Test_API37`.
+
 ## 14 October 2026 (1.2.0-beta.1 published; the update tried end to end)
 
 **Published:** `main` on GitHub got one release commit with this tree, "UM Timetable 1.2.0-beta.1"

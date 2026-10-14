@@ -154,7 +154,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
     private fun duel(context: Context, dark: Boolean) {
         val c = ContextThemeWrapper(context, R.style.Theme_UMTimetable)
         val ui = Ui(c, Scheme.load(context).applyTo(if (dark) Palette.DARK else Palette.LIGHT), Fonts(c))
-        val steps = listOf(0f, 0.25f, 0.4f, 0.55f, 0.75f, 0.9f, 1f)
+        val steps = listOf(0f, 0.5f, 0.8f, 0.9f, 1f)
         val view = DuelView(ui)
         view.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
         view.layout(0, 0, view.measuredWidth, view.measuredHeight)

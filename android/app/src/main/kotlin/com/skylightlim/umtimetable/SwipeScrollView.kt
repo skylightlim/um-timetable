@@ -248,7 +248,7 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
 }
 
 /**
- * What pulling a page down uncovers: the cow and the horse ([DuelView]) drawing their swords as the
+ * What pulling a page down uncovers: the cow and the horse ([DuelView]) swinging their swords in as the
  * page comes down, crossing them when it's far enough to sync, fighting while the sync runs and
  * clashing once more when it's done; with what letting go will do and when Spectrum last synced.
  */
