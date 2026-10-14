@@ -18,6 +18,44 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (Android 12 phones: the app couldn't open)
+
+**Asked for:** "make sure the app can work with most of the phone" (thingstodo.md).
+
+**Wrong:** minSdk is 31 (Android 12), but the app used Android 13 back-gesture APIs without a version
+check. Lint flagged them (NewApi). On an Android 12 emulator the published 1.1.0-beta.1 crashed at
+launch: `NoClassDefFoundError` in `MainActivity.<init>`, from making an `OnBackInvokedCallback` (a
+type Android 12 doesn't have) as a field. Every Android 12 phone was affected. Also on Android 12:
+- Notifications were never posted. `Notify.allowed` asked for `POST_NOTIFICATIONS`, which Android 12
+  doesn't have, so the check always said no. Settings showed "Off" and its button asked for a
+  permission Android 12 can't grant.
+- Android 12 to 14 don't draw apps behind the system bars by default (15+ do). The status bar was a
+  grey strip, with white icons over the poster's grey that were hard to read.
+- On a short screen (360 × 640dp) the poster's last line was cut off below the button.
+
+**Change:**
+- `MainActivity` and `WebScreen`: the back callback is made on first use, only on Android 13+.
+  Android 12 steps back through `onBackPressed`, using the same `stepBack()` for the app and
+  `goBack()` for web pages.
+- `Notify.allowed`: on Android 12, only the app's notification switch counts. The Settings row opens
+  the app's notification settings there, and sign-in no longer asks for the permission.
+- `MainActivity` and `WebScreen` call `setDecorFitsSystemWindows(false)`, as Android 15+ does
+  already. Their insets listeners already pad for the bars.
+- `SignInScreen`: the statement takes the room the rest leaves. It autosizes from 64sp down to 28sp,
+  so on a 640dp-tall screen it comes out smaller.
+
+**Checked:**
+- New emulators: `Android12_360dp` (API 31, Nexus 5 size: 360 × 640dp) and `Test_API37` (Pixel 9 Pro
+  size). The user's own emulator was left alone.
+- The 1.1.0-beta.1 APK from GitHub crashes at launch on API 31. The fixed build opens on both.
+- Back works on both: Grades → Day → out of the app. Sign-in opens, and back closes it.
+- No entries in the crash buffer on either emulator.
+- Poster screenshots: whole on 360 × 640dp, unchanged at Pixel 9 Pro size.
+
+**Open:** below Android 12 (minSdk 31) the app doesn't install at all; the widget's RemoteViews
+layout APIs are why. Not checked yet: large font and display size settings, and the Day/Spectrum
+tabs with data on a 360dp-wide screen.
+
 ## 14 October 2026 (the cow and the horse: loader and pull-to-sync mark)
 
 **Asked for:** a monochrome cow and horse (after two reference pictures, any style) that draw swords

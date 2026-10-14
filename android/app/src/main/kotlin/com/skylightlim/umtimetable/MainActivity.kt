@@ -1,6 +1,7 @@
 package com.skylightlim.umtimetable
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.app.Activity
@@ -11,6 +12,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.drawable.LayerDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -121,6 +123,9 @@ class MainActivity : Activity(), SpectrumHost {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
         }
+        // Draw behind the status and navigation bars (the insets listener pads for them), as Android 15+
+        // does by itself: on 12 to 14 the bars would otherwise be bare grey strips.
+        window.setDecorFitsSystemWindows(false)
         fonts = Fonts(this)
         look = Look.load(this)
         scheme = Scheme.load(this)
@@ -636,19 +641,31 @@ class MainActivity : Activity(), SpectrumHost {
         setView("day")
     }
 
-    // Back: leave a course page, then return to Day; on Day, Android's own back leaves the app.
-    private val back = OnBackInvokedCallback {
+    // Back: leave a course page, then return to Day; on Day (false), Android's own back leaves the app.
+    private fun stepBack(): Boolean {
         if (view == "files" && openCourse != null) {
             Haptics.back(shell)
             openCourse = null
             render()
         } else if (view != "day") {
             go("day", Haptics::back)
-        }
+        } else return false
+        return true
     }
+
+    // Android 13+ sends back to this callback. Android 12 has no such type (making one there
+    // crashes), so it's made on first use and back comes through onBackPressed instead.
+    private val back by lazy { OnBackInvokedCallback { stepBack() } }
     private var backRegistered = false
 
+    @SuppressLint("GestureBackNavigation") // gestures on Android 13+ go to the callback above
+    @Deprecated("Android 12 (and 13 to 15 when the callback isn't used) still calls this")
+    override fun onBackPressed() {
+        if (!stepBack()) super.onBackPressed()
+    }
+
     private fun updateBack() {
+        if (Build.VERSION.SDK_INT < 33) return
         val want = view != "day"
         if (want == backRegistered) return
         backRegistered = want
@@ -734,7 +751,8 @@ class MainActivity : Activity(), SpectrumHost {
     override fun openTimeEdit() = startActivityForResult(Intent(this, TimeEditActivity::class.java), REQ_TIMEEDIT)
 
     override fun enableNotifications() {
-        if (!Notify.allowed(this)) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFY)
+        // Android 12 has no notification permission to ask for: they're on unless turned off in Settings.
+        if (Build.VERSION.SDK_INT >= 33 && !Notify.allowed(this)) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFY)
     }
 
     override fun openAppSettings() = startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))

@@ -3,6 +3,7 @@ package com.skylightlim.umtimetable
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -109,12 +110,14 @@ object SettingsSheet {
         ))
 
         // Android owns the switch: off, it asks; on, it opens the app's notification settings.
+        // Android 12 can't ask (no permission there), so off opens the settings too.
         val allowed = Notify.allowed(context)
+        val ask = !allowed && Build.VERSION.SDK_INT >= 33
         section("Notifications", listOf(
             row("Deadlines, marks and news", null, ui.row(gap = 10f).apply {
                 addView(ui.text(if (allowed) "On" else "Off", 14f, if (allowed) p.accentText else p.muted, ui.f.bodySemi))
                 addView(chevron())
-            }) { close { if (allowed) h.openAppSettings() else h.enableNotifications() } },
+            }) { close { if (ask) h.enableNotifications() else h.openAppSettings() } },
         ))
 
         label("Vibration")

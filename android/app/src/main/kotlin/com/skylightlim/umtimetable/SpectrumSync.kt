@@ -17,6 +17,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkInfo
+import android.os.Build
 import android.text.Html
 import android.util.Log
 import org.json.JSONArray
@@ -735,8 +736,10 @@ object Notify {
 
     private fun manager(c: Context) = c.getSystemService(NotificationManager::class.java)
 
+    /** Android 12 has no notification permission (the check always says no there), only the app's switch. */
     fun allowed(c: Context) =
-        c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED && manager(c).areNotificationsEnabled()
+        (Build.VERSION.SDK_INT < 33 || c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) &&
+            manager(c).areNotificationsEnabled()
 
     fun channels(c: Context) = manager(c).createNotificationChannels(
         listOf(
