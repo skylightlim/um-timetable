@@ -18,6 +18,58 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (Sign out deletes everything; sign-in poster, Sign out card and Settings spacing)
+
+**Asked for:** Sign out should delete all data and reset the app, with a short message ("all data
+will be deleted, you can sign in again"). Also an audit of the first-run sign-in poster and the Sign
+out section for spacing and alignment.
+
+**Sign out** (`AppReset`): it now deletes everything the app keeps:
+- the Spectrum sign-in and the Keystore key;
+- the timetable;
+- Spectrum's files;
+- every preference file of the app's: theme, vibration, seen news and marks;
+- the files and cache folders;
+- the web pages' cookies, storage and cache, so TimeEdit, MAYA and Microsoft are signed out too;
+- posted notifications and reminder alarms.
+
+The widget updates to empty and the screen restarts at the first-run poster. Kept: WebView's own
+preference files (not data), files saved to Downloads, and the "signed out: you tapped Sign out"
+note. A sync still running can no longer write files back after sign out (`SpectrumStore.write`
+checks the sign-in). The card now says "Sign out?" / "All your data in the app will be deleted.
+You can sign in again any time."
+
+**Audit findings and fixes:**
+- Sign out card:
+  - The labels sat at the left of the two equal buttons. They're centred now.
+  - The padding was uneven: about 26dp over the title (the display face's line box sits above its
+    capitals), 20dp at the sides and 16dp under the buttons. It's now 16dp top, so the title reads
+    as about 20dp, and 20dp at the bottom. The body has 20dp under it.
+  - The long body wrapped mid-phrase ("You can sign / in again"). Each sentence now has its own line.
+- Settings sheet:
+  - The space above a section label depended on what came before it: about 24dp after a control,
+    about 34dp after two-line rows and about 45dp after the one-line Notifications row (60dp minimum
+    height). Every label now sits 24dp under what's above it: rows keep 12dp padding (part of what
+    can be tapped, 48dp minimum), and a label after rows takes the other 12dp.
+  - The line under each section label is gone. Lines now run between rows only, as the user prefers
+    for lists, so the one-row Account section has none.
+- Sign-in poster:
+  - On a tall phone (Pixel 9 Pro size) about 230dp of empty blue split the statement from the steps
+    and button it introduces. The statement now sits at the bottom of its room, 24dp above the
+    steps, so statement, steps and button read as one block, with the brand line alone at the top.
+  - "place." sat alone on the last line. Balanced line breaks give "semester in / one place.".
+
+**Checked:**
+- Renders of the card (light, dark) and Settings (signed in light, signed out dark) at Pixel 9 Pro
+  width, and the poster at that height.
+- Sign out end to end on the `Test_API37` emulator: a fake debug sign-in (`--es fake signin`, network
+  off), a made-up timetable and a dark Blue theme. Settings → Sign out → Sign out lands on the poster
+  in the default theme. Left: `files/` and `no_backup/spectrum/` empty, `shared_prefs` holding only
+  `account.xml` and WebView's two files, no crash.
+- First try: the card ran Sign out (which restarts the screen) before its exit animation ended, then
+  dismissed itself on the replaced screen and crashed ("not attached to window manager").
+  `ConfirmDialog` now runs the action after the card has gone.
+
 ## 14 October 2026 (Android 12 phones: the app couldn't open)
 
 **Asked for:** "make sure the app can work with most of the phone" (thingstodo.md).

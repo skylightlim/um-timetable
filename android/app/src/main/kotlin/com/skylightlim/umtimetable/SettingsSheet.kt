@@ -14,6 +14,9 @@ import android.widget.LinearLayout
  * imports, notifications, vibration and the Spectrum account. They used to sit under the course list.
  */
 object SettingsSheet {
+    /** A row's padding above and below its text. */
+    private const val ROW_PAD = 12f
+
     fun show(h: SpectrumHost, context: Context) {
         lateinit var bottom: BottomSheet
         val sheet = build(h, context) { then -> bottom.close(then) }
@@ -22,7 +25,7 @@ object SettingsSheet {
     }
 
     /** The sheet's content; [close] slides the sheet away and runs what it's given. */
-    fun build(h: SpectrumHost, context: Context, close: ((() -> Unit)?) -> Unit): View {
+    fun build(h: SpectrumHost, context: Context, signedIn: Boolean = SpectrumStore.signedIn(context), close: ((() -> Unit)?) -> Unit): View {
         val ui = h.ui
         val p = ui.p
         val sheet = ui.column().apply {
@@ -46,18 +49,25 @@ object SettingsSheet {
         })
 
         fun rule() = sheet.addView(View(context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
-        fun label(text: String, top: Float = 22f) = sheet.addView(ui.label(text, p.muted, 10.5f), ui.wide(top = top, bottom = 8f))
-        /** A section of ruled rows: a line under its label and between its rows, none after the last. */
+        // Every label sits the same 24dp under what's above it. Rows carry 12dp of their own padding
+        // (it's part of what can be tapped), so after rows the label's margin is the other 12dp.
+        var afterRows = false
+        fun label(text: String, top: Float = 24f, bottom: Float = 10f) {
+            sheet.addView(ui.label(text, p.muted, 10.5f), ui.wide(top = if (afterRows) top - ROW_PAD else top, bottom = bottom))
+            afterRows = false
+        }
+        /** A section of rows, with lines between them only (none under the label or after the last). */
         fun section(text: String, rows: List<View>) {
-            sheet.addView(ui.label(text, p.muted, 10.5f).apply { setPadding(0, 0, 0, ui.dp(6)) }, ui.wide(top = 22f))
-            for (r in rows) {
-                rule()
+            label(text, bottom = 0f) // the first row's own padding is the gap
+            rows.forEachIndexed { i, r ->
+                if (i > 0) rule()
                 sheet.addView(r)
             }
+            afterRows = true
         }
         fun row(title: String, sub: String?, end: View?, onClick: (() -> Unit)?) = ui.row(gap = 12f).apply {
-            minimumHeight = ui.dp(60)
-            setPadding(0, ui.dp(10), 0, ui.dp(10))
+            minimumHeight = ui.dp(48)
+            setPadding(0, ui.dp(ROW_PAD), 0, ui.dp(ROW_PAD))
             addView(ui.column().apply {
                 addView(ui.text(title, 15f, p.text, ui.f.bodySemi))
                 sub?.let { addView(ui.text(it, 12.5f, p.muted), ui.wide(top = 2f)) }
@@ -78,7 +88,7 @@ object SettingsSheet {
         }
 
         // The theme: the sheet goes, and the new theme spreads from the settings button.
-        label("Appearance", top = 14f)
+        label("Appearance", top = 16f)
         sheet.addView(ui.segmented(Look.entries.map { it.label }, h.look.ordinal, fill = true) { i -> close { h.setLook(Look.entries[i]) } })
 
         // The accent scheme: a swatch of each, the chosen one outlined; the sheet goes and it spreads as the theme does.
@@ -124,7 +134,7 @@ object SettingsSheet {
         sheet.addView(ui.segmented(Haptics.Level.entries.map { it.label }, Haptics.level(context).ordinal, fill = true) { i -> Haptics.setLevel(context, Haptics.Level.entries[i]) })
 
         section("Account", listOf(
-            if (SpectrumStore.signedIn(context)) {
+            if (signedIn) {
                 row(SpectrumScreens.accountName(context).ifBlank { "Signed in" }, null, button("Sign out") { close { h.signOut() } }, null)
             } else {
                 row("Not signed in", "Sign in to Spectrum with your SiswaMail for courses, deadlines, marks and news.", button("Sign in") { close { h.signIn() } }, null)

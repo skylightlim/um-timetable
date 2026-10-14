@@ -1,6 +1,8 @@
 package com.skylightlim.umtimetable
 
+import android.text.Layout
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -40,11 +42,15 @@ object SignInScreen {
             addView(View(context).apply { setBackgroundColor(YELLOW) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(2)).apply { topMargin = ui.dp(10) })
         // The statement takes the room the rest leaves, at up to 64sp: on a short phone (640dp tall) it
-        // shrinks rather than push the last line off the screen.
+        // shrinks rather than push the last line off the screen. It sits at the bottom of that room, on
+        // the steps and the button it leads to; the brand line stays alone at the top. Balanced breaks
+        // keep a lone word ("place.") off the last line.
         addView(ui.text("Sign in once.\nYour whole semester in one place.", 64f, TEXT, ui.f.sign).apply {
             setLineSpacing(0f, 0.92f)
             setAutoSizeTextTypeUniformWithConfiguration(28, 64, 1, TypedValue.COMPLEX_UNIT_SP)
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = ui.dp(28) })
+            gravity = Gravity.BOTTOM
+            breakStrategy = Layout.BREAK_STRATEGY_BALANCED
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = ui.dp(28); bottomMargin = ui.dp(24) })
 
         // The three steps, with lines between them only.
         addView(ui.row(center = false).apply {

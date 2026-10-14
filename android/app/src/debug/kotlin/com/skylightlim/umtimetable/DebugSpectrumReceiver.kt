@@ -19,6 +19,7 @@ import kotlin.concurrent.thread
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es timeedit build
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es sync full
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es haptic tick|back|cross|uncross
+ *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es fake signin
  */
 class DebugSpectrumReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -30,6 +31,14 @@ class DebugSpectrumReceiver : BroadcastReceiver() {
             MayaImport.fillNames(c, SpectrumStore.array(c, "courses"))
             TimetableWidget.updateAll(c)
             Log.i("UMTimetable", "debug: names ${Timetable.load(c).courses.joinToString { "${it.code}=${it.name}" }}")
+            return
+        }
+        // --es fake signin: a made-up Spectrum sign-in and a saved file, to try Sign out without a real
+        // account (keep the network off: Spectrum would refuse the token and sign the app out).
+        if (intent.getStringExtra("fake") == "signin") {
+            SecureStore.put(c, "token", "debug-fake-token")
+            SpectrumStore.write(c, "debug-fake", "{}")
+            Log.i("UMTimetable", "debug: fake sign-in, signedIn=${SpectrumStore.signedIn(c)}")
             return
         }
         intent.getStringExtra("timetable")?.let { mode ->

@@ -121,6 +121,8 @@ object SpectrumStore {
     /** The user's occurrence in each course ({"WIX1002": 16}), from their Spectrum groups at the last sync. */
     fun occurrences(c: Context): JSONObject = read(c, "occurrences")?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
     fun write(c: Context, name: String, json: String) {
+        // A sync still running when the user signs out mustn't put back what Sign out deleted.
+        if (!signedIn(c)) return
         File(dir(c), "$name.json").writeText(json)
         arrays.remove(name)
     }

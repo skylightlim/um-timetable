@@ -23,7 +23,7 @@ object ConfirmDialog {
     fun card(ui: Ui, title: String, body: String, action: String, onCancel: () -> Unit, onConfirm: () -> Unit): LinearLayout {
         val p = ui.p
         fun button(label: String, fill: Int, color: Int, onClick: () -> Unit) = ui.text(label, 15f, color, ui.f.bodySemi).apply {
-            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            gravity = Gravity.CENTER
             minHeight = ui.dp(48)
             setPadding(ui.dp(16), 0, ui.dp(16), 0)
             background = ui.pressable(ui.shape(fill, 12f), 12f)
@@ -32,10 +32,11 @@ object ConfirmDialog {
         return ui.column().apply {
             background = ui.shape(p.surface, 22f)
             elevation = ui.dp(12f).toFloat()
-            setPadding(ui.dp(20), ui.dp(20), ui.dp(20), ui.dp(16))
+            // 16dp over the title reads as 20dp: the display face's line box sits above its capitals.
+            setPadding(ui.dp(20), ui.dp(16), ui.dp(20), ui.dp(20))
             isClickable = true // a tap on the card isn't a tap outside
             addView(ui.text(title, 30f, p.text, ui.f.sign))
-            addView(ui.text(body, 15f, p.muted).apply { setLineSpacing(0f, 1.35f) }, ui.wide(top = 8f, bottom = 18f))
+            addView(ui.text(body, 15f, p.muted).apply { setLineSpacing(0f, 1.35f) }, ui.wide(top = 8f, bottom = 20f))
             addView(ui.row(gap = 8f).apply {
                 addView(button("Cancel", p.surface2, p.text, onCancel), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 addView(button(action, p.accent, p.accentInk, onConfirm), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -48,12 +49,14 @@ object ConfirmDialog {
         val scrim = View(ui.context).apply { setBackgroundColor(0x99000000.toInt()) }
         var closing = false
         lateinit var card: LinearLayout
+        // [then] runs once the card has gone: the action may restart the screen (Sign out does), and a
+        // dialog can't be dismissed from a screen that has been replaced.
         fun close(then: (() -> Unit)? = null) {
             if (closing) return
             closing = true
-            then?.invoke()
-            if (!Motion.enabled) return dialog.dismiss()
-            card.animate().alpha(0f).scaleX(0.96f).scaleY(0.96f).setInterpolator(Motion.EXIT).setDuration(150).withEndAction { dialog.dismiss() }.start()
+            fun done() { dialog.dismiss(); then?.invoke() }
+            if (!Motion.enabled) return done()
+            card.animate().alpha(0f).scaleX(0.96f).scaleY(0.96f).setInterpolator(Motion.EXIT).setDuration(150).withEndAction { done() }.start()
             Motion.fade(scrim, scrim.alpha, 0f, 150)
         }
         card = card(ui, title, body, action, onCancel = { close() }, onConfirm = { close(onConfirm) })

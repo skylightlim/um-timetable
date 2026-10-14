@@ -31,7 +31,8 @@ import java.io.File
  * --ef fontScale 1.3 draws at a larger system font size (this render only).
  * --es scheme gold|blue|red draws in that accent scheme instead of the chosen one.
  * --ez open true draws every fold and "Show more" opened.
- * view signout draws the Sign out question's card. view settings draws the Settings sheet; view signin the first-run sign-in poster, at screen height.
+ * view signout draws the Sign out question's card. view settings draws the Settings sheet (--ez signedIn true|false
+ * for either Account row); view signin the first-run sign-in poster, at screen height.
  * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
  * Nth class of the week (0 first).
  */
@@ -63,7 +64,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
             "news" -> SpectrumScreens.news(host)
             "files" -> SpectrumScreens.courses(host)
             "grades" -> if (intent.getBooleanExtra("sample", false)) SpectrumScreens.grades(host, sampleGrades(context)) else SpectrumScreens.grades(host)
-            "settings" -> SettingsSheet.build(host, c) {}
+            "settings" -> SettingsSheet.build(host, c, intent.getBooleanExtra("signedIn", SpectrumStore.signedIn(context))) {}
             "signin" -> SignInScreen.build(host.ui) {}
             // The top bar as MainActivity lays it out: --es view title --es page Grades|day|week (day and week
             // with their widest titles)

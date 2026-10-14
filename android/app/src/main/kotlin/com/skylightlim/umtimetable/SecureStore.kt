@@ -58,6 +58,13 @@ object SecureStore {
         plain[name] = value
     }
 
+    /** Sign out: every value goes, and the key with them (a new one is made for the next sign-in). */
+    fun clear(context: Context) {
+        plain.clear()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().commit()
+        runCatching { KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(ALIAS) }
+    }
+
     /**
      * The value, or null. A value the key can never open (the key is gone, reset or invalidated) is
      * dropped, so has() agrees, and [onDropped] is told. Any other failure (a passing Keystore error)

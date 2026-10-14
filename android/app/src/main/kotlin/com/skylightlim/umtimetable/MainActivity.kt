@@ -25,7 +25,6 @@ import android.view.ViewAnimationUtils
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
-import android.webkit.CookieManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -731,17 +730,12 @@ class MainActivity : Activity(), SpectrumHost {
     /** One tap on a link at the bottom of Courses shouldn't wipe the sign-in: ask first. */
     override fun signOut() = ConfirmDialog.show(ui, SIGN_OUT_TITLE, SIGN_OUT_BODY, "Sign out") { signOutNow() }
 
+    /** Sign out deletes everything, and the app starts again at the first-run poster. */
     private fun signOutNow() {
+        AppReset.run(this)
         SpectrumStore.noteSignOut(this, "you tapped Sign out")
-        SpectrumStore.signOut(this)
-        SpectrumSyncJob.cancel(this)
-        Reminders.schedule(this)
-        AttendanceWatch.schedule(this)
-        CookieManager.getInstance().removeAllCookies(null)
-        TimetableWidget.updateAll(this)
-        openCourse = null
-        contents.clear()
-        render()
+        intent = Intent(this, MainActivity::class.java)
+        recreate()
     }
 
     @Suppress("DEPRECATION")
@@ -783,9 +777,9 @@ class MainActivity : Activity(), SpectrumHost {
 
     companion object {
         const val EXTRA_VIEW = "view"
-        /** The Sign out question (redesign 1q, with what this app really removes: the timetable stays). */
-        const val SIGN_OUT_TITLE = "Sign out of Spectrum?"
-        const val SIGN_OUT_BODY = "This removes your sign-in and the courses, announcements, deadlines and marks saved on this phone. TimeEdit is signed out too. Your timetable stays, and you can sign in again any time."
+        /** The Sign out question (redesign 1q). Sign out deletes everything ([AppReset]). */
+        const val SIGN_OUT_TITLE = "Sign out?"
+        const val SIGN_OUT_BODY = "All your data in the app will be deleted.\nYou can sign in again any time."
         /** A Spectrum course id to open in the Courses tab. */
         const val EXTRA_COURSE = "course"
         private const val REQ_LOGIN = 1
