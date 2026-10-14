@@ -18,6 +18,22 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (Day's titles all one size)
+
+**Reported:** the day titles weren't the same size; all should be as big as Wednesday's.
+
+**Wrong:** the title is the first child of a column that wraps its content, and by default a column's
+child is full width. In its second pass the column measured the title again, at the column's width,
+which was the title's own text width. `FitText` then fit "Wednesday 30 Sep" into that width, so
+every shorter title shrank: Thursday a little, Friday most. Wednesday's is about as wide as the
+sample, so it stayed big.
+
+**Change:** titles wrap their text (`titleText` sets the layout params). `FitText` notes that it needs
+a wrap-content or fixed width.
+
+**Checked** on `Test_API37` (the phone's size, density and font scale): Thursday at launch, then
+Friday, Monday, Wednesday and the Due tab's title are all the same height on screen.
+
 ## 14 October 2026 (thingstodo.md: everything but the meeting link and the bigger jobs)
 
 **Settings without a button.** The top bar's settings button is gone.

@@ -83,7 +83,12 @@ private const val DAY_WIDEST = "Wednesday 30 Sep"
  * beside it any more); at 360dp Day's come out at about 47sp.
  */
 private fun titleText(ui: Ui, text: String, widest: String = text) =
-    ui.fitText(text, TITLE_SIZE, ui.p.text, ui.f.sign, widest = widest, lines = 1).apply { setLineSpacing(0f, 1f) }
+    ui.fitText(text, TITLE_SIZE, ui.p.text, ui.f.sign, widest = widest, lines = 1).apply {
+        setLineSpacing(0f, 1f)
+        // Wrapping its text: as a column's default full-width child, the column measured it again at its own
+        // text's width, and every title shorter than "Wednesday 30 Sep" shrank (Friday's most).
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+    }
 
 /** A Spectrum tab's name for the top bar, over a small line (the week of the semester and today's date). */
 fun pageTitle(ui: Ui, name: String, line: String?): LinearLayout = ui.column().apply {
