@@ -18,6 +18,18 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (pull to sync: the duel pinned behind the page)
+
+**Asked for:** the pull indicator pinned behind the page, so the swords crossing can be seen.
+
+**Change** (`PullIndicator.follow`): it no longer slides down with the page. It stays at the top behind
+it, clipped (`clipBounds`) to the strip the page has uncovered, because the page has no background of
+its own. At half the pull the heads and blades show; at the 72dp threshold the whole duel does, blades
+crossed. "Release to sync" comes into view just past it.
+
+**Checked:** on `Test_API37` (fake sign-in, Due tab), a held `input motionevent` drag screenshotted at
+half the pull, at the threshold, and after letting go; the indicator is hidden again once the page is back.
+
 ## 15 October 2026 (the cow and the horse redrawn after the icon sketch)
 
 **Asked for:** the duel's cow and horse refined and minimal after a reference picture (a round,

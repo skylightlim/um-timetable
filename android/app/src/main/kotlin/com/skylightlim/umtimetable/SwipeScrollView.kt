@@ -2,6 +2,7 @@ package com.skylightlim.umtimetable
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Rect
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.VelocityTracker
@@ -11,6 +12,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import com.skylightlim.umtimetable.Motion.spring
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.sign
 
 /**
@@ -251,10 +253,12 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
  * What pulling a page down uncovers: the cow and the horse ([DuelView]) swinging their swords in as the
  * page comes down, crossing them when it's far enough to sync, fighting while the sync runs and
  * clashing once more when it's done; with what letting go will do and when Spectrum last synced.
+ * It stays pinned behind the top of the page, so the duel is in full view by the time they cross.
  */
 @SuppressLint("ViewConstructor")
 class PullIndicator(private val ui: Ui, private val lastSync: () -> String) : LinearLayout(ui.context) {
     private val duel = DuelView(ui)
+    private val shown = Rect()
     private val title = ui.text("Pull to sync", 13f, ui.p.text, ui.f.bodySemi)
     private val sub = ui.text("", 12f, ui.p.muted)
 
@@ -265,13 +269,13 @@ class PullIndicator(private val ui: Ui, private val lastSync: () -> String) : Li
         addView(duel)
         addView(title, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(4) })
         addView(sub, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(2) })
-        alpha = 0f
+        clipBounds = shown
     }
 
-    /** Sits just above the page's top edge, [y] below the top, showing as it comes into view. */
+    /** The page's top edge is [y] below the top: only the strip above it shows (the page has no background). */
     fun follow(y: Float) {
-        translationY = y - height
-        alpha = if (height == 0) 0f else (y / height).coerceIn(0f, 1f)
+        shown.set(0, 0, width, ceil(y).toInt())
+        clipBounds = shown
     }
 
     /** Being pulled, [y] down, [fraction] of the way to syncing (1 and over: let go to sync). */
