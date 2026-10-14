@@ -18,6 +18,41 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (MAYA: the app opens and reads the timetable after sign-in)
+
+**Asked for:** after the user signs in to MAYA, the app should do the steps to get the timetable by
+itself.
+
+**Change** (`MayaActivity`):
+- Signing in stays the user's: MAYA has no single sign-on.
+- On each MAYA page after sign-in, the app looks for the way to the timetable. It follows the path
+  in UM's MAYA guide (Timetable › My Timetable): a link to `SIW_XTTB`, else "My Timetable" (or
+  "Jadual Waktu Saya"), else a timetable link that isn't the search or exams. It opens at most 3
+  pages by itself.
+- On the timetable page it checks twice a second, for up to 15 seconds, until the classes stop
+  changing (MAYA draws them after the page loads), then reads the page.
+- A first timetable is saved straight away, as TimeEdit's is. One that would replace the app's
+  timetable shows the existing "Found N weekly classes" question first.
+- If the app can't find the way, or nothing opens within 12 seconds, the status line says "Open
+  Timetable › My Timetable in MAYA, then tap Read this page", and the button works as before.
+
+**Checked** on `Test_API37` against a stand-in MAYA with made-up classes:
+- The stand-in has a sign-in form, then a portal with a Timetable menu (My Timetable, Timetable
+  Search) and an Exam Timetable link, then a Timetable View page that draws its classes 1.5 s
+  after loading. It's served from the computer through `adb reverse tcp:8765 tcp:8765`, and opened
+  with `DebugSpectrumReceiver --es mayaSite http://localhost:8765/` while the app is in front.
+- Empty app: one tap on Login. The app opened My Timetable, read 3 classes over 2 weeks and saved
+  them, about 2.5 s after sign-in.
+- With a timetable: it read the page by itself, then asked "Found 3 weekly classes".
+- A portal with no timetable link: it stopped and showed the "Open Timetable › My Timetable" line.
+
+**Open:** the real MAYA menu hasn't been seen. The first real sign-in should check the log
+(`MAYA: on "…", opening "…"`) and that the import happens by itself.
+
+**Debug setup:** debug builds allow plain HTTP to localhost only (`src/debug/res/xml/
+network_security_config.xml`). On the API 37 emulator the app's WebView never reached 10.0.2.2,
+though the shell could, so the stand-in goes through `adb reverse` to localhost.
+
 ## 14 October 2026 (Sign out deletes everything; sign-in poster, Sign out card and Settings spacing)
 
 **Asked for:** Sign out should delete all data and reset the app, with a short message ("all data

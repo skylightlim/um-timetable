@@ -20,6 +20,7 @@ import kotlin.concurrent.thread
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es sync full
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es haptic tick|back|cross|uncross
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es fake signin
+ *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es mayaSite http://localhost:8765/
  */
 class DebugSpectrumReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -58,6 +59,13 @@ class DebugSpectrumReceiver : BroadcastReceiver() {
         }
         // --es maya import: run the importer on no_backup/maya/page.json (a MAYA page pushed with adb,
         // as {"html": "…"}) and use the result. The app itself never saves MAYA pages.
+        // --es mayaSite http://localhost:8765/: the MAYA import against a stand-in MAYA served from the
+        // computer (adb reverse tcp:8765 tcp:8765), to test the steps it takes by itself after sign-in.
+        // Only works with the app in front: Android won't open a screen for an app in the background.
+        intent.getStringExtra("mayaSite")?.let { site ->
+            c.startActivity(Intent(c, MayaActivity::class.java).putExtra(MayaActivity.EXTRA_SITE, site).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return
+        }
         if (intent.getStringExtra("maya") == "import") {
             val latest = File(c.noBackupFilesDir, "maya/page.json").takeIf { it.exists() }
             val found = latest?.let { MayaImport.timetable(c, MayaImport.events(org.json.JSONObject(it.readText()).optString("html"))) }

@@ -103,6 +103,10 @@ GIG1017 27335, GUL1001 27337.
   "Microsoft Live" is inside an HTML comment, and nothing on the page points to Microsoft, SAML or
   OpenID. So a SiswaMail session from Spectrum or TimeEdit can't sign the app in to MAYA; only the
   password can. **No public timetable.**
+- **Way to the timetable:** UM's MAYA guide (umsitsguide.um.edu.my, "MAYA PORTAL" PDF, 29 Sep 2026):
+  "MAYA Portal > Timetable > My Timetable" (once modules are registered); "Timetable > Timetable
+  Search" is the TimeEdit viewer. Since 14 Oct `MayaActivity` takes that path by itself after the user
+  signs in. The real menu's markup hasn't been seen: it was tested only against a stand-in page.
 - Timetable page: **`SIW_XTTB`, title "Timetable View"**, list layout, about 3 weeks on screen.
   - Day rows: `div.sitsjqttdaylistrow[data-jqtt-date="20261006…"]`.
   - Classes: `li.sitsjqtteventcontainer` with `HH:MM - HH:MM` and labelled lines

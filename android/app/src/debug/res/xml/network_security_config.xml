@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug only: localhost may serve plain HTTP, for the stand-in MAYA that MayaActivity's steps are
+     tested against (adb reverse tcp:8765 tcp:8765 brings it from the computer: on the Android 17 emulator
+     the app's WebView never reached 10.0.2.2, though the shell could). Everything else stays HTTPS only. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>
