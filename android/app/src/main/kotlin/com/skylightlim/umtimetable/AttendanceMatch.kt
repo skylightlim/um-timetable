@@ -47,7 +47,7 @@ object AttendanceMatch {
         }
     }.toSet()
 
-    /** [name] names occurrences, and [occ] (the user's) isn't one of them: "Lab 3 - OCC3 Submission" for OCC 16. */
+    /** [name] names occurrences, and [occ] (the user's) isn't one of them: "Lab 3 - OCC3 Submission" for OCC 10. */
     fun othersOnly(name: String, occ: Int): Boolean = occ > 0 && occurrences(name).let { it.isNotEmpty() && occ !in it }
 
     private fun kind(text: String) = KINDS.firstOrNull { it.second.containsMatchIn(text) }?.first

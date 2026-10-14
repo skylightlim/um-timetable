@@ -447,7 +447,7 @@ Week. Measured with the font: "Wednesday 30 Sep" (the widest) is 278dp at 40sp; 
 of classes at the bottom.
 
 **Change** (`WeekScreen.courses`): courses in the Courses tab's order (by code) and its row layout: 12dp
-dot, "WIX1002 · Occ 16" (code in the course colour, occurrence faint), the name (15sp semibold), then
+dot, "WIX1002 · Occ 10" (code in the course colour, occurrence faint), the name (15sp semibold), then
 "Lecture 2 h · Tutorial 3 h · online" muted, and the course's hours (Big Shoulders 22sp) on the right;
 lines between courses only (the old list also ruled under the last one). The COURSES heading lost its
 "11 classes a week"; under a 1.5dp line in the text colour, a Total row: "11 classes a week · Lecture
@@ -536,7 +536,7 @@ Settings panel.
 
 **Change:**
 - Courses (`SpectrumScreens.courses`): the COURSES heading alone (no summary, no sync button, no
-  top-bar date; pull to sync), then a ruled list (lines between rows only): 12dp dot, "WIX1002 · Occ 16"
+  top-bar date; pull to sync), then a ruled list (lines between rows only): 12dp dot, "WIX1002 · Occ 10"
   (code in the course colour, occurrence faint, from the Spectrum groups or the timetable), the name
   (15sp semibold), a chevron. A row opens the course page as before. Signed out: the sign-in card only.
 - `SettingsSheet` (1p), from a sliders button at the right of the top bar, which replaces the
