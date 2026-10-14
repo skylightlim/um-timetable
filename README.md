@@ -29,9 +29,10 @@ attendance links for sessions Spectrum's calendar doesn't list are a best guess 
 exams and public holidays aren't shown yet.
 
 On the phone the app is called **马大牛逼** (label and widget name in `res/values/strings.xml`); its icon
-is those four characters as a seal (印章) in UM's crest colours: a red seal with a gold rim and yellow
-characters in 文鼎 AR PL UKai, on UM blue. `android/icon/seal.py` draws it into `ic_fg.xml` / `ic_mono.xml`
-(the blue is `@color/ic_bg`); its docstring says how to get the font and rerun it.
+is the cow (牛) and the horse (马) from the pull-to-sync duel holding up an empty shield in UM's shape, the
+way the tigers hold up Malaysia's coat of arms, in the shield's gold on UM blue. `android/icon/crest.py`
+draws it into `ic_fg.xml` / `ic_mono.xml` (the blue is `@color/ic_bg`). The status-bar icon, a seal's rim
+with 马 in 文鼎 AR PL UKai, comes from `android/icon/seal.py`; its docstring says how to get the font.
 The project and package (`com.skylightlim.umtimetable`) keep the name UM Timetable.
 
 Research on UM's data sources (Spectrum, MAYA, TimeEdit, The Course Planner, UMscout) and where

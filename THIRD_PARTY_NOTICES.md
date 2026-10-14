@@ -9,8 +9,8 @@ The app bundles these typefaces (`android/app/src/main/res/font/`), all under th
 | Instrument Sans | `instrumentsans_400.ttf`, `_600`, `_700` | The Instrument Sans Project Authors (github.com/Instrument/instrument-sans) |
 | JetBrains Mono | `jetbrainsmono_500.ttf`, `_700` | The JetBrains Mono Project Authors (github.com/JetBrains/JetBrainsMono) |
 
-The launcher icon's four characters are drawn from glyph outlines of **AR PL UKai CN**
-(Arphic Technology, Arphic Public License); `android/icon/seal.py` renders them into vector paths.
+The status-bar icon's 马 is drawn from the glyph outline in **AR PL UKai CN**
+(Arphic Technology, Arphic Public License); `android/icon/seal.py` renders it into a vector path.
 The font itself isn't included.
 
 Course data comes from Universiti Malaya's systems at run time, as the signed-in user; none is bundled.
