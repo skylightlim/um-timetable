@@ -28,6 +28,7 @@ import java.io.File
  * synced ones (to check the mark cards while Spectrum has none).
  * view due with --ez sample true draws made-up deadlines (late, minutes, hours, days) and attendance
  * (open, about to open, not in Spectrum's calendar).
+ * --ef fontScale 1.3 draws at a larger system font size (this render only).
  * --es scheme gold|blue|red draws in that accent scheme instead of the chosen one.
  * --ez open true draws every fold and "Show more" opened.
  * view signout draws the Sign out question's card. view settings draws the Settings sheet; view signin the first-run sign-in poster, at screen height.
@@ -44,7 +45,11 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val view = intent.getStringExtra("view") ?: "files"
         val dark = intent.getBooleanExtra("dark", false)
         val width = intent.getIntExtra("width", context.resources.displayMetrics.widthPixels)
-        val c = ContextThemeWrapper(context, R.style.Theme_UMTimetable)
+        // --ef fontScale 1.3: as with Android's larger font sizes, without touching the phone's setting.
+        val scaled = intent.getFloatExtra("fontScale", 0f).takeIf { it > 0f }?.let { k ->
+            context.createConfigurationContext(android.content.res.Configuration(context.resources.configuration).apply { fontScale = k })
+        } ?: context
+        val c = ContextThemeWrapper(scaled, R.style.Theme_UMTimetable)
         val now = if (intent.hasExtra("dow")) Now(intent.getIntExtra("dow", 2), intent.getIntExtra("min", 700).toFloat()) else Now.current()
         val forced = intent.getStringExtra("scheme")?.let { name -> Scheme.entries.firstOrNull { it.name.equals(name, true) } }
         val scheme = forced ?: Scheme.load(context)
