@@ -77,6 +77,9 @@ object Updater {
      */
     fun check(activity: Activity, ui: Ui, quiet: Boolean) {
         val p = prefs(activity)
+        // A download that's been installed (or overtaken) isn't needed any more.
+        val have = installed(activity).first
+        dir(activity).listFiles()?.filter { (it.name.removePrefix("um-timetable-").removeSuffix(".apk").toLongOrNull() ?: 0) <= have }?.forEach { it.delete() }
         if (quiet && System.currentTimeMillis() - p.getLong("updateCheckedAt", 0) < EVERY) return
         if (!quiet) Toast.makeText(activity, "Checking for updates…", Toast.LENGTH_SHORT).show()
         thread {
@@ -110,9 +113,9 @@ object Updater {
         val buttons = ui.row(gap = 8f)
         val card = ConfirmDialog.frame(ui).apply {
             addView(ui.text("Update to ${release.name}", 30f, p.text, ui.f.sign))
-            val notes = release.notes.lines().map { it.trim().removePrefix("#").removePrefix("- ").trim() }.filter { it.isNotEmpty() }.take(6)
             val size = if (release.size > 0) "%.1f MB".format(release.size / 1_048_576.0) else null
-            addView(ui.text(listOfNotNull(notes.joinToString("\n").ifBlank { null }, size).joinToString("\n\n"), 15f, p.muted).apply { setLineSpacing(0f, 1.35f) }, ui.wide(top = 8f, bottom = 16f))
+            addView(ui.text(plain(release.notes), 15f, p.muted, lines = 10).apply { setLineSpacing(0f, 1.35f) }, ui.wide(top = 8f, bottom = 4f))
+            size?.let { addView(ui.text(it, 13f, p.faint, ui.f.mono), ui.wide(bottom = 16f)) }
             addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ui.dp(4)).apply { bottomMargin = ui.dp(8) })
             addView(status, ui.wide(bottom = 16f))
             addView(buttons)
@@ -160,6 +163,20 @@ object Updater {
         }
         setButtons("Later", ::later, "Download") { start() }
     }
+
+    /**
+     * Release notes as the card shows them: GitHub's Markdown without its marks ("**Android 12:**" was
+     * shown as written), bullets as "•", headings and blank lines dropped.
+     */
+    fun plain(markdown: String): String = markdown.lines()
+        .map { line ->
+            line.trim()
+                .replace(Regex("""\[([^\]]*)]\([^)]*\)"""), "$1") // [text](link)
+                .replace(Regex("""\*\*|__|`"""), "")
+                .replace(Regex("""^[-*+] +"""), "• ")
+        }
+        .filter { it.isNotEmpty() && !it.startsWith("#") }
+        .joinToString("\n")
 
     private fun progress(bar: LinearLayout, f: Float) {
         (bar.getChildAt(0).layoutParams as LinearLayout.LayoutParams).weight = f.coerceIn(0f, 1f)

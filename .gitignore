@@ -8,3 +8,8 @@ android/local.properties
 
 # Local snapshots from before the project was in git (an old APK, timetable copies)
 backups/
+
+# Local to this machine: IDE settings, the graphify knowledge graph and its Claude Code hooks
+.idea/
+graphify-out/
+.claude/

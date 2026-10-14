@@ -29,9 +29,10 @@ attendance links for sessions Spectrum's calendar doesn't list are a best guess 
 exams and public holidays aren't shown yet.
 
 On the phone the app is called **马大牛逼** (label and widget name in `res/values/strings.xml`); its icon
-is those four characters as a seal (印章) in UM's crest colours: a red seal with a gold rim and yellow
-characters in 文鼎 AR PL UKai, on UM blue. `android/icon/seal.py` draws it into `ic_fg.xml` / `ic_mono.xml`
-(the blue is `@color/ic_bg`); its docstring says how to get the font and rerun it.
+is the cow (牛) and the horse (马) from the pull-to-sync duel holding up an empty shield in UM's shape, the
+way the tigers hold up Malaysia's coat of arms, in the shield's gold on UM blue. `android/icon/crest.py`
+draws it into `ic_fg.xml` / `ic_mono.xml` (the blue is `@color/ic_bg`), and the status-bar icon, the shield
+alone, into `ic_notify.xml`.
 The project and package (`com.skylightlim.umtimetable`) keep the name UM Timetable.
 
 Research on UM's data sources (Spectrum, MAYA, TimeEdit, The Course Planner, UMscout) and where
@@ -80,7 +81,8 @@ The widget updates itself after an install, so there's no need to remove and re-
 To publish a release the app can update to: raise `versionCode` (and `versionName`) in
 `android/app/build.gradle.kts`, build the release, and make a GitHub release tagged `v` + versionCode
 (`v3`) with the APK attached. Pre-releases count. The release's title is the version shown in the app's
-update card, and the first lines of its notes are shown under it.
+update card, and the first lines of its notes are shown under it (1.2.0-beta.1 shows Markdown marks as
+written, so keep the first lines plain).
 
 ## Tests
 
