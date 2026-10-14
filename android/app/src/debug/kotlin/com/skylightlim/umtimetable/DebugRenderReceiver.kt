@@ -72,13 +72,10 @@ class DebugRenderReceiver : BroadcastReceiver() {
                 setPadding(host.ui.dp(0), host.ui.dp(22), 0, host.ui.dp(10))
                 val page = intent.getStringExtra("page") ?: "Grades"
                 addView(when (page) {
-                    "day" -> dayTitle(host.ui, "Wed", "30 Sep", true, dayGlance(Timetable.load(context).day(2)))
+                    "day" -> dayTitle(host.ui, "Wednesday", "30 Sep", true, dayGlance(Timetable.load(context).day(2)))
                     "week" -> weekTitle(host.ui, "28 Sep – 2 Oct", "3 deadlines this week")
                     else -> pageTitle(host.ui, page, listOfNotNull(semesterWeek(), "Wednesday 14 Oct").joinToString(" · "))
                 }, host.ui.grow())
-                addView(android.widget.FrameLayout(c).apply {
-                    addView(host.ui.icon(R.drawable.ic_settings, host.ui.p.text, 20f), android.widget.FrameLayout.LayoutParams(host.ui.dp(20), host.ui.dp(20), android.view.Gravity.CENTER))
-                }, android.widget.LinearLayout.LayoutParams(host.ui.dp(44), host.ui.dp(44)).apply { marginEnd = -host.ui.dp(10); gravity = android.view.Gravity.TOP })
             }
             "signout" -> ConfirmDialog.card(host.ui, MainActivity.SIGN_OUT_TITLE, MainActivity.SIGN_OUT_BODY, "Sign out", {}, {})
             "sheet" -> {
@@ -242,7 +239,8 @@ class DebugRenderReceiver : BroadcastReceiver() {
 
     private fun icon(context: Context) {
         val icon = context.getDrawable(R.mipmap.ic_launcher) as android.graphics.drawable.AdaptiveIconDrawable
-        for ((name, drawable) in listOf("icon" to icon, "icon-mono" to icon.monochrome)) {
+        // The themed (monochrome) layer exists from Android 13.
+        for ((name, drawable) in listOf("icon" to icon, "icon-mono" to if (android.os.Build.VERSION.SDK_INT >= 33) icon.monochrome else null)) {
             val bitmap = Bitmap.createBitmap(432, 432, Bitmap.Config.ARGB_8888)
             drawable?.apply { setBounds(0, 0, 432, 432); draw(Canvas(bitmap)) }
             save(context, bitmap, name)

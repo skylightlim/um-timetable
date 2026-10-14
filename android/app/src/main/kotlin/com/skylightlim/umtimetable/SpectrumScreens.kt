@@ -3,6 +3,7 @@ package com.skylightlim.umtimetable
 import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.drawable.InsetDrawable
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -220,14 +221,11 @@ object SpectrumScreens {
                 background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
                 setOnClickListener { h.openUrl(i.optString("url")) }
             }
-            // Left: how long is left, as large as the cell's width allows (at most 56sp: "2 d", "12 h", "40 min"
-            // smaller), and when it's due, centred in the cell's height.
+            // Left: how long is left, as large as the cell's width allows, and when it's due, centred in the
+            // cell's height.
             row.addView(ui.column().apply {
                 setPadding(0, ui.dp(14), ui.dp(4), ui.dp(14))
-                addView(ui.text(if (overdue) "Late" else span(due), 34f, color, ui.f.sign).apply {
-                    val fit = textSize * ui.dp(76) / paint.measureText(text.toString())
-                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, minOf(fit, ui.dp(56f).toFloat()))
-                })
+                addView(countdown(ui, if (overdue) "Late" else span(due), color, ui.dp(76)))
                 addView(ui.text(whenDue(due), 11f, p.muted, ui.f.mono), ui.wide(top = 4f))
             // Wrapping its content so the row grows to fit it, and centred when the other side is taller.
             }, LinearLayout.LayoutParams(ui.dp(80), ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER_VERTICAL })
@@ -245,6 +243,30 @@ object SpectrumScreens {
             page.addView(row)
         }
         return page
+    }
+
+    /**
+     * "2 d", "12 h", "40 min" or "Late" in the display face, as large as [width] allows (at most 56sp).
+     * The number is full size and its unit half that, close up on the same baseline: at full size a
+     * word space between them gaped.
+     */
+    private fun countdown(ui: Ui, text: String, color: Int, width: Int): View {
+        val max = ui.dp(56f).toFloat()
+        val words = text.split(" ")
+        val number = ui.text(words[0], 34f, color, ui.f.sign)
+        if (words.size == 1) return number.apply { setTextSize(TypedValue.COMPLEX_UNIT_PX, minOf(max, textSize * width / paint.measureText(words[0]))) }
+        val unit = ui.text(words[1], 17f, color, ui.f.sign)
+        val gap = ui.dp(2)
+        // Both scale together: the number's width per pixel of size, plus half that size's for the unit.
+        val perPx = number.paint.measureText(words[0]) / number.textSize + unit.paint.measureText(words[1]) / unit.textSize / 2
+        val size = minOf(max, (width - gap) / perPx)
+        number.setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
+        unit.setTextSize(TypedValue.COMPLEX_UNIT_PX, size / 2)
+        // A plain row: its children line up on their baselines (a centred one wouldn't).
+        return LinearLayout(ui.context).apply {
+            addView(number)
+            addView(unit, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = gap })
+        }
     }
 
     private const val LATE = 0xFFE5534B.toInt()
@@ -359,14 +381,17 @@ object SpectrumScreens {
         for ((_, items) in marked.sortedByDescending { (_, items) -> items.maxOf { it.getLong("gradedAt") } }) {
             page.addView(courseMarks(h, items), ui.wide(bottom = 20f))
         }
+        // Laid out as the Courses list is: the same rows, with lines between them only.
         if (waiting.isNotEmpty()) {
-            page.addView(ui.label("Not marked yet", p.text, 11f).apply { setPadding(0, 0, 0, ui.dp(6)) })
-            page.addView(rule(ui))
-            for ((courseId, items) in waiting) {
+            page.addView(ui.label("Not marked yet", p.text, 11f).apply { setPadding(0, 0, 0, ui.dp(2)) })
+            for ((n, entry) in waiting.withIndex()) {
+                val (courseId, items) = entry
                 val left = items.filter { !it.optBoolean("total") }
-                val head = courseLine(h, items.first(), "${left.size} ${if (left.size == 1) "item" else "items"}", 14f, p.text, ui.f.body).apply { setPadding(0, ui.dp(11), 0, ui.dp(11)) }
+                val code = items.first().optString("code")
+                val count = ui.text("${left.size} ${if (left.size == 1) "item" else "items"}", 12f, p.muted, ui.f.mono)
+                val head = courseRow(h, code, courseName(h, items.first().optString("course"), code), mine(code).takeIf { it > 0 }, count)
+                if (n > 0) page.addView(rule(ui))
                 page.addView(unmarked(h, head, left, "unmarked-$courseId"))
-                page.addView(rule(ui))
             }
         }
         return page
@@ -388,7 +413,8 @@ object SpectrumScreens {
             val url = g.optString("url")
             list.addView(ui.row(gap = 10f).apply {
                 minimumHeight = ui.dp(44)
-                setPadding(ui.dp(18), ui.dp(8), 0, ui.dp(8))
+                // In line with the course's name above (after its 12dp dot and 12dp gap).
+                setPadding(ui.dp(24), ui.dp(8), 0, ui.dp(8))
                 addView(ui.text(g.optString("name"), 14f, p.text), ui.grow())
                 g.optString("kind").takeIf { it.isNotEmpty() }?.let { addView(ui.text(it, 12.5f, p.muted)) }
                 if (url.isNotEmpty()) {
@@ -618,24 +644,35 @@ object SpectrumScreens {
             if (n > 0) page.addView(rule(ui))
             val code = c.optString("code")
             val occ = occurrences.optInt(code).takeIf { it > 0 } ?: h.timetable.courses.firstOrNull { it.code == code }?.occ
-            val row = ui.row(gap = 12f).apply {
-                minimumHeight = ui.dp(60)
-                setPadding(0, ui.dp(10), 0, ui.dp(10))
+            val chevron = ui.icon(R.drawable.ic_chevron, p.faint).apply { layoutParams = LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)) }
+            page.addView(courseRow(h, code, courseName(h, c.optString("name"), code), occ, chevron).apply {
                 background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
                 setOnClickListener { Haptics.tick(this); h.openCourse = c.getInt("id"); h.render() }
-            }
-            row.addView(View(ui.context).apply { background = ui.shape(colorOf(h, code), 99f) }, LinearLayout.LayoutParams(ui.dp(12), ui.dp(12)))
-            row.addView(ui.column().apply {
-                if (code.isNotEmpty()) addView(ui.row().apply {
-                    addView(ui.text(code, 12f, p.courseText(colorOf(h, code)), ui.f.monoBold))
-                    occ?.let { addView(ui.text(" · Occ $it", 12f, p.faint, ui.f.mono)) }
-                })
-                addView(ui.text(courseName(h, c.optString("name"), code), 15f, p.text, ui.f.bodySemi), ui.wide(top = 2f))
-            }, ui.grow())
-            row.addView(ui.icon(R.drawable.ic_chevron, p.faint).apply { layoutParams = LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)) })
-            page.addView(row)
+            })
         }
         return page
+    }
+
+    /**
+     * A course as the Courses list shows it: its colour dot, the code and occurrence, the full name under
+     * them, and [end] at the end. Grades' not-marked-yet courses use it too, so the two lists look alike.
+     */
+    private fun courseRow(h: SpectrumHost, code: String, name: String, occ: Int?, end: View): LinearLayout {
+        val ui = h.ui
+        val p = ui.p
+        return ui.row(gap = 12f).apply {
+            minimumHeight = ui.dp(64)
+            setPadding(0, ui.dp(13), 0, ui.dp(13))
+            addView(View(ui.context).apply { background = ui.shape(colorOf(h, code), 99f) }, LinearLayout.LayoutParams(ui.dp(12), ui.dp(12)))
+            addView(ui.column().apply {
+                if (code.isNotEmpty()) addView(ui.row().apply {
+                    addView(ui.text(code, 13f, p.courseText(colorOf(h, code)), ui.f.monoBold))
+                    occ?.let { addView(ui.text(" · Occ $it", 13f, p.faint, ui.f.mono)) }
+                })
+                addView(ui.text(name, 17f, p.text, ui.f.bodySemi), ui.wide(top = 3f))
+            }, ui.grow())
+            addView(end)
+        }
     }
 
     /** The signed-in student's name as Spectrum gives it, in title case when Spectrum shouts it. */

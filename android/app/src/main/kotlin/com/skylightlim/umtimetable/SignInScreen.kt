@@ -1,6 +1,6 @@
 package com.skylightlim.umtimetable
 
-import android.text.Layout
+import android.graphics.text.LineBreaker
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -49,7 +49,7 @@ object SignInScreen {
             setLineSpacing(0f, 0.92f)
             setAutoSizeTextTypeUniformWithConfiguration(28, 64, 1, TypedValue.COMPLEX_UNIT_SP)
             gravity = Gravity.BOTTOM
-            breakStrategy = Layout.BREAK_STRATEGY_BALANCED
+            breakStrategy = LineBreaker.BREAK_STRATEGY_BALANCED
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = ui.dp(28); bottomMargin = ui.dp(24) })
 
         // The three steps, with lines between them only.

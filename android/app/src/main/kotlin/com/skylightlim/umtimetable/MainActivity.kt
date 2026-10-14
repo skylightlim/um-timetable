@@ -25,6 +25,7 @@ import android.view.ViewAnimationUtils
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -52,8 +53,6 @@ class MainActivity : Activity(), SpectrumHost {
         private set
     /** The sign-in poster over the app on first run (see [showWelcome]). */
     private var welcome: View? = null
-    /** The top bar's settings button: the Settings sheet opens from it, and a new theme spreads from it. */
-    private var settingsButton: View? = null
 
     override val timetable: Timetable get() = Timetable.load(this)
     override fun now() = Now.current()
@@ -186,7 +185,18 @@ class MainActivity : Activity(), SpectrumHost {
         val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
         window.insetsController?.setSystemBarsAppearance(if (p.dark) 0 else lightBars, lightBars)
 
-        titleBox = FrameLayout(this)
+        // Settings open from a long press on the title (there's no button; the title has the whole width),
+        // or from pulling the Courses list up. TalkBack offers the long press as "Open settings".
+        titleBox = FrameLayout(this).apply {
+            isHapticFeedbackEnabled = false // the app's own vibration instead, at the user's level
+            setOnLongClickListener { Haptics.threshold(it, true); openSettings(); true }
+            accessibilityDelegate = object : View.AccessibilityDelegate() {
+                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.addAction(AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_LONG_CLICK, "Open settings"))
+                }
+            }
+        }
         titleRow = ui.row().apply { addView(titleBox, ui.grow()) }
         titleKey = null
         // The day strip: a track of slots, the selection pill gliding over it, and the chips on top.
@@ -203,7 +213,12 @@ class MainActivity : Activity(), SpectrumHost {
             // 16dp under the title, as the Spectrum tabs' pages start 10dp + 6dp under theirs.
             addView(stripFrame, ui.wide(top = 16f))
         }
-        content = FrameLayout(this).apply { setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(24)) }
+        // Not clipped to its padding: a card sliding in with another day, or springing back from a press,
+        // passes through the 16dp margins, and was cut off there as if it went behind something.
+        content = FrameLayout(this).apply {
+            setPadding(ui.dp(16), 0, ui.dp(16), ui.dp(24))
+            clipToPadding = false
+        }
         scroll = SwipeScrollView(this).apply {
             isFillViewport = true
             isVerticalScrollBarEnabled = false
@@ -235,8 +250,12 @@ class MainActivity : Activity(), SpectrumHost {
             // The pull-to-sync indicator sits behind the page, uncovered as the page is pulled down.
             val pull = PullIndicator(ui) { SpectrumScreens.lastSynced(this@MainActivity) }
             scroll.pullIndicator = pull
+            // And the settings gear below it, uncovered as the Courses list is pulled up.
+            val pullUp = PullUpIndicator(ui)
+            scroll.pullUpIndicator = pullUp
             addView(FrameLayout(this@MainActivity).apply {
                 addView(pull, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
+                addView(pullUp, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
                 addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             addView(tabBar)
@@ -272,7 +291,8 @@ class MainActivity : Activity(), SpectrumHost {
                 addView(icon, FrameLayout.LayoutParams(ui.dp(22), ui.dp(22), Gravity.CENTER))
                 addView(badge, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END))
             }
-            val text = ui.text(label, 11.5f, p.muted, ui.f.bodySemi).apply { letterSpacing = 0.04f }
+            // One line, shrinking if it must: at a large system font size on a narrow phone "Courses" wrapped to "Course / s".
+            val text = ui.fitText(label, 11.5f, p.muted, ui.f.bodySemi, lines = 1).apply { letterSpacing = 0.04f }
             val tab = ui.column().apply {
                 gravity = Gravity.CENTER_HORIZONTAL
                 setPadding(0, ui.dp(6), 0, ui.dp(6))
@@ -328,10 +348,14 @@ class MainActivity : Activity(), SpectrumHost {
             ui.text("Something went wrong showing this page: ${e.message}", 15f, ui.p.muted)
         }
         content.removeAllViews()
+        // Nor is the page clipped: its cards rise into place, and spring back after a press, a little past its edges.
+        (page as? ViewGroup)?.clipChildren = false
         content.addView(page)
         scroll.onSwipe = if (view == "day") { dir -> slideFar = true; goDay(sel + dir, dir) } else null
         // Spectrum's tabs sync when pulled down.
         scroll.onPull = if (view in setOf("grades", "due", "news", "files") && SpectrumStore.signedIn(this)) ::refresh else null
+        // The Courses list (where Settings used to sit, under the courses) opens them when pulled up.
+        scroll.onPullUp = if (view == "files" && openCourse == null) ::openSettings else null
         if (pendingSlide != 0) {
             // Another day: from the side it was swiped in from, or from close by after a tap.
             Motion.slideIn(page, pendingSlide * if (slideFar) scroll.width * 0.35f else ui.dp(40f).toFloat())
@@ -348,15 +372,6 @@ class MainActivity : Activity(), SpectrumHost {
         val p = ui.p
         val tt = timetable
         showTitle(n)
-        while (titleRow.childCount > 1) titleRow.removeViewAt(1)
-        // Settings (theme, imports, notifications, vibration, account) open from here, as in redesign 1p.
-        titleRow.addView(FrameLayout(this).apply {
-            background = ui.pressable(ui.shape(Color.TRANSPARENT, 99f), 99f)
-            contentDescription = "Settings"
-            addView(ui.icon(R.drawable.ic_settings, p.text, 20f), FrameLayout.LayoutParams(ui.dp(20), ui.dp(20), Gravity.CENTER))
-            setOnClickListener { Haptics.tick(this); SettingsSheet.show(this@MainActivity, this@MainActivity) }
-            settingsButton = this
-        }, LinearLayout.LayoutParams(ui.dp(44), ui.dp(44)).apply { marginEnd = -ui.dp(10); gravity = Gravity.TOP })
         stripFrame.visibility = if (view == "day" || view == "week") View.VISIBLE else View.GONE
         if (stripFrame.visibility != View.VISIBLE) return
         strip.removeAllViews()
@@ -462,7 +477,7 @@ class MainActivity : Activity(), SpectrumHost {
         titleKey = key
         val title: ViewGroup = when {
             page != null -> pageTitle(ui, page, line)
-            view == "day" -> dayTitle(ui, DAY_SHORT[sel], dateText(days), today, line)
+            view == "day" -> dayTitle(ui, DAY_NAMES[sel], dateText(days), today, line)
             view == "week" -> weekTitle(ui, words.first(), line)
             else -> ui.row().apply { addView(ui.label(words.first(), p.muted, 11f)) }
         }
@@ -473,12 +488,15 @@ class MainActivity : Activity(), SpectrumHost {
         Motion.retitle(old, title, pendingSlide * ui.dp(32f).toFloat(), ui.dp(10f).toFloat())
     }
 
+    /** Settings (theme, imports, notifications, vibration, account), as in redesign 1p. */
+    private fun openSettings() = SettingsSheet.show(this, this)
+
     override fun setLook(look: Look) {
-        if (look != this.look) restyle(settingsButton ?: shell) { this.look = look; Look.save(this, look) }
+        if (look != this.look) restyle(titleBox) { this.look = look; Look.save(this, look) }
     }
 
     override fun setScheme(scheme: Scheme) {
-        if (scheme != this.scheme) restyle(settingsButton ?: shell) {
+        if (scheme != this.scheme) restyle(titleBox) {
             this.scheme = scheme
             Scheme.save(this, scheme)
             TimetableWidget.updateAll(this) // its classes take the theme's course colours too
@@ -526,7 +544,7 @@ class MainActivity : Activity(), SpectrumHost {
         }
     }
 
-    /** A new look or scheme ([change]) spreads out from [from] (the settings button), over a picture of the old one. */
+    /** A new look or scheme ([change]) spreads out from [from] (the title, where Settings open), over a picture of the old one. */
     private fun restyle(from: View, change: () -> Unit) {
         val old = shell
         val y = scroll.scrollY

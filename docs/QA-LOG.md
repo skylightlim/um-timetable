@@ -18,6 +18,73 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 14 October 2026 (thingstodo.md: everything but the meeting link and the bigger jobs)
+
+**Settings without a button.** The top bar's settings button is gone.
+- A long press on the title opens Settings, with the app's own "threshold" vibration. TalkBack lists
+  it as the "Open settings" action.
+- On the Courses list (not inside a course), pulling up from the end works like pull to sync
+  (`SwipeScrollView.onPullUp`, `PullUpIndicator`). The page lifts at half speed over a turning gear,
+  "Pull up for settings" becomes "Release for settings" past 72dp with a pop and a vibration, and
+  letting go there opens Settings. It only starts when the list was already at its end when the
+  finger went down, so it never catches a scroll mid-way.
+- A new theme now spreads from the title.
+
+**Day's title:** the full day name, "Wednesday 14 Oct". "Today" moved from a chip beside the title to
+the start of the small line ("TODAY · 2 CLASSES · 08:00–13:00", "TODAY" in the accent), so the
+title has the whole width. Titles shrink only when the longest title ("Wednesday 30 Sep") wouldn't
+fit, the same for every day. At Pixel 9 Pro width all are 56sp; at 360dp about 47sp.
+
+**Bugs:**
+- White strips at the left and right when touching empty space on the Settings sheet. Press feedback
+  picked the scrim behind the sheet (the only clickable thing under the finger) and shrank it, which
+  uncovered the edges. `Motion.Presser` now stops at a scrolling panel (the sheet) and doesn't look
+  at what's under it.
+- A class card's edge looked like it went behind something near the end of its animation. The page
+  container clipped to its 16dp side margins, so a card sliding in with another day, or springing
+  back past full size after a press, was cut at an invisible line. The container no longer clips to
+  its padding and the page doesn't clip its children. They're still clipped at the screen edge.
+  Checked on a screen recording of a day swipe.
+- Due's "2 d": the countdown is sized up to 56sp, and at that size the word space between the number
+  and the unit gaped. The number is now full size and the unit half that, 2dp after it on the same
+  baseline ("2d", "12h", "40min").
+
+**Courses and Grades:** one `courseRow` for both. Courses' text is larger: the code 12 → 13sp, the
+name 15 → 17sp, rows 60 → 64dp. Grades' "Not marked yet" courses use the same row (dot, code · Occ,
+full name, the item count and the fold's chevron at the end), with lines between rows only. Their
+items line up with the name.
+
+**Themes:** Blue and Red changed only the accents and the course colours, so a theme looked nearly the
+same. They now tint the page, cards, lines and greys too (`Neutrals`, OKLCH, the same lightness steps
+as the plain greys). Blue is pale blue, navy in dark; Red is rose, maroon in dark. Text is 15.6:1 on
+the page, muted ≥ 5.4:1, accent text ≥ 5.7:1. Gold keeps the plain greys, the app's look from the
+start. Also, the Now block's "Then …" line used the course cards' dark ink, which was unreadable on
+Blue's and Red's fills. It uses the block's own ink now (4.8–7.2:1).
+
+**Notification icon:** the old launcher icon's week grid became the seal's rim with 马 (马大, UM)
+inside. `seal.py` draws it too; the launcher icons it writes came out unchanged.
+
+**Large font, narrow phone** (Android 12, 360dp, font size 1.3):
+- "Courses" wrapped to "Course / s" in the tab bar. Tab labels stay on one line and shrink if they
+  must (`FitText`).
+- The Now block broke a long name inside a word ("Basic Entre / preneurship"). It shrinks until the
+  longest word fits.
+- The room on the Now block was cut in half when the class line wrapped. The row lined children up
+  by baseline, and the wrapped text's first-line baseline pushed the room up out of the row. Now the
+  bottoms line up.
+- The week grid's text follows the system font size only up to 1.15×: its boxes are a fifth of the
+  width and as tall as their hours. At 360dp long words are still hyphenated, as before. Fitting each
+  block's words separately left the grid with mixed sizes, so it was dropped.
+
+**Checked:**
+- Screenshots on `Test_API37` (Pixel 9 Pro size) and `Android12_360dp` at 1.0 and 1.3 font scale:
+  Day, Week, Due, Courses, Grades and Settings, with a made-up timetable, courses and grade items
+  (debug fake sign-in, network off).
+- The long press and the pull up both open Settings.
+- Day in each theme, light and dark.
+- `lintDebug` has 0 errors. That includes fixes to two older ones: the poster's break strategy
+  constant, and a debug-only API 33 call.
+
 ## 14 October 2026 (MAYA: the app opens and reads the timetable after sign-in)
 
 **Asked for:** after the user signs in to MAYA, the app should do the steps to get the timetable by

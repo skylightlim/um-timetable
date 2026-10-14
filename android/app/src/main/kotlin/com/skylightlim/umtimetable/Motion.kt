@@ -110,11 +110,21 @@ object Motion {
             pressed = null
         }
 
-        private fun clickableAt(v: View, x: Int, y: Int): View? {
-            if (v.visibility != View.VISIBLE) return null
+        private fun hit(v: View, x: Int, y: Int): Boolean {
+            if (v.visibility != View.VISIBLE) return false
             val r = Rect()
-            if (!v.getGlobalVisibleRect(r) || !r.contains(x, y)) return null
-            if (v is ViewGroup) for (i in v.childCount - 1 downTo 0) clickableAt(v.getChildAt(i), x, y)?.let { return it }
+            return v.getGlobalVisibleRect(r) && r.contains(x, y)
+        }
+
+        private fun clickableAt(v: View, x: Int, y: Int): View? {
+            if (!hit(v, x, y)) return null
+            if (v is ViewGroup) for (i in v.childCount - 1 downTo 0) {
+                val child = v.getChildAt(i)
+                clickableAt(child, x, y)?.let { return it }
+                // A scrolling panel takes every touch on it, so nothing under it is pressed. Without this, a
+                // tap on a sheet's empty space sank the scrim behind it, uncovering light strips at the edges.
+                if (child is ScrollView && hit(child, x, y)) return null
+            }
             return v.takeIf { it.isClickable && it.isEnabled && it.hasOnClickListeners() }
         }
     }

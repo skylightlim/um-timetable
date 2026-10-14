@@ -73,7 +73,17 @@ fun weekRange(monday: Int): String =
 /** Top-bar titles: Big Shoulders 56sp everywhere (as 1i and 1m's headings). */
 private const val TITLE_SIZE = 56f
 
-private fun titleText(ui: Ui, text: String) = ui.text(text, TITLE_SIZE, ui.p.text, ui.f.sign, lines = 1).apply { setLineSpacing(0f, 1f) }
+/** Day's widest title: the longest day name with a wide date. */
+private const val DAY_WIDEST = "Wednesday 30 Sep"
+
+/**
+ * A top-bar title at 56sp, or smaller when [widest] (the longest title shown in its place) wouldn't fit the
+ * width it's given. Sized by the widest, every day's title is the same size, so it doesn't jump as days
+ * change. On a 427dp-wide phone they all fit at 56sp in the 395dp the title has (no settings button
+ * beside it any more); at 360dp Day's come out at about 47sp.
+ */
+private fun titleText(ui: Ui, text: String, widest: String = text) =
+    ui.fitText(text, TITLE_SIZE, ui.p.text, ui.f.sign, widest = widest, lines = 1).apply { setLineSpacing(0f, 1f) }
 
 /** A Spectrum tab's name for the top bar, over a small line (the week of the semester and today's date). */
 fun pageTitle(ui: Ui, name: String, line: String?): LinearLayout = ui.column().apply {
@@ -82,16 +92,21 @@ fun pageTitle(ui: Ui, name: String, line: String?): LinearLayout = ui.column().a
 }
 
 /**
- * Day's title on one line: the short day name and the date ("Wed 14 Oct"), with the Today chip. The full
- * name doesn't fit at 56sp ("Wednesday 30 Sep" is 387dp of the 361dp beside the settings button);
- * "Wed 30 Sep" and the chip take 313dp.
+ * Day's title on one line: the full day name and the date ("Wednesday 14 Oct"). "Today" leads the small
+ * line under it, in the accent colour: beside the title, as a chip, it left the name no room.
  */
 fun dayTitle(ui: Ui, day: String, date: String, today: Boolean, line: String?): LinearLayout = ui.column().apply {
-    addView(ui.row(gap = 12f).apply {
-        addView(titleText(ui, "$day $date"))
-        if (today) addView(ui.chip("Today", ui.p.accent, ui.p.accentInk, 11f).apply { setPadding(ui.dp(8), ui.dp(3), ui.dp(8), ui.dp(3)) })
-    })
-    addView(smallLine(ui, line), ui.wide(top = 4f))
+    addView(titleText(ui, "$day $date", DAY_WIDEST))
+    addView(smallLine(ui, line).apply {
+        if (!today) return@apply
+        val lead = "TODAY"
+        text = android.text.SpannableString(if (line == null) lead else "$lead · ${line.uppercase()}").apply {
+            setSpan(android.text.style.ForegroundColorSpan(ui.p.accentText), 0, lead.length, 0)
+        }
+        isAllCaps = false
+        visibility = View.VISIBLE
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+    }, ui.wide(top = 4f))
 }
 
 /** Week's title: the dates of the strip's week, with [line] (its deadlines) under them. */
@@ -178,15 +193,19 @@ object DayScreen {
             Phase.NEXT_TODAY -> labels("Next", "in ${durationText(st.minutesAway)}")
             Phase.NEXT_LATER -> labels("Next class", "in ${durationText(st.minutesAway)}")
         }
-        block.addView(ui.text(s.course.name, 40f, ink, ui.f.sign, lines = 3).apply { setLineSpacing(0f, 0.95f) }, ui.wide(top = 10f))
-        val info = ui.row(gap = 12f).apply { gravity = Gravity.BOTTOM }
+        block.addView(ui.fitText(s.course.name, 40f, ink, ui.f.sign, words = true, lines = 3).apply { setLineSpacing(0f, 0.95f) }, ui.wide(top = 10f))
+        // Bottoms lined up, not baselines: when the class line wraps (a large system font size), its first
+        // line's baseline pushed the room up out of the row, cut in half.
+        val info = ui.row(gap = 12f).apply { gravity = Gravity.BOTTOM; isBaselineAligned = false }
         info.addView(ui.text("${s.course.code} · ${s.type} · ${clockText(s.start)}–${clockText(s.end)}", 12f, ink, ui.f.monoBold, caps = true), ui.grow())
         info.addView(ui.text(s.room, 30f, ink, ui.f.sign).apply { contentDescription = "${if (s.room == "Online") "Where" else "Room"}: ${s.room}" })
         block.addView(info, ui.wide(top = 8f))
         if (st.phase == Phase.IN_CLASS) {
             block.addView(ui.bar(st.progress, ink, (ink and 0xFFFFFF) or 0x2E000000), ui.wide(top = 14f).apply { height = ui.dp(4) })
             h.timetable.day(now.dow).firstOrNull { it.start > now.min }?.let { next ->
-                block.addView(ui.text("Then ${next.course.code} ${next.type.lowercase()} at ${clockText(next.start)} · ${next.room}", 13f, p.inkMuted), ui.wide(top = 12f))
+                // In the block's own ink: the course cards' dark ink was unreadable on Blue's and Red's fills
+                // (and softened, Red's light fill fell to 3.5:1).
+                block.addView(ui.text("Then ${next.course.code} ${next.type.lowercase()} at ${clockText(next.start)} · ${next.room}", 13f, ink), ui.wide(top = 12f))
             }
         }
         block.setOnClickListener { h.openSheet(s.course, s) }
@@ -346,7 +365,10 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
     /** Today's column, when the week shown is this week (see [daysFromToday]). */
     private val today = now.dow.takeIf { it in 1..5 && daysFromToday(tt, now, it) == 0 }
 
-    private fun sp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, resources.displayMetrics)
+    // The grid's boxes are as tall as their hours and a fifth of the width, so its text follows the system
+    // font size only up to 1.15×: past that, names broke into syllables ("Pro- / gram- / ming"). A class's
+    // sheet (tap it) shows everything at full size.
+    private fun sp(v: Float) = v * resources.displayMetrics.density * minOf(resources.configuration.fontScale, 1.15f)
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = ui.dp(1.5f).toFloat() }
     private val dayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodyBold; textSize = sp(12f); textAlign = Paint.Align.CENTER }

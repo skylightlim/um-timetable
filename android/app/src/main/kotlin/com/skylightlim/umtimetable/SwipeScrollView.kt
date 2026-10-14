@@ -20,7 +20,9 @@ import kotlin.math.sign
  * bounds, so a sliding page can never widen the screen.
  *
  * Where there's something to sync ([onPull]), the page can also be pulled down from the top: past
- * 72dp and let go, it syncs, and the page waits lowered over [pullIndicator] until [endPull].
+ * 72dp and let go, it syncs, and the page waits lowered over [pullIndicator] until [endPull]. Where
+ * [onPullUp] is set (the Courses list: Settings), a page already at its end can be pulled up the same
+ * way over [pullUpIndicator]; let go past 72dp, it springs back and [onPullUp] runs.
  */
 class SwipeScrollView(context: Context) : ScrollView(context) {
     /** Called with +1 for a swipe to the left (next) and -1 for a swipe to the right (previous). */
@@ -29,6 +31,10 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     var onPull: (() -> Unit)? = null
     /** What the pull uncovers above the page. */
     var pullIndicator: PullIndicator? = null
+    /** Called when the page, already at its end, is pulled up past the threshold and let go. */
+    var onPullUp: (() -> Unit)? = null
+    /** What pulling up uncovers below the page. */
+    var pullUpIndicator: PullUpIndicator? = null
 
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
     private val density = context.resources.displayMetrics.density
@@ -38,6 +44,9 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     private var downY = 0f
     private var swiping = false
     private var pulling = false
+    private var pullingUp = false
+    /** The page was at its end when the touch began: only then can a pull up start (not mid-scroll). */
+    private var atEnd = false
     /** Let go past the threshold: the page stays lowered while the sync runs. */
     private var held = false
     /** The drag is past the point where letting go moves on (vibrates on crossing it either way). */
@@ -51,6 +60,13 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
         val dx = e.x - downX
         val dy = e.y - downY
         return abs(dx) > slop && abs(dx) > abs(dy) * 1.5f
+    }
+
+    private fun startsPullUp(e: MotionEvent): Boolean {
+        if (onPullUp == null || !atEnd || held) return false
+        val dx = e.x - downX
+        val dy = downY - e.y
+        return dy > slop && dy > abs(dx) * 1.5f
     }
 
     private fun startsPull(e: MotionEvent): Boolean {
@@ -74,7 +90,9 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
         downY = e.y
         swiping = false
         pulling = false
+        pullingUp = false
         past = false
+        atEnd = !canScrollVertically(1)
     }
 
     override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
@@ -82,9 +100,10 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
             // A touch on a card never reaches onTouchEvent's DOWN, so the drag state starts afresh
             // here too: left over from the last swipe, it swallowed a quick flick's vibration.
             MotionEvent.ACTION_DOWN -> down(e)
-            MotionEvent.ACTION_MOVE -> if (!swiping && !pulling) {
+            MotionEvent.ACTION_MOVE -> if (!swiping && !pulling && !pullingUp) {
                 if (startsSwipe(e)) { swiping = true; return true }
                 if (startsPull(e)) { pulling = true; return true }
+                if (startsPullUp(e)) { pullingUp = true; return true }
             }
         }
         return super.onInterceptTouchEvent(e)
@@ -94,11 +113,12 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     override fun onTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> down(e)
-            MotionEvent.ACTION_MOVE -> if (!swiping && !pulling) {
-                if (startsSwipe(e)) swiping = true else if (startsPull(e)) pulling = true
+            MotionEvent.ACTION_MOVE -> if (!swiping && !pulling && !pullingUp) {
+                if (startsSwipe(e)) swiping = true else if (startsPull(e)) pulling = true else if (startsPullUp(e)) pullingUp = true
             }
         }
         if (pulling) return pull(e)
+        if (pullingUp) return pullUp(e)
         val swipe = onSwipe
         if (!swiping || swipe == null) return super.onTouchEvent(e)
         val dx = e.x - downX
@@ -160,12 +180,39 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
         return true
     }
 
-    /** Moves the page to [y] below the top, the indicator following it. */
+    /** The page follows an upward drag at half speed; past the threshold, letting go runs [onPullUp]. */
+    private fun pullUp(e: MotionEvent): Boolean {
+        val page = page ?: return true
+        val d = ((downY - e.y - slop) * 0.5f).coerceIn(0f, pullDistance * 1.6f)
+        when (e.actionMasked) {
+            MotionEvent.ACTION_MOVE -> {
+                page.animate().cancel()
+                page.translationY = -d
+                pullUpIndicator?.pulled(d, d / pullDistance)
+                if ((d >= pullDistance) != past) {
+                    past = !past
+                    Haptics.threshold(this, past)
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                pullingUp = false
+                lower(0f)
+                if (past) onPullUp?.invoke()
+            }
+            MotionEvent.ACTION_CANCEL -> { pullingUp = false; lower(0f) }
+        }
+        return true
+    }
+
+    /** Moves the page to [y] below where it rests (above, when negative), the indicators following it. */
     private fun lower(y: Float) {
         val page = page ?: return
-        page.animate().translationY(y).spring(Motion.SETTLE)
-            .setUpdateListener { pullIndicator?.follow(page.translationY) }.start()
-        if (!Motion.enabled) pullIndicator?.follow(y)
+        fun follow(at: Float) {
+            pullIndicator?.follow(at.coerceAtLeast(0f))
+            pullUpIndicator?.follow((-at).coerceAtLeast(0f))
+        }
+        page.animate().translationY(y).spring(Motion.SETTLE).setUpdateListener { follow(page.translationY) }.start()
+        if (!Motion.enabled) follow(y)
     }
 
     /** The sync has finished: the indicator says so for a moment, then the page goes back up. */
@@ -180,8 +227,10 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     fun resetPull() {
         held = false
         pulling = false
+        pullingUp = false
         page?.apply { animate().cancel(); translationY = 0f }
         pullIndicator?.follow(0f)
+        pullUpIndicator?.follow(0f)
     }
 
     /** Not far enough: back to where it was. */
@@ -243,5 +292,44 @@ class PullIndicator(private val ui: Ui, private val lastSync: () -> String) : Li
         duel.finish()
         title.text = "Synced"
         sub.text = lastSync()
+    }
+}
+
+/**
+ * What pulling the Courses list up uncovers: the settings gear, turning as the page comes up, and what
+ * letting go will do. Past the threshold it gives a little pop, as the swords crossing do for a sync.
+ */
+@SuppressLint("ViewConstructor")
+class PullUpIndicator(ui: Ui) : LinearLayout(ui.context) {
+    private val gear = ui.icon(R.drawable.ic_settings, ui.p.text, 24f)
+    private val title = ui.text("Pull up for settings", 13f, ui.p.text, ui.f.bodySemi)
+    private var ready = false
+
+    init {
+        orientation = VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        setPadding(0, ui.dp(12), 0, ui.dp(14))
+        addView(gear)
+        addView(title, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(8) })
+        alpha = 0f
+    }
+
+    /** Sits just below the page's bottom edge, the page [y] above where it rests, showing as it comes into view. */
+    fun follow(y: Float) {
+        translationY = height - y
+        alpha = if (height == 0) 0f else (y / height).coerceIn(0f, 1f)
+        if (y == 0f) ready = false
+    }
+
+    /** Being pulled, [y] up, [fraction] of the way (1 and over: let go for Settings). */
+    fun pulled(y: Float, fraction: Float) {
+        gear.rotation = fraction * 120f
+        val now = fraction >= 1f
+        if (now != ready) {
+            ready = now
+            title.text = if (now) "Release for settings" else "Pull up for settings"
+            if (now) Motion.pop(gear, 0.8f)
+        }
+        follow(y)
     }
 }

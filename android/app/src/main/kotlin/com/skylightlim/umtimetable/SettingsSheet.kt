@@ -10,7 +10,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 
 /**
- * Settings, as in redesign 1p: a sheet from the top bar's settings button with the theme, the timetable
+ * Settings, as in redesign 1p: a sheet (from a long press on the title, or pulling Courses up) with the theme, the timetable
  * imports, notifications, vibration and the Spectrum account. They used to sit under the course list.
  */
 object SettingsSheet {
@@ -87,7 +87,7 @@ object SettingsSheet {
             setOnClickListener { onClick() }
         }
 
-        // The theme: the sheet goes, and the new theme spreads from the settings button.
+        // The theme: the sheet goes, and the new theme spreads from the title.
         label("Appearance", top = 16f)
         sheet.addView(ui.segmented(Look.entries.map { it.label }, h.look.ordinal, fill = true) { i -> close { h.setLook(Look.entries[i]) } })
 
