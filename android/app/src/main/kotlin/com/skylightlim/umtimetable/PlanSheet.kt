@@ -89,7 +89,7 @@ object PlanSheet {
             maxLines = 3
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_MULTI_LINE
             imeOptions = EditorInfo.IME_ACTION_DONE
-            if (Build.VERSION.SDK_INT >= 29) textCursorDrawable = ui.shape(p.accentText, 1f).apply { setSize(ui.dp(2), 0) }
+            textCursorDrawable = ui.shape(p.accentText, 1f).apply { setSize(ui.dp(2), 0) }
             setSelection(text.length)
         }
         body.addView(field)
