@@ -31,6 +31,7 @@ import java.io.File
  * --ef fontScale 1.3 draws at a larger system font size (this render only).
  * --es scheme gold|blue|red draws in that accent scheme instead of the chosen one.
  * --ez open true draws every fold and "Show more" opened.
+ * view webbar draws the web screens' top bar (--es bar spectrum|maya|timeedit|login).
  * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200).
  * view signout draws the Sign out question's card. view settings draws the Settings sheet (--ez signedIn true|false
  * for either Account row); view signin the first-run sign-in poster, at screen height (or --ei height px).
@@ -79,6 +80,13 @@ class DebugRenderReceiver : BroadcastReceiver() {
                     else -> pageTitle(host.ui, page, SpectrumScreens.summary(host, mapOf("Courses" to "files").getOrElse(page) { page.lowercase() }))
                 }, host.ui.grow())
             }
+            // The web screens' top bar: --es bar spectrum|maya|timeedit|login
+            "webbar" -> when (intent.getStringExtra("bar") ?: "maya") {
+                "spectrum" -> WebBar(host.ui, "Spectrum", "Assignment 2: Group report (Week 6)", "Done", null, null, compact = true) {}
+                "login" -> WebBar(host.ui, "SiswaMail", "Sign in to Spectrum", "Cancel", "Sign in with your SiswaMail. Your login stays on this phone; the app only talks to Spectrum.", null, compact = false) {}
+                "timeedit" -> WebBar(host.ui, "TimeEdit", "Get your timetable", "Close", "Reading your 7 courses on TimeEdit…", "Get timetable", compact = false) {}.also { it.action.isEnabled = false }
+                else -> WebBar(host.ui, "MAYA", "Import your timetable", "Close", "Sign in to MAYA, and the app opens your timetable and reads it. Your password goes only to MAYA or Microsoft; this app never sees it.", "Read this page", compact = false) {}
+            }.view.apply { setBackgroundColor(host.ui.p.ground) }
             "signout" -> ConfirmDialog.card(host.ui, MainActivity.SIGN_OUT_TITLE, MainActivity.SIGN_OUT_BODY, "Sign out", {}, {}, hold = true)
             "sheet" -> {
                 val tt = Timetable.load(context)
@@ -98,7 +106,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val frame = FrameLayout(c).apply {
             setBackgroundColor(host.ui.p.ground)
             // A sheet runs edge to edge, from the bottom of the screen.
-            if (view != "sheet" && view != "settings" && view != "signin") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
+            if (view != "sheet" && view != "settings" && view != "signin" && view != "webbar") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
             addView(page)
         }
         frame.measure(

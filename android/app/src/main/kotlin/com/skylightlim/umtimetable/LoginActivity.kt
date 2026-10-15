@@ -24,7 +24,7 @@ class LoginActivity : WebScreen() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setUp("Sign in to Spectrum", "Cancel", "Sign in with your SiswaMail. Your login stays on this phone; the app only talks to Spectrum.")
+        setUp("SiswaMail", "Sign in to Spectrum", "Cancel", "Sign in with your SiswaMail. Your login stays on this phone; the app only talks to Spectrum.")
         web.loadUrl("${Spectrum.SITE}/admin/tool/mobile/launch.php?service=${Spectrum.SERVICE}&passport=$passport&urlscheme=moodlemobile")
     }
 

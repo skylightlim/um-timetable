@@ -35,7 +35,7 @@ class MayaActivity : WebScreen() {
         // Debug builds only: a stand-in MAYA to test the steps against (DebugSpectrumReceiver --es mayaSite …).
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) intent.getStringExtra(EXTRA_SITE)?.let { site = it }
         setUp(
-            "Import timetable from MAYA", "Close",
+            "MAYA", "Import your timetable", "Close",
             "Sign in to MAYA, and the app opens your timetable and reads it. Your password goes only to MAYA or Microsoft; this app never sees it.",
             "Read this page",
         )

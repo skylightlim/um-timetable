@@ -18,6 +18,36 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (web screens: a top bar like the main screen's)
+
+**Asked for:** on the Spectrum and MAYA pages the top bar looked ugly and unrefined. Design it with the
+same care as the main page, with animation, and animate the Cancel or Done button so it's noticed.
+
+**Change** (`WebBar` in WebScreen.kt; all four web screens: Spectrum pages, the Spectrum sign-in, MAYA,
+TimeEdit):
+- In the app's own look and theme (Auto/Light/Dark and the Gold/Blue/Red scheme), not the system's grey
+  buttons: the site in small accent capitals (SPECTRUM, SISWAMAIL, MAYA, TIMEEDIT) over the title in
+  Big Shoulders (30sp; 26sp on one line for Spectrum pages, which take the page's own title), the
+  status line in Instrument Sans, the system bars and page background in the theme's colours.
+- The way out is a pill: **Done** in the accent with a tick (Spectrum pages), **Close** / **Cancel**
+  in the text colour with a cross (a grey one all but vanished on the light page). 40dp tall in a 48dp
+  row.
+- MAYA's "Read this page" and TimeEdit's "Get timetable" are full-width accent buttons, faded while
+  they can't be used. When they become usable they brighten with a small pop.
+- A hairline under the bar, with a short accent bar sweeping along it while a page loads (in place of
+  the system progress bar). With "Remove animations" it's a still bar.
+- Motion: the bar's parts rise in as a page of the app does, the pill pops in after the title, and once
+  the first page has loaded the pill wiggles once so it's seen. Spectrum's title ("Opening the
+  page…", then the page's own) and the status lines roll over when they change. Buttons sink when
+  pressed, as in the app.
+- Titles: "Import your timetable" (MAYA) and "Get your timetable" (TimeEdit), since the small line
+  above now names the site.
+
+**Checked:** it builds; unit tests pass. The four bars drawn off-screen on the phone (`--es view webbar
+--es bar spectrum|login|maya|timeedit`, new), light and dark: a long Spectrum title ends in "…", and
+TimeEdit's button shows faded while it waits. The motion and the pages under the bar: open Spectrum
+and MAYA on the phone.
+
 ## 15 October 2026 (sign-in poster: the fight, new steps, everything moving in)
 
 **Asked for:** rethink the sign-in page's 1, 2, 3; check the spacing and make the numbers larger; a
