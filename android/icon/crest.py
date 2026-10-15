@@ -1,6 +1,7 @@
-"""Draws the launcher icon: the cow (牛) and the horse (马) of the app's duel standing on either side of
-an empty shield in UM's shape, the way the two tigers hold up the arms of Malaysia. It's all in the
-gold of UM's shield rim, on its blue (the adaptive icon's background, @color/ic_bg).
+"""Draws the launcher icon: the cow (牛) and the horse (马) of the app's duel holding up an empty shield
+in UM's shape, the way the two tigers hold up the arms of Malaysia: standing up on either side, taller
+than the shield, a front hoof on each of its top corners and a hind leg kicking its side. It's all in
+the gold of UM's shield rim, on its blue (the adaptive icon's background, @color/ic_bg).
 
     uv run --with skia-pathops python crest.py ../app/src/main/res/drawable [key=value ...]
 
@@ -8,9 +9,11 @@ Writes ic_fg.xml, ic_mono.xml and the status-bar icon ic_notify.xml (the shield 
 preview-circle.svg / preview-squircle.svg here (with no directory, only the previews).
 
 The animals are DuelView's shapes (its 120 × 60 box) as solid gold silhouettes, like the crest's yellow
-tigers: a blue gap round each piece where it covers another, and blue showing through for the eyes,
-spots and smiles. Path booleans resolve the drawing into one gold shape, so the blue is a hole rather
-than paint, and the themed icon (ic_mono) is that same shape.
+tigers: a blue gap round each piece where it covers another, and blue showing through for the pupils,
+brows, spots, six-packs and mouths. Their legs on the shield aren't DuelView's: each reaches from the
+shoulder or hip to its point on the shield, behind the head or the body. Path booleans resolve the
+drawing into one gold shape, so the blue is a hole rather than paint, and the themed icon (ic_mono) is
+that same shape.
 """
 import math
 import re
@@ -21,13 +24,13 @@ from pathops import LineCap, LineJoin, Path, PathOp, decompose_quadratic_segment
 P = dict(
     blue="#223E99", gold="#BB9632",  # UM crest colours: the shield and its rim
     line=1.0,       # the gaps between pieces, in icon units (dp in the 108-unit icon)
-    scale=0.55,     # the animals: icon units per DuelView unit
+    scale=0.5,      # the animals: icon units per DuelView unit
     rim=2.4,        # the shield's gold rim
-    shield_w=27.0, shield_h=33.0, shield_top=37.0,
-    cow_x=33.5, horse_x=74.5, feet_y=71.0,  # where each one's feet are, in the icon
-    lean=8.0,       # degrees each leans in, towards the shield
-    arm=-28.0,      # the cow's arm from the shoulder, degrees (the horse's is its mirror image)
-    arm_len=9.0,
+    # The shield fits between them, its top at their eyes: they stand taller than it, as the tigers do.
+    shield_w=20.0, shield_h=24.5, shield_top=45.0,
+    cow_x=30.0, horse_x=78.0, feet_y=67.0,  # where each one's standing hoof is, in the icon
+    lean=3.0,       # degrees each leans in, towards the shield
+    kick_at=0.72,   # how far down the shield's side the hind hooves kick it (0 top, 1 the point)
 )
 res = sys.argv[1] if len(sys.argv) > 1 and "=" not in sys.argv[1] else None
 for kv in sys.argv[1 if res is None else 2:]:
@@ -87,6 +90,13 @@ def stroked(shape, width):
     return op(p, Path(), PathOp.UNION)  # resolve the stroke's overlaps
 
 
+def turned(shape, deg, cx, cy):
+    """[shape] turned [deg] about ([cx], [cy])."""
+    a = math.radians(deg)
+    c, sn = math.cos(a), math.sin(a)
+    return shape.transform(c, sn, -sn, c, cx - c * cx + sn * cy, cy - sn * cx - c * cy)
+
+
 def shield(cx, top, w, h):
     """UM's shield: a flat top, straight sides for the top third, then curving in to a point."""
     l, r, side = cx - w / 2, cx + w / 2, top + 0.36 * h
@@ -128,63 +138,116 @@ class Painter:
 
 # --- the cow and the horse: DuelView's shapes, as gold silhouettes ---------------------------------
 # Like the crest's tigers (solid yellow, dark stripes): each piece is solid gold with a blue gap round
-# it where it covers another, and the details (eyes, spots, mane, smile) are blue showing through.
+# it where it covers another, and the details (eyes, brows, spots, six-packs, mouths) are blue showing
+# through. They rear up like the tigers on Malaysia's arms: a front hoof on the shield's top corner,
+# one hind leg standing, the other kicking the shield.
+
+def eyes(g, eyes, pupils, brows):
+    g.piece(*eyes)
+    for x, y in pupils:
+        g.put(oval(x - 2.4, y - 2.4, x + 2.4, y + 2.4), "blue")
+        g.put(oval(x + 0.05, y - 1.75, x + 1.55, y - 0.25), "gold")  # the glint
+    g.line(svg(brows), 2.3, "blue")
+
+
+def six_pack(g, pecs, pack, lines):
+    """The chest's arcs and the six-pack's lines, cut in the gold belly (an outlined block was too heavy here)."""
+    g.line(svg(pecs), W * 0.8, "blue")
+    g.line(op(pack, Path(), PathOp.UNION), W * 0.7, "blue")
+    g.line(svg(lines), W * 0.7, "blue")
+
+
+def local(g, x, y):
+    """The icon point ([x], [y]) in the current frame's own units."""
+    a, b, c, d, e, f = g.m
+    det = a * d - b * c
+    x, y = x - e, y - f
+    return (d * x - c * y) / det, (-b * x + a * y) / det
+
+
+def limb(g, base, target, width, bicep=False):
+    """A leg from [base] (a shoulder or hip, in the animal's units) out to the icon point [target], its hoof there."""
+    tx, ty = local(g, *target)
+    bx, by = base
+    n = math.hypot(tx - bx, ty - by)
+    a = math.atan2(ty - by, tx - bx)
+    m = (math.cos(a), math.sin(a), -math.sin(a), math.cos(a), bx, by)
+    h = width / 2
+    shapes = [rrect(-h, -h, n + h, h, h).transform(*m)]
+    if bicep:
+        shapes.append(oval(2.4, -5.2, 9.4, 1.2).transform(*m))
+    g.piece(*shapes, oval(tx - h - W / 2, ty - h - W / 2, tx + h + W / 2, ty + h + W / 2))
+
 
 def cow(g):
-    g.line(svg("M18,46 C11,48 7.5,45 8.5,39"))
-    g.put(svg("M8.5,40.5 C6,39 6,35.5 8.6,33.5 C11,35.5 11,39 8.5,40.5 Z"), "gold")
-    body = oval(17, 33, 39.5, 55)
-    g.piece(rrect(19.5, 47, 25, 57.4, 2.7), rrect(30.5, 47, 36, 57.4, 2.7), body)
-    g.inside(join(oval(13, 37, 23, 47), oval(29, 46.5, 36, 52)), body, "blue")
-    g.put(svg("M20,17.5 C14,14.5 8.5,16.5 7.5,20.5 C11.5,24 17,23.5 21,21.5 Z "
-              "M41.5,13.5 C45,9.5 50.5,9.5 53,11.5 C51,16.5 46.5,18 42,17.5 Z"), "gold")
-    head = oval(18, 9.5, 45, 33)
-    g.piece(svg("M22,12.5 C20.6,10.4 20.4,8.2 21.4,6.4 C23.4,7.4 25,9.4 25.6,11.6 Z "
-                "M36.6,11.2 C37.4,9 39,7.3 41,6.5 C41.6,8.6 41,10.7 39.8,12.5 Z"), head)
-    g.inside(svg("M17,8 C25,8 28.5,13 27.5,19 C26.5,25 22,28.5 16,27 Z"), head, "blue")
-    g.put(join(oval(30.4, 16.4, 34.6, 20.6), oval(38.9, 15.9, 43.1, 20.1)), "blue")  # eyes
-    g.piece(oval(30, 22, 46.5, 32.5))  # muzzle
-    g.put(join(oval(34.8, 25.2, 37.6, 27.8), oval(40.4, 25.2, 43.2, 27.8)), "blue")  # nostrils
-    g.line(svg("M36.5,30 Q39,31.4 41.5,30"), W * 0.8, "blue")
+    g.line(svg("M14,46 C8,48 4.6,44 5.8,38.6"))
+    g.put(svg("M5.8,40.2 C3.4,38.8 3.4,35.2 6,33.2 C8.4,35.2 8.4,38.8 5.8,40.2 Z"), "gold")
+    body = oval(11, 14.5, 43, 55)
+    muzzle = oval(29.6, 25.6, 44.2, 34.6)
+    g.piece(rrect(17.5, 47, 24, 57.4, 3), body, muzzle)
+    g.inside(join(oval(7.5, 39.5, 16.5, 49), svg("M9.5,22 C11.5,16.6 17.6,14.2 21.6,16.4 C20.8,21.2 16,24.8 10,26.4 Z")), body, "blue")
+    six_pack(g, "M19.4,35.6 C21.4,38.2 25.2,38.8 27.6,36.8 M28.4,36.8 C31,38.8 34.6,38.2 36.6,35.6",
+             rrect(22.6, 39, 33.4, 51.4, 3.4), "M28,39.6 L28,50.8 M23,43.2 Q28,44.4 33,43.2 M23,47.2 Q28,48.4 33,47.2")
+    g.put(svg("M13.6,22.4 C8.6,20.2 4.4,21.6 3.6,25 C7.4,27.8 11.8,27.2 14.6,25.4 Z "
+              "M40.6,19.2 C44,16 48.4,15.6 50.6,17.2 C49.2,21 45.4,22.6 41.4,22.4 Z"), "gold")  # ears
+    g.piece(svg("M17,18 C13.8,15.2 13.2,11.2 14.8,8.4 C17.4,10.2 19.4,13.4 20.4,16.4 Z "
+                "M33.4,15.6 C34.2,12.2 36.4,9.6 39.2,8.6 C39.8,11.4 38.8,14.4 36.8,16.8 Z"))  # horns
+    g.line(muzzle, W * 0.8, "blue")
+    eyes(g, (oval(23.8, 16.4, 31.6, 25.8), oval(31.2, 16.4, 39, 25.8)), ((28.8, 21.8), (36.2, 21.8)),
+         "M23.6,14.6 L30.6,17.6 M32.4,17.6 L39.4,14.4")
+    g.put(join(oval(34.4, 27.2, 36.6, 29.2), oval(39.2, 27.2, 41.4, 29.2)), "blue")  # nostrils
+    mouth = svg("M34,30.6 Q38.4,31.8 42.6,30.2 C42.4,33.4 40.4,35.2 38.2,35 C35.8,34.8 34.2,33 34,30.6 Z")
+    g.put(mouth, "blue")
+    g.inside(oval(35.6, 32.6, 40.8, 36.2), mouth)  # the tongue
 
 
 def horse(g):
-    g.put(svg("M100,40 C108,38.5 113,44.5 112.5,54 C109.5,50 106,48 100.5,48.5 Z"), "gold")
-    g.piece(rrect(95, 47, 100.5, 57.4, 2.7), rrect(84, 47, 89.5, 57.4, 2.7), oval(80.5, 33, 103, 55),
-            svg("M89,27 C88.5,32 87.5,36 86.5,40 L100,40 C101,34 101.5,28 101,23 Z"))
-    g.piece(svg("M88,12 C87.6,9.4 88.4,7 90,5.4 C92,7.2 93.2,9.2 93.6,11.4 Z "
-                "M96.5,10 C97.6,7.8 99.2,6.2 101.4,5.4 C101.8,7.8 101.4,10.2 100,12.4 Z"),
-            svg("M97,8.5 C90,8.5 84,13 79.5,19 C75.5,24.5 75,31 80.5,32.6 C85.5,34 90.5,31 94,29 "
-                "C100,27 104,22 103.5,16 C103,11 100.5,8.5 97,8.5 Z"))
-    g.line(svg("M80.5,21 C84,22.5 87.5,26 87.5,29.5"), W * 0.8, "blue")  # the muzzle's edge
-    g.put(oval(88.9, 14.4, 93.1, 18.6), "blue")  # eye
-    g.put(join(oval(77, 24.6, 79.6, 27.2), oval(81, 26, 83.6, 28.6)), "blue")  # nostrils
-    g.line(svg("M79.6,30.4 Q82.4,31.8 85,29.8"), W * 0.8, "blue")
-    g.piece(svg("M101.5,11 C98,7.2 92,7.4 87.5,11.8 C90.5,11.4 92.6,12.6 93.8,14.8 C95,12.8 97.4,12.4 99.4,13.6 "
-                "C100.6,19 100.2,26 98.4,31.5 C99.8,34.5 101.8,37 104.2,38.5 C107,32 107,18 101.5,11 Z"))  # mane
-
-
-def arm(g):
-    """The cow's front leg from its shoulder (DuelView's sword arm, no sword), the hoof at its end."""
-    a, n = math.radians(P["arm"]), P["arm_len"]
-    hx, hy = 35 + math.cos(a) * n, 41 + math.sin(a) * n
-    cap = rrect(-2.6, -2.6, n + 2.6, 2.6, 2.6).transform(math.cos(a), math.sin(a), -math.sin(a), math.cos(a), 35, 41)
-    g.piece(cap, oval(hx - 2.6 - W / 2, hy - 2.6 - W / 2, hx + 2.6 + W / 2, hy + 2.6 + W / 2))
+    g.put(svg("M105.6,39.6 C113,38 117.4,44.2 116.8,53.8 C113.6,49.8 110,47.8 105.4,48.2 Z"), "gold")
+    g.piece(rrect(96, 47, 102.5, 57.4, 3), oval(77, 25, 107, 55), svg("M89.6,22 L87.4,38 L103.6,38 L103.4,19 Z"))
+    six_pack(g, "M83.4,37 C85.4,39.4 89.2,40 91.6,38 M92.4,38 C95,40 98.6,39.4 100.6,37",
+             rrect(86.6, 39.6, 97.4, 51.8, 3.4), "M92,40.2 L92,51.2 M87,43.8 Q92,45 97,43.8 M87,47.8 Q92,49 97,47.8")
+    g.piece(svg("M101.6,8.6 C104.6,11.6 106,15.2 106.2,19.2 C106.8,25.4 105.8,31.4 103.4,36.8 "
+                "C101.2,35.4 99.8,33.6 99,31.4 C100.6,26.2 100.6,19.4 98.4,14.2 Z"))  # mane
+    crown = oval(83.3, 4.2, 103.7, 24.6)
+    face = svg("M92.63,11.63 C96.38,14.55 95.99,21.3 91.78,26.69 C87.56,32.09 81.11,34.1 77.37,31.17 "
+               "C73.62,28.25 74.01,21.5 78.22,16.11 C82.44,10.71 88.89,8.7 92.63,11.63 Z")
+    g.piece(svg("M87.8,8.6 C86.6,6 86.8,3.6 88,2 C90.6,2.9 92.6,5 93.4,7.2 Z "
+                "M97.2,6.4 C98,3.8 99.8,2.2 102,1.8 C102.4,4.2 101.6,6.6 100.2,8.4 Z"), crown, face)
+    muzzle = svg("M84.76,20.57 C87.63,22.81 87.92,27.24 85.4,30.46 C82.88,33.68 78.52,34.48 75.64,32.23 C72.77,29.99 72.48,25.56 75,22.34 C77.52,19.12 81.88,18.32 84.76,20.57 Z")
+    g.inside(stroked(muzzle, W * 0.8), join(crown, face), "blue")  # the muzzle's edge
+    g.piece(svg("M91.4,6.4 C91.4,3.8 93,1.8 95.6,1 C95,2.2 95,3.2 95.6,4.2 C96.8,2.4 99,1.8 101.2,2.2 "
+                "C99.8,3 99,4.2 98.8,5.6 C100.6,5.2 102.6,5.8 104,7.4 C101.4,7.4 99.6,8.2 98.6,9.6 Z"))  # crest
+    eyes(g, (oval(82, 8.8, 89.6, 18), oval(89.2, 8.8, 96.8, 18)), ((84.8, 14), (92, 14)),
+         "M83.4,7.6 L89,9.8 M90.6,9.8 L96.6,7.4")
+    g.put(join(svg("M77.5,23.85 C77.8,24.38 77.47,25.14 76.75,25.55 C76.03,25.97 75.2,25.88 74.9,25.35 C74.6,24.82 74.93,24.06 75.65,23.65 C76.37,23.23 77.2,23.32 77.5,23.85 Z"), svg("M81.3,25.25 C81.6,25.78 81.27,26.54 80.55,26.95 C79.83,27.37 79,27.28 78.7,26.75 C78.4,26.22 78.73,25.46 79.45,25.05 C80.17,24.63 81,24.72 81.3,25.25 Z")), "blue")  # nostrils
+    teeth = join(rrect(77, 29.4, 79.6, 33.2, 0.9), rrect(79.8, 29.7, 82.4, 33.3, 0.9))
+    g.put(stroked(teeth, W * 1.6), "blue")
+    g.put(teeth, "gold")
+    g.line(svg("M74.6,28.2 Q79.4,31.8 85,29.2"), W * 0.8, "blue")
 
 
 # --- the icon -------------------------------------------------------------------------------------
 
 g = Painter()
 s, lean = P["scale"], P["lean"]
-cow_at = (P["cow_x"], P["feet_y"], lean, s, 28, 57.4)
-horse_at = (P["horse_x"], P["feet_y"], -lean, s, 92, 57.4)
-# The shield behind them, their hooves on it.
-sh = shield(54, P["shield_top"], P["shield_w"], P["shield_h"])
+cow_at = (P["cow_x"], P["feet_y"], lean, s, 21, 57.4)      # the cow's standing hoof
+horse_at = (P["horse_x"], P["feet_y"], -lean, s, 99, 57.4)  # the horse's
+mirror = lambda m: (-m[0], -m[1], m[2], m[3], m[0] * 120 + m[4], m[1] * 120 + m[5])
+# The shield, and their legs on it: a front hoof on each top corner (the leg behind the head), a hind
+# hoof kicking each side (the leg behind the body). Both reach from the animal to those points.
+w, top, h = P["shield_w"], P["shield_top"], P["shield_h"]
+sh = shield(54, top, w, h)
 g.inside(stroked(sh, 2 * P["rim"]), sh)
+kick_y = top + P["kick_at"] * h
+kick_dx = w / 2 * (1 - 0.55 * (P["kick_at"] - 0.36) / 0.64)  # where the side has curved in to, roughly
+for at, flip, corner, side, hip in ((cow_at, False, (54 - w / 2, top), (54 - kick_dx, kick_y), (33.2, 49)),
+                                    (horse_at, True, (54 + w / 2, top), (54 + kick_dx, kick_y), (33.2, 49))):
+    g.frame(*at)
+    if flip: g.m = mirror(g.m)
+    limb(g, (35, 37), corner, 6.8, bicep=True)
+    limb(g, hip, side, 6.5)
 g.frame(*cow_at); cow(g)
 g.frame(*horse_at); horse(g)
-g.frame(*cow_at); arm(g)
-g.frame(*horse_at); g.m = (-g.m[0], -g.m[1], g.m[2], g.m[3], g.m[0] * 120 + g.m[4], g.m[1] * 120 + g.m[5]); arm(g)
 
 
 def num(v):
