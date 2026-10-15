@@ -53,6 +53,8 @@ class MainActivity : Activity(), SpectrumHost {
         private set
     /** The sign-in poster over the app on first run (see [showWelcome]). */
     private var welcome: View? = null
+    /** The Settings sheet, while it's open: it stays until the user closes it. */
+    private var settings: SettingsSheet.Open? = null
 
     override val timetable: Timetable get() = Timetable.load(this)
     override fun now() = Now.current()
@@ -158,6 +160,8 @@ class MainActivity : Activity(), SpectrumHost {
         super.onResume()
         if (!pickedDay) sel = homeDay(timetable, now())
         if (fresh) fresh = false else render(keepScroll = true)
+        // Back from what a Settings row opened (TimeEdit, Android's settings, the sign-in): the sheet shows how it went.
+        settings?.takeIf { it.showing }?.refresh()
         ticker.post(tick)
         // Grades arrive after the rest of a sync (they can take Spectrum much longer).
         SpectrumSync.onGrades = { if (view == "grades") render(keepScroll = true) else renderTabs() }
@@ -168,6 +172,13 @@ class MainActivity : Activity(), SpectrumHost {
         super.onPause()
         ticker.removeCallbacks(tick)
         SpectrumSync.onGrades = null
+    }
+
+    override fun onDestroy() {
+        // Sign out restarts the screen with the sheet still open (its Sign out button asked first).
+        settings?.dismiss()
+        settings = null
+        super.onDestroy()
     }
 
     private fun prefs() = getSharedPreferences("ui", MODE_PRIVATE)
@@ -491,7 +502,10 @@ class MainActivity : Activity(), SpectrumHost {
     }
 
     /** Settings (theme, imports, notifications, vibration, account), as in redesign 1p. */
-    private fun openSettings() = SettingsSheet.show(this, this)
+    private fun openSettings() {
+        if (settings?.showing == true) return
+        settings = SettingsSheet.show(this, this)
+    }
 
     override fun setLook(look: Look) {
         if (look != this.look) restyle(titleBox) { this.look = look; Look.save(this, look) }

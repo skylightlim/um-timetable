@@ -12,20 +12,55 @@ import android.widget.LinearLayout
 /**
  * Settings, as in redesign 1p: a sheet (from a long press on the title, or pulling Courses up) with the theme, the timetable
  * imports, notifications, vibration and the Spectrum account. They used to sit under the course list.
+ * It stays open until the user closes it.
  */
 object SettingsSheet {
     /** A row's padding above and below its text. */
     private const val ROW_PAD = 12f
 
-    fun show(h: SpectrumHost, context: Context) {
-        lateinit var bottom: BottomSheet
-        val sheet = build(h, context) { then -> bottom.close(then) }
-        bottom = BottomSheet(context, sheet, h.ui.p.dark)
-        bottom.show()
+    /**
+     * Shows the sheet. It stays until the user closes it (the close button, a drag down, a tap outside
+     * or Back): choosing a setting or tapping a row leaves it open, and what a row opens comes up over it.
+     */
+    fun show(h: SpectrumHost, context: Context) = Open(h, context).also { it.sheet.show() }
+
+    /** The sheet on screen. */
+    class Open(private val h: SpectrumHost, private val context: Context) {
+        val sheet: BottomSheet = BottomSheet(context, content(), h.ui.p.dark)
+        val showing get() = sheet.showing
+
+        private fun content(): View = build(h, context, restyle = ::restyle) { sheet.close() }
+
+        /** Redrawn as it is now: the app is back from what a row opened (a new timetable, notifications allowed, signed in). */
+        fun refresh() = sheet.replace(content(), null, h.ui.p.dark)
+
+        /** Gone at once: the screen under it is being replaced. */
+        fun dismiss() = sheet.dismiss()
+
+        /**
+         * A new look or theme ([change]): the page behind takes it from the title, and the sheet, still
+         * open, from [from] (what was tapped). With the same colours (Auto to Light on a light phone) the
+         * sheet stays as it is.
+         */
+        private fun restyle(from: View, change: () -> Unit) {
+            val before = h.ui.p
+            val at = sheet.centreOf(from)
+            change()
+            if (h.ui.p != before) sheet.replace(content(), at, h.ui.p.dark)
+        }
     }
 
-    /** The sheet's content; [close] slides the sheet away and runs what it's given. */
-    fun build(h: SpectrumHost, context: Context, signedIn: Boolean = SpectrumStore.signedIn(context), close: ((() -> Unit)?) -> Unit): View {
+    /**
+     * The sheet's content. [restyle] makes a change of look or theme, given what was tapped; [close]
+     * slides the sheet away.
+     */
+    fun build(
+        h: SpectrumHost,
+        context: Context,
+        signedIn: Boolean = SpectrumStore.signedIn(context),
+        restyle: (View, () -> Unit) -> Unit = { _, change -> change() },
+        close: () -> Unit,
+    ): View {
         val ui = h.ui
         val p = ui.p
         val sheet = ui.column().apply {
@@ -44,7 +79,7 @@ object SettingsSheet {
                 background = android.graphics.drawable.InsetDrawable(ui.pressable(ui.shape(p.surface2, 99f), 99f), ui.dp(7))
                 contentDescription = "Close"
                 addView(ui.icon(R.drawable.ic_close, p.muted, 16f), FrameLayout.LayoutParams(ui.dp(16), ui.dp(16), Gravity.CENTER))
-                setOnClickListener { close(null) }
+                setOnClickListener { close() }
             }, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)).apply { marginEnd = -ui.dp(7) })
         })
 
@@ -87,11 +122,13 @@ object SettingsSheet {
             setOnClickListener { onClick() }
         }
 
-        // The theme: the sheet goes, and the new theme spreads from the title.
+        // The look: it spreads over the page from the title, and over the sheet from the switch.
         label("Appearance", top = 16f)
-        sheet.addView(ui.segmented(Look.entries.map { it.label }, h.look.ordinal, fill = true) { i -> close { h.setLook(Look.entries[i]) } })
+        lateinit var look: View
+        look = ui.segmented(Look.entries.map { it.label }, h.look.ordinal, fill = true) { i -> restyle(look) { h.setLook(Look.entries[i]) } }
+        sheet.addView(look)
 
-        // The accent scheme: a swatch of each, the chosen one outlined; the sheet goes and it spreads as the theme does.
+        // The accent scheme: a swatch of each, the chosen one outlined; it spreads as the look does, from the swatch.
         label("Theme")
         sheet.addView(ui.row(gap = 8f).apply {
             for (scheme in Scheme.entries) {
@@ -108,15 +145,15 @@ object SettingsSheet {
                         for (c in scheme.courseColors.take(4)) addView(View(context).apply { background = ui.shape(c, 99f) }, LinearLayout.LayoutParams(ui.dp(9), ui.dp(9)))
                     }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
                     addView(ui.text(scheme.label, 13f, if (chosen) p.text else p.muted, ui.f.bodySemi), LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(6) })
-                    if (!chosen) setOnClickListener { Haptics.tick(this); close { h.setScheme(scheme) } }
+                    if (!chosen) setOnClickListener { Haptics.tick(this); restyle(this) { h.setScheme(scheme) } }
                 }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             }
         })
 
         val tt = h.timetable
         section("Timetable", listOf(
-            row("Get timetable from TimeEdit", if (tt.sessions.isEmpty()) "No timetable yet" else listOfNotNull("${tt.sessions.size} classes a week", tt.term).joinToString(" · "), chevron()) { close { h.openTimeEdit() } },
-            row("Import from MAYA instead", "If TimeEdit can't: you sign in to MAYA yourself", chevron()) { close { h.openMaya() } },
+            row("Get timetable from TimeEdit", if (tt.sessions.isEmpty()) "No timetable yet" else listOfNotNull("${tt.sessions.size} classes a week", tt.term).joinToString(" · "), chevron()) { h.openTimeEdit() },
+            row("Import from MAYA instead", "If TimeEdit can't: you sign in to MAYA yourself", chevron()) { h.openMaya() },
         ))
 
         // Android owns the switch: off, it asks; on, it opens the app's notification settings.
@@ -127,7 +164,7 @@ object SettingsSheet {
             row("Deadlines, marks and news", null, ui.row(gap = 10f).apply {
                 addView(ui.text(if (allowed) "On" else "Off", 14f, if (allowed) p.accentText else p.muted, ui.f.bodySemi))
                 addView(chevron())
-            }) { close { if (ask) h.enableNotifications() else h.openAppSettings() } },
+            }) { if (ask) h.enableNotifications() else h.openAppSettings() },
         ))
 
         label("Vibration")
@@ -135,14 +172,14 @@ object SettingsSheet {
 
         // The app's version, and the newest one on GitHub (Updater).
         section("About", listOf(
-            row("Check for updates", "Version ${Updater.installed(context).second}", chevron()) { close { h.checkForUpdates() } },
+            row("Check for updates", "Version ${Updater.installed(context).second}", chevron()) { h.checkForUpdates() },
         ))
 
         section("Account", listOf(
             if (signedIn) {
-                row(SpectrumScreens.accountName(context).ifBlank { "Signed in" }, null, button("Sign out") { close { h.signOut() } }, null)
+                row(SpectrumScreens.accountName(context).ifBlank { "Signed in" }, null, button("Sign out") { h.signOut() }, null)
             } else {
-                row("Not signed in", "Sign in to Spectrum with your SiswaMail for courses, deadlines, marks and news.", button("Sign in") { close { h.signIn() } }, null)
+                row("Not signed in", "Sign in to Spectrum with your SiswaMail for courses, deadlines, marks and news.", button("Sign in") { h.signIn() }, null)
             },
         ))
         return sheet

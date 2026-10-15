@@ -18,6 +18,26 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (Settings stays open)
+
+**Asked for:** after a setting is changed or a button pressed, the Settings sheet shouldn't hide by
+itself; only when the user hides it.
+
+**Change:**
+- No row or control closes the sheet any more. It goes only by its close button, a drag down, a tap
+  outside or Back.
+- A new look or theme still spreads over the page from the title. The sheet, still open, is redrawn in
+  the new colours, spreading in a circle from what was tapped (the switch, the swatch) over a picture
+  of the old sheet (`BottomSheet.replace`). Its navigation-bar icons follow. If the colours don't change
+  (Auto to Light on a light phone), the sheet is left as it is.
+- What a row opens (TimeEdit, MAYA, Android's notification settings, the sign-in) comes up over the
+  sheet. Back in the app, the sheet is redrawn so it shows how it went: the timetable's class count,
+  notifications On, the account name (`MainActivity.onResume`).
+- Check for updates and Sign out show their card over the sheet. Sign out restarts the screen, so the
+  sheet is dismissed with it (`onDestroy`) rather than left as a leaked window.
+
+**Checked:** it builds; unit tests pass. Tried on the phone: see the entry for this batch below.
+
 ## 15 October 2026 (status-bar icon: the shield)
 
 **Asked for:** the notification icon as the app icon's shield, without 马.
