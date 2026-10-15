@@ -18,6 +18,25 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (Week: swipe to other weeks)
+
+**Asked for** (thingstodo, Features): on the week page, swipe to another week, next or previous, to use
+the note feature there. The user chose this over the earlier "Week swipes like a day" on the Week page.
+
+**Change** (`Host.weekShift`, `Host.daysTo`, `MainActivity.shiftWeek`):
+- On Week, swiping left shows the next week and right the previous one, sliding in from that side.
+  The title (its dates), the line under it (deadlines "this week", "next week", "last week": all of
+  them for a week that's over) and the strip follow: the day chips' dates and the Week chip (W4,
+  Break, Exams…).
+- Day still swipes into Week from Friday or Monday, and the strip's days open that day of the week
+  shown, with its date. A day of another week has no Now block, and the week grid has no today
+  column or now line unless it's this week.
+- Back to the strip's own week: tap the tab (it says Week) while on another week, or Back, or go to
+  another tab. Tapping Day on Day returns to the next class's day in this week, as before.
+
+**Checked:** it builds; unit tests pass. The swipes themselves can't be drawn off-screen: try them on
+the phone.
+
 ## 15 October 2026 (app icon: the new cow and horse holding up the shield like the crest's tigers)
 
 **Asked for** (thingstodo, FOR app icon): the redesigned cow and horse holding the shield the way the

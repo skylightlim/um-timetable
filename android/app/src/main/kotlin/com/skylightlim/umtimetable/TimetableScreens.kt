@@ -35,7 +35,12 @@ interface Host {
     fun openFile(file: org.json.JSONObject, folder: String)
     /** Shows a Spectrum course's page (its id) in the Courses tab. */
     fun showCourse(id: Int)
+    /** Weeks from the strip's own week ([daysFromToday]) to the one shown: swiping on Week moves it. */
+    val weekShift: Int get() = 0
 }
+
+/** Days from today to [day] (1 Monday … 5 Friday) of the week shown, [Host.weekShift] weeks on from the strip's own. */
+fun Host.daysTo(day: Int): Int = daysFromToday(timetable, now(), day) + 7 * weekShift
 
 /**
  * The day Day opens on: today while it still has a class to come, otherwise the next weekday with
@@ -156,10 +161,11 @@ object DayScreen {
         val p = ui.p
         val now = h.now()
         val list = h.timetable.day(day)
-        val isToday = daysFromToday(h.timetable, now, day) == 0
+        val isToday = h.daysTo(day) == 0
         // The day's name and date are in the top bar.
         val page = ui.column().apply { setPadding(0, ui.dp(2), 0, 0) }
-        if (day == homeDay(h.timetable, now)) page.addView(status(h, now), ui.wide(bottom = 18f))
+        // The Now block is for the week the strip starts on, not another one swiped to.
+        if (h.weekShift == 0 && day == homeDay(h.timetable, now)) page.addView(status(h, now), ui.wide(bottom = 18f))
         if (list.isEmpty()) page.addView(ui.text("No classes", 15f, p.muted), ui.wide(top = 12f))
 
         val agenda = ui.column(gap = 8f)
@@ -285,7 +291,7 @@ object WeekScreen {
             background = ui.shape(p.surface, 18f, p.line)
             setPadding(ui.dp(2), ui.dp(10), ui.dp(6), ui.dp(8))
         }
-        card.addView(WeekGrid(ui, tt, h.now()) { s -> h.openSheet(s.course, s) })
+        card.addView(WeekGrid(ui, tt, h.now(), h.daysTo(1)) { s -> h.openSheet(s.course, s) })
         val key = ui.row(gap = 16f).apply { setPadding(ui.dp(30), ui.dp(4), 0, 0) }
         fun keyItem(swatch: View, label: String) = ui.row(gap = 6f).apply {
             addView(swatch)
@@ -363,7 +369,7 @@ object WeekScreen {
 
 /** The Mon–Fri grid, drawn in one view: hour lines, today's column, class blocks and the now line. */
 @SuppressLint("ViewConstructor")
-class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: Now, private val onTap: (Session) -> Unit) : View(ui.context) {
+class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: Now, monday: Int, private val onTap: (Session) -> Unit) : View(ui.context) {
     private val p = ui.p
     private val hour = ui.dp(48f).toFloat()
     private val head = ui.dp(22f).toFloat()
@@ -372,8 +378,8 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
     private val padY = ui.dp(8f).toFloat()
     private val startMin = 8 * 60
     private val blocks = mutableListOf<Pair<RectF, Session>>()
-    /** Today's column, when the week shown is this week (see [daysFromToday]). */
-    private val today = now.dow.takeIf { it in 1..5 && daysFromToday(tt, now, it) == 0 }
+    /** Today's column, when the week shown (its Monday [monday] days from today) is this week. */
+    private val today = now.dow.takeIf { it in 1..5 && monday + it - 1 == 0 }
 
     // The grid's boxes are as tall as their hours and a fifth of the width, so its text follows the system
     // font size only up to 1.15×: past that, names broke into syllables ("Pro- / gram- / ming"). A class's
