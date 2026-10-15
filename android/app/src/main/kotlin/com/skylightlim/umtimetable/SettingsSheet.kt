@@ -24,8 +24,11 @@ object SettingsSheet {
      */
     fun show(h: SpectrumHost, context: Context) = Open(h, context).also { it.sheet.show() }
 
-    /** What a redrawn sheet shows moving: the look's pill gliding on from [lookFrom]; the chosen theme's dots hopping ([hop]). */
-    data class Moved(val lookFrom: Int? = null, val hop: Boolean = false)
+    /** What a redrawn sheet shows moving: the look's pill settling from [lookAt] (where it was); the chosen theme's dots hopping ([hop]). */
+    data class Moved(val lookAt: Float? = null, val hop: Boolean = false)
+
+    /** How long the look's pill glides in the old colours before the new look spreads: by then it has landed. */
+    private const val LAND_MS = 380L
 
     /** The sheet on screen. */
     class Open(private val h: SpectrumHost, private val context: Context) {
@@ -127,12 +130,19 @@ object SettingsSheet {
             setOnClickListener { onClick() }
         }
 
-        // The look: it spreads over the page from the title, and over the sheet from the option tapped, its
-        // pill still gliding there from the old one.
+        // The look: it spreads over the page from the title, and over the sheet from the option tapped.
         label("Appearance", top = 16f)
-        sheet.addView(ui.segmented(Look.entries.map { it.label }, h.look.ordinal, fill = true, from = moved?.lookFrom) { i, v ->
-            val from = h.look.ordinal
-            restyle(v, Moved(lookFrom = from)) { h.setLook(Look.entries[i]) }
+        var landing: Runnable? = null
+        sheet.addView(ui.segmented(Look.entries.map { it.label }, h.look.ordinal, fill = true, from = moved?.lookAt) { i, v ->
+            // The pill lands first, then the new look spreads from it, the redrawn pill carrying on from where
+            // it is. Spreading at once left the old pill standing in the old sheet's picture, behind the glide.
+            landing?.let(v::removeCallbacks)
+            val spread = Runnable {
+                landing = null
+                restyle(v, Moved(lookAt = (v.parent as? SegmentPill)?.position)) { h.setLook(Look.entries[i]) }
+            }
+            landing = spread
+            if (Motion.enabled) v.postDelayed(spread, LAND_MS) else spread.run()
         })
 
         // The accent scheme: a swatch of each, the chosen one outlined; it spreads as the look does, from the

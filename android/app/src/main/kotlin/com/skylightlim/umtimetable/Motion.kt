@@ -125,7 +125,8 @@ object Motion {
                 // tap on a sheet's empty space sank the scrim behind it, uncovering light strips at the edges.
                 if (child is ScrollView && hit(child, x, y)) return null
             }
-            return v.takeIf { it.isClickable && it.isEnabled && it.hasOnClickListeners() }
+            // A switch's options don't sink: its gliding pill is their feedback, and a sunk label left the pill behind.
+            return v.takeIf { it.isClickable && it.isEnabled && it.hasOnClickListeners() && it.parent !is SegmentPill }
         }
     }
 

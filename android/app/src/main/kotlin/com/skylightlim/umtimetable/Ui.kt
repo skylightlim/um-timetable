@@ -197,12 +197,15 @@ class SegmentPill(context: Context, private val pill: Drawable, private var at: 
 
     init { setWillNotDraw(false) }
 
-    fun glide(to: Int) {
+    /** Where the pill is now, as an option's index (fractional while it moves). */
+    val position get() = at
+
+    fun glide(to: Int, spring: Motion.Spring = Motion.BOUNCY) {
         gliding?.cancel()
         if (!Motion.enabled) { at = to.toFloat(); invalidate(); return }
         gliding = android.animation.ValueAnimator.ofFloat(at, to.toFloat()).apply {
-            interpolator = Motion.BOUNCY
-            duration = Motion.BOUNCY.duration
+            interpolator = spring
+            duration = spring.duration
             addUpdateListener { at = it.animatedValue as Float; invalidate() }
             start()
         }
@@ -342,13 +345,15 @@ class Ui(val context: Context, val p: Palette, val f: Fonts) {
      * A segmented switch: options in a row, the chosen one on an accent pill. [fill] shares the row's
      * width equally. A tap glides the pill to the option on a spring, its label and the one it leaves
      * changing colour with it, calls [onChoose] with the option and its view, then vibrates (after, so
-     * choosing a vibration strength plays the new one). With [from], the pill starts there and glides to
-     * [chosen]: a switch drawn again for a change just made (a new look redraws Settings) still shows it.
+     * choosing a vibration strength plays the new one). The pill is the only feedback: the options have
+     * no ripple and don't sink (a grey ripple on the option lagged behind the pill as it arrived). With
+     * [from] (a pill position), the pill starts there and settles on [chosen]: a switch drawn again in the
+     * middle of a move (a new look redraws Settings) carries it on.
      */
-    fun segmented(options: List<String>, chosen: Int, fill: Boolean = false, from: Int? = null, onChoose: (Int, View) -> Unit): LinearLayout {
+    fun segmented(options: List<String>, chosen: Int, fill: Boolean = false, from: Float? = null, onChoose: (Int, View) -> Unit): LinearLayout {
         var current = chosen
         val views = mutableListOf<TextView>()
-        val pill = SegmentPill(context, shape(p.accent, 10f), (from ?: chosen).toFloat())
+        val pill = SegmentPill(context, shape(p.accent, 10f), from ?: chosen.toFloat())
         fun describe() = views.forEachIndexed { i, v -> v.contentDescription = "${options[i]}${if (i == current) ", chosen" else ""}" }
         fun glide(to: Int, leaving: Int) {
             // The label the pill leaves turns quickly: its ink colour on the bare track is barely readable.
@@ -364,11 +369,10 @@ class Ui(val context: Context, val p: Palette, val f: Fonts) {
             background = shape(p.surface2, 12f)
             setPadding(dp(3), dp(3), dp(3), dp(3))
             for ((i, label) in options.withIndex()) {
-                val v = text(label, 13f, if (i == (from ?: chosen)) p.accentInk else p.muted, f.bodySemi).apply {
+                val v = text(label, 13f, if (i == chosen) p.accentInk else p.muted, f.bodySemi).apply {
                     gravity = Gravity.CENTER
                     minHeight = dp(if (fill) 40 else 36)
                     setPadding(dp(12), 0, dp(12), 0)
-                    background = pressable(shape(Color.TRANSPARENT, 10f), 10f)
                     setOnClickListener {
                         if (i == current) return@setOnClickListener
                         val was = current
@@ -383,7 +387,7 @@ class Ui(val context: Context, val p: Palette, val f: Fonts) {
                 addView(v, if (fill) LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) else LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             }
             describe()
-            if (from != null && from != chosen) glide(chosen, from)
+            if (from != null) pill.glide(chosen, Motion.QUICK)
         }
     }
 

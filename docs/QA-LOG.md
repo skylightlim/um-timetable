@@ -18,6 +18,26 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (switches: the pill moves alone, no grey lagging behind it)
+
+**Reported:** when a switch slides, something like a shadow or a grey translucent element lags behind;
+the whole element should move.
+
+**Found:** two things trailed the pill. The tapped option had a touch ripple (13% black, 20% white in
+dark), drawn over the pill as it arrived and fading after it; and the press sank the option's label on
+its own, so the label shrank and bounced inside the pill. For Appearance there was also the new look
+spreading at the tap: the picture of the old sheet still showed the old pill where it started while
+the new one glided in the spreading circle.
+
+**Change:**
+- The switch's options have no ripple and don't sink (`Motion.Presser` skips them); the gliding pill
+  is the feedback.
+- Appearance: the pill glides and lands in the old colours first (380 ms), then the new look spreads
+  from it, the redrawn pill carrying on from exactly where it was (`SegmentPill.position`, settling
+  without a second bounce). Tapping again before it spreads replaces the change waiting.
+
+**Checked:** it builds; unit tests pass. The slide itself: try Vibration and Appearance on the phone.
+
 ## 15 October 2026 (Sign out: the phone cries while it's held)
 
 **Asked for:** while Sign out is held, vibrate as if the app is crying, not just once at the start.
