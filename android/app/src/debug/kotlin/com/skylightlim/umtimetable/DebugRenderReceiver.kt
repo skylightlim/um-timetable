@@ -114,6 +114,14 @@ class DebugRenderReceiver : BroadcastReceiver() {
             if (view == "signin") View.MeasureSpec.makeMeasureSpec(intent.getIntExtra("height", context.resources.displayMetrics.heightPixels), View.MeasureSpec.EXACTLY) else View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
         )
         frame.layout(0, 0, frame.measuredWidth, frame.measuredHeight)
+        // Settings with --ef hopAt 0.36: the chosen theme's dots posed that far into their hop.
+        if (intent.hasExtra("hopAt")) {
+            fun find(v: View): android.view.ViewGroup? =
+                if (v is android.view.ViewGroup && v.contentDescription?.endsWith("theme, chosen") == true) v
+                else (v as? android.view.ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { find(g.getChildAt(it)) } }
+            val dots = find(frame)?.getChildAt(0) as? android.view.ViewGroup
+            for (i in 0 until (dots?.childCount ?: 0)) Motion.hopAnimator(dots!!.getChildAt(i), host.ui.dp(if (i == 0) 9f else 8f).toFloat()).setCurrentFraction(intent.getFloatExtra("hopAt", 0.36f))
+        }
         val bitmap = Bitmap.createBitmap(frame.measuredWidth, frame.measuredHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         frame.draw(Canvas(bitmap))
         save(context, bitmap, "$view${host.openCourse?.let { "-$it" } ?: ""}${if (dark) "-dark" else ""}")

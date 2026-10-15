@@ -349,6 +349,13 @@ object Motion {
      */
     fun hop(v: View, delay: Long, height: Float) {
         if (!enabled) return
+        v.post {
+            hopAnimator(v, height).apply { startDelay = delay }.start()
+        }
+    }
+
+    /** [hop]'s animation, not started (a still preview can set its fraction). Needs [v] laid out. */
+    fun hopAnimator(v: View, height: Float): ObjectAnimator {
         // A keyframe's interpolator shapes the stretch that ends at it: rising slows, falling speeds up.
         val up = android.view.animation.DecelerateInterpolator(1.6f)
         val down = android.view.animation.AccelerateInterpolator(1.6f)
@@ -358,14 +365,11 @@ object Motion {
         // Crouch, stretch on the way up, squash on landing, and less on the second.
         val sy = keys(View.SCALE_Y, key(0f, 1f), key(0.1f, 0.78f), key(0.22f, 1.12f), key(0.36f, 1f), key(0.58f, 1f), key(0.63f, 0.8f), key(0.7f, 1.04f), key(0.82f, 1f), key(0.86f, 0.92f), key(1f, 1f))
         val sx = keys(View.SCALE_X, key(0f, 1f), key(0.1f, 1.16f), key(0.22f, 0.92f), key(0.36f, 1f), key(0.58f, 1f), key(0.63f, 1.15f), key(0.7f, 0.98f), key(0.82f, 1f), key(0.86f, 1.05f), key(1f, 1f))
-        v.post {
-            v.pivotX = v.width / 2f
-            v.pivotY = v.height.toFloat()
-            ObjectAnimator.ofPropertyValuesHolder(v, y, sy, sx).apply {
-                duration = 720
-                startDelay = delay
-                interpolator = null
-            }.start()
+        v.pivotX = v.width / 2f
+        v.pivotY = v.height.toFloat()
+        return ObjectAnimator.ofPropertyValuesHolder(v, y, sy, sx).apply {
+            duration = 720
+            interpolator = null
         }
     }
 

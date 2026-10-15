@@ -18,6 +18,21 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (theme dots: the big one no longer cut off at the top of its hop)
+
+**Reported:** at the top of its hop, the largest dot was cut off.
+
+**Found:** the swatch let its dots draw outside their row (`clipChildren` off) but still clipped them
+to its own padding (`clipToPadding`, on by default), 14dp from its top: the big dot, 18dp, leapt 9dp
+and stretched, and its top went past that line.
+
+**Change:** the swatch no longer clips to its padding, so the dots hop up into it. A debug option draws
+the sheet with the chosen theme's dots posed partway through the hop (`--ef hopAt 0.36`; `Motion.hop`
+now builds its animation in `hopAnimator`, which a still drawing can set to any point).
+
+**Checked:** drawn off-screen on the phone at 0.22 (the stretch) and 0.36 (the top): cut flat before
+the change, whole after it.
+
 ## 15 October 2026 (switches: the pill moves alone, no grey lagging behind it)
 
 **Reported:** when a switch slides, something like a shadow or a grey translucent element lags behind;

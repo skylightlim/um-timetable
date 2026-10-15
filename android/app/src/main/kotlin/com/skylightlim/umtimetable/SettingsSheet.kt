@@ -158,7 +158,9 @@ object SettingsSheet {
                     background = ui.pressable(ui.shape(p.surface2, 12f, if (chosen) p.text else 0, 2f), 12f)
                     contentDescription = "${scheme.label} theme${if (chosen) ", chosen" else ""}"
                     // The theme's accent, then four of its course colours.
-                    clipChildren = false // the dots hop up into the swatch's padding
+                    // The dots hop up into the swatch's padding: neither its bounds nor its padding cut them off.
+                    clipChildren = false
+                    clipToPadding = false
                     val dots = ui.row(gap = 4f).apply {
                         clipChildren = false
                         addView(View(context).apply { background = ui.shape(scheme.applyTo(p).accent, 99f) }, LinearLayout.LayoutParams(ui.dp(18), ui.dp(18)).apply { marginEnd = ui.dp(2) })
