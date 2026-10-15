@@ -18,6 +18,16 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 16 October 2026 (springs tuned like iOS's)
+
+**Asked for:** the springs that overshoot a little and snap back look laggy; make them like iOS.
+
+**Change** (`Motion`): more damping, so nothing swings back. BOUNCY 0.55 → 0.78 damping, 0.42 → 0.38 s
+(overshoot 13% → about 2%); SETTLE 0.8 → 0.92, 0.5 → 0.42 s (no visible overshoot, settles sooner);
+FOLD 0.75 → 0.85. Not done yet: starting a spring at the finger's speed when a drag is let go.
+
+**Checked:** it builds; unit tests pass. The feel: on the phone.
+
 ## 16 October 2026 (the tab bar's first tab toggles Day and Week)
 
 **Asked for:** tapping the first tab while on Day (it says Day) should open Week, as tapping it on Week

@@ -54,16 +54,18 @@ object Motion {
         }
     }
 
-    /** Selections gliding, presses let go, badges: a visible bounce. */
-    val BOUNCY = Spring(0.55f, 0.42f)
-    /** Pages and the sheet arriving: a hint of overshoot. */
-    val SETTLE = Spring(0.8f, 0.5f)
+    // Tuned like iOS's springs: enough damping that nothing wobbles back after overshooting (the old
+    // 0.55 overshot 13% and swung back; 0.8 crept past and snapped back at the end, which read as lag).
+    /** Selections gliding, presses let go, badges: a little life, about 2% past and settled. */
+    val BOUNCY = Spring(0.78f, 0.38f)
+    /** Pages and the sheet arriving: no visible overshoot, quick to settle. */
+    val SETTLE = Spring(0.92f, 0.42f)
     /** Growing and shrinking in place, the theme spreading: no overshoot. */
     val SMOOTH = Spring(1f, 0.5f)
     /** Something opening or closing in place (a fold, Show more): quick, about 250 ms, no overshoot. */
     val QUICK = Spring(1f, 0.3f)
     /** A fold's chevron turning: quick, a hint of overshoot. */
-    val FOLD = Spring(0.75f, 0.28f)
+    val FOLD = Spring(0.85f, 0.3f)
     /** Leaving is quicker than arriving, and doesn't bounce. */
     val EXIT = PathInterpolator(0.4f, 0f, 1f, 1f)
     private val PRESS = PathInterpolator(0.2f, 0f, 0f, 1f)
