@@ -33,7 +33,8 @@ import java.io.File
  * --es scheme gold|blue|red draws in that accent scheme instead of the chosen one.
  * --ez open true draws every fold and "Show more" opened.
  * view webbar draws the web screens' top bar (--es bar spectrum|maya|timeedit|login).
- * view week with --ez sample true draws made-up plans on it; view plan draws the plan editor's card
+ * view week with --ez sample true draws made-up plans on it (--ei boxDay 2 --ei boxAt 900: with the selection box
+ * waiting on Tuesday 15:00); view plan draws the plan editor's card
  * (--ez new false: a saved plan's, with Delete).
  * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200).
  * view signout draws the Sign out question's card. view settings draws the Settings sheet (--ez signedIn true|false
@@ -120,6 +121,11 @@ class DebugRenderReceiver : BroadcastReceiver() {
             if (view == "signin") View.MeasureSpec.makeMeasureSpec(intent.getIntExtra("height", context.resources.displayMetrics.heightPixels), View.MeasureSpec.EXACTLY) else View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
         )
         frame.layout(0, 0, frame.measuredWidth, frame.measuredHeight)
+        // Week with --ez sample true --ei boxDay D --ei boxAt MIN: the selection box waiting there (taken or free).
+        if (intent.hasExtra("boxDay")) {
+            fun grid(v: View): WeekGrid? = v as? WeekGrid ?: (v as? android.view.ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { grid(g.getChildAt(it)) } }
+            grid(frame)?.previewBox(samplePlans(host)[1], intent.getIntExtra("boxDay", 2), intent.getIntExtra("boxAt", 15 * 60))
+        }
         // Settings with --ef hopAt 0.36: the chosen theme's dots posed that far into their hop.
         if (intent.hasExtra("hopAt")) {
             fun find(v: View): android.view.ViewGroup? =

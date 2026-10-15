@@ -534,14 +534,15 @@ class WeekGrid(
                 canvas.drawRect(left, nowY - ui.dp(0.5f), left + colW, nowY + ui.dp(0.5f), fill)
                 fill.alpha = 255
             }
-            for (plan in plans.filter { it.date == dates[d - 1] }) drawPlan(canvas, plan, RectF(left + ui.dp(1f), top + (plan.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (plan.end - startMin) / 60f * hour - 1))
+            // (Not the one being moved with the selection box: it's in the box.)
+            for (plan in plans.filter { it.date == dates[d - 1] && it.id != picking?.id }) drawPlan(canvas, plan, RectF(left + ui.dp(1f), top + (plan.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (plan.end - startMin) / 60f * hour - 1))
             // Faded: today's classes that are over. Faded and slashed: those on a holiday or in a week without classes.
             val cancelled = holiday != null || weekOff
             for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), cancelled || (isToday && now.min >= s.end), cancelled)
             // The holiday's name goes over its (faded) classes, so it can always be read.
             if (holiday != null) drawHolidayName(canvas, holiday, RectF(left, top, left + colW, bottom))
         }
-        if (nowY == null || today == null) return
+        if (nowY == null || today == null) return drawBox(canvas)
         // Today's line goes over the classes (a class in progress is when it matters most), in the app's
         // yellow, on a halo in the card's colour so it reads on any course colour.
         val left = axis + gapX + (today - 1) * (colW + gapX)
@@ -556,6 +557,7 @@ class WeekGrid(
         fill.color = p.accent
         canvas.drawRoundRect(pill, pillH / 2, pillH / 2, fill)
         canvas.drawText(clockText(now.min.toInt()), pill.centerX(), nowY + nowPaint.textSize * 0.35f, nowPaint)
+        drawBox(canvas)
     }
 
     /** A holiday's column: tinted and hatched in the accent, under its (faded, slashed) classes. */
@@ -680,53 +682,223 @@ class WeekGrid(
         }
     }
 
-    // --- touch: a tap opens a class or a plan; a long press on a free time adds a plan -----------------
+    // --- touch: a tap opens a class or a plan; a long press brings up a selection box to place one ----
 
     private var downX = 0f
     private var downY = 0f
     private var pressedLong = false
     private val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
-    private val longPress = Runnable { pressedLong = true; longPressAt(downX, downY) }
+    private val longPress = Runnable { pressedLong = true; pickUp(downX, downY) }
+    private var lastTapAt = 0L
+    private var lastTapX = 0f
+    private var lastTapY = 0f
+
+    /** The plan being placed with the selection box: a new one, or a saved one being moved. */
+    private var picking: Plan? = null
+    /** The box follows the finger; or, after "change the time" on the card, it waits to be dragged ([waiting]). */
+    private var dragging = false
+    private var waiting = false
+    /** Where the box is: a day (1–5) and a start; whether that's free, and where the plan would end there. */
+    private var pickDay = 0
+    private var pickStart = -1
+    private var pickEnd = 0
+    private var pickFree = false
+    private var lastFree: Pair<Int, Int>? = null
+    private val box = RectF()
+    private val boxFrom = RectF()
+    private val boxTo = RectF()
+    private var boxMove: android.animation.ValueAnimator? = null
+    private var boxScale = 1f
+    private val boxEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = ui.dp(2.5f).toFloat() }
+    private val boxDash = android.graphics.DashPathEffect(floatArrayOf(ui.dp(5f).toFloat(), ui.dp(4f).toFloat()), 0f)
+    private val hintPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodyBold; textSize = sp(10.5f); color = p.accentInk; textAlign = Paint.Align.CENTER }
+
+    private val colW get() = (width - axis - gapX * 5) / 5
+    private fun colLeft(d: Int) = axis + gapX + (d - 1) * (colW + gapX)
+    private val gridTop get() = head + padY
+    private fun yOf(min: Int) = gridTop + (min - startMin) / 60f * hour
+    private fun cell(d: Int, start: Int, end: Int) = RectF(colLeft(d) + ui.dp(1f), yOf(start) + 1, colLeft(d) + colW - ui.dp(1f), yOf(end) - 1)
 
     /** The day column (1–5) under [x], or null between columns or on the hour axis. */
     private fun columnAt(x: Float): Int? {
-        val colW = (width - axis - gapX * 5) / 5
         val k = ((x - axis - gapX) / (colW + gapX)).toInt()
-        val left = axis + gapX + k * (colW + gapX)
-        return (k + 1).takeIf { k in 0..4 && x >= left && x <= left + colW }
+        return (k + 1).takeIf { k in 0..4 && x >= colLeft(k + 1) && x <= colLeft(k + 1) + colW }
     }
 
-    private fun longPressAt(x: Float, y: Float) {
-        planBlocks.firstOrNull { it.first.contains(x, y) }?.let { (r, plan) ->
-            Haptics.threshold(this, true)
-            return open(r, plan, false)
+    /** The half hour under ([x], [y]), kept inside the grid: the nearest day, 08:00 to 18:30. */
+    private fun halfHourAt(x: Float, y: Float): Pair<Int, Int> {
+        val d = (((x - axis - gapX) / (colW + gapX)).toInt() + 1).coerceIn(1, 5)
+        val start = (startMin + ((y - gridTop) / hour * 2).toInt().coerceIn(0, 21) * 30)
+        return d to start
+    }
+
+    /** What's taken on day [d]: its classes and plans (but [except], the plan being moved). */
+    private fun busy(d: Int, except: String?) = tt.day(d).map { it.start to it.end } +
+        plans.filter { it.date == dates[d - 1] && it.id != except }.map { it.start to it.end }
+
+    /** Starting at [start] on day [d]: whether it's free, how far it can run (19:00 at most), and where a plan of [length] would end. */
+    private fun room(d: Int, start: Int, length: Int, except: String?): Triple<Boolean, Int, Int> {
+        val taken = busy(d, except)
+        val free = taken.none { (a, b) -> start in a until b }
+        val maxEnd = minOf(19 * 60, taken.map { it.first }.filter { it > start }.minOrNull() ?: Int.MAX_VALUE)
+        return Triple(free, maxEnd, minOf(start + length, maxEnd))
+    }
+
+    /** A long press: the box comes up under the finger, for the plan pressed or a new one, and follows it. */
+    private fun pickUp(x: Float, y: Float) {
+        val plan = planBlocks.firstOrNull { it.first.contains(x, y) }?.second ?: run {
+            val palette = Plans.palette(Scheme.load(context), p.accent)
+            Plan.new(dates[0], startMin, startMin + 60, palette[(plans.size + halfHourAt(x, y).first) % palette.size])
         }
-        if (blocks.any { it.first.contains(x, y) }) return
-        val d = columnAt(x) ?: return
-        val top = head + padY
-        // The free half hour under the finger.
-        val start = (startMin + ((y - top) / hour * 2).toInt() * 30).takeIf { y >= top && it < 19 * 60 } ?: return
-        val date = dates[d - 1]
-        val busy = tt.day(d).map { it.start to it.end } + plans.filter { it.date == date }.map { it.start to it.end }
-        if (busy.any { (a, b) -> start in a until b }) return
-        val maxEnd = minOf(19 * 60, busy.map { it.first }.filter { it > start }.minOrNull() ?: Int.MAX_VALUE)
-        val end = minOf(start + 60, maxEnd)
-        val palette = Plans.palette(Scheme.load(context), p.accent)
-        val plan = Plan.new(date, start, end, palette[(plans.size + d) % palette.size])
-        val colW = (width - axis - gapX * 5) / 5
-        val left = axis + gapX + (d - 1) * (colW + gapX)
+        startPicking(plan, wait = false)
+        val (d, start) = if (plans.any { it.id == plan.id }) plan.date.dayOfWeek.value to plan.start else halfHourAt(x, y)
+        moveBox(d, start, feel = false)
         Haptics.threshold(this, true)
-        open(RectF(left + ui.dp(1f), top + (start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (end - startMin) / 60f * hour - 1), plan, true, maxEnd)
+    }
+
+    /** For a still drawing: the box at day [d], [start] for [plan], as it waits after "change the time". */
+    internal fun previewBox(plan: Plan, d: Int, start: Int) {
+        picking = plan
+        waiting = true
+        boxScale = 1f
+        pickStart = -1
+        val enabled = Motion.enabled
+        moveBox(d, start, feel = false)
+        if (enabled) { boxMove?.cancel(); box.set(boxTo) }
+        holding = false
+    }
+
+    /** After "change the time" on [plan]'s card: the box waits where the plan is, to be dragged to another time. */
+    fun startRepick(plan: Plan) {
+        startPicking(plan, wait = true)
+        val d = plan.date.dayOfWeek.value.takeIf { plan.date in dates } ?: 1
+        moveBox(d, if (plan.date in dates) plan.start else startMin, feel = false)
+        Haptics.tick(this)
+    }
+
+    private fun startPicking(plan: Plan, wait: Boolean) {
+        picking = plan
+        waiting = wait
+        dragging = !wait
+        holding = true
+        pickStart = -1
+        lastFree = null
+        if (!wait) parent?.requestDisallowInterceptTouchEvent(true)
+        // It pops up, a little too big, then settles.
+        boxScale = 0.6f
+        if (!Motion.enabled) { boxScale = 1f; return }
+        android.animation.ValueAnimator.ofFloat(0.6f, 1f).apply {
+            interpolator = Motion.BOUNCY
+            duration = Motion.BOUNCY.duration
+            addUpdateListener { boxScale = it.animatedValue as Float; invalidate() }
+            start()
+        }
+    }
+
+    /** The box to half hour [start] of day [d], gliding there, with a tick (a softer one where it's taken). */
+    private fun moveBox(d: Int, start: Int, feel: Boolean = true) {
+        val plan = picking ?: return
+        if (d == pickDay && start == pickStart) return
+        val (free, _, end) = room(d, start, plan.end - plan.start, plan.id)
+        pickDay = d
+        pickStart = start
+        pickFree = free
+        pickEnd = if (free) end else minOf(start + (plan.end - plan.start), 19 * 60)
+        if (free) lastFree = d to start
+        if (feel) { if (free) Haptics.tick(this) else Haptics.threshold(this, false) }
+        boxFrom.set(box)
+        boxTo.set(cell(d, start, pickEnd))
+        boxMove?.cancel()
+        if (box.isEmpty || !Motion.enabled) { box.set(boxTo); invalidate(); return }
+        boxMove = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            interpolator = Motion.FOLD
+            duration = Motion.FOLD.duration
+            addUpdateListener {
+                val t = it.animatedValue as Float
+                box.set(boxFrom.left + (boxTo.left - boxFrom.left) * t, boxFrom.top + (boxTo.top - boxFrom.top) * t,
+                    boxFrom.right + (boxTo.right - boxFrom.right) * t, boxFrom.bottom + (boxTo.bottom - boxFrom.bottom) * t)
+                invalidate()
+            }
+            start()
+        }
+    }
+
+    /** Let go: on a free time the card opens out of the box; elsewhere the waiting box springs back, a held one drops. */
+    private fun drop() {
+        val plan = picking ?: return
+        if (pickFree) {
+            val (_, maxEnd, _) = room(pickDay, pickStart, plan.end - plan.start, plan.id)
+            val placed = plan.copy(date = dates[pickDay - 1], start = pickStart, end = pickEnd)
+            val from = cell(pickDay, pickStart, pickEnd)
+            endPicking()
+            Haptics.threshold(this, true)
+            open(from, placed, plans.none { it.id == plan.id }, maxEnd)
+            return
+        }
+        val back = lastFree
+        if (waiting && back != null) return moveBox(back.first, back.second)
+        endPicking()
+    }
+
+    private fun endPicking() {
+        picking = null
+        dragging = false
+        waiting = false
+        holding = false
+        boxMove?.cancel()
+        box.setEmpty()
+        invalidate()
+    }
+
+    /** A double tap on a free time: its card at once (an hour, or what's free). */
+    private fun openNewAt(x: Float, y: Float) {
+        val (d, start) = halfHourAt(x, y)
+        val (free, maxEnd, end) = room(d, start, 60, null)
+        if (!free) return
+        val palette = Plans.palette(Scheme.load(context), p.accent)
+        Haptics.threshold(this, true)
+        open(cell(d, start, end), Plan.new(dates[d - 1], start, end, palette[(plans.size + d) % palette.size]), true, maxEnd)
     }
 
     /** Opens [plan] out of its cell [r] (in this view), which becomes screen coordinates for the flight. */
     private fun open(r: RectF, plan: Plan, isNew: Boolean, maxEnd: Int? = null) {
         val at = IntArray(2).also(::getLocationOnScreen)
-        val free = maxEnd ?: run {
-            val busy = tt.day(plan.date.dayOfWeek.value).map { it.start } + plans.filter { it.date == plan.date && it.id != plan.id }.map { it.start }
-            minOf(19 * 60, busy.filter { it >= plan.end }.minOrNull() ?: Int.MAX_VALUE)
-        }
+        val free = maxEnd ?: room(plan.date.dayOfWeek.value, plan.start, plan.end - plan.start, plan.id).second
         onPlan(RectF(r).apply { offset(at[0].toFloat(), at[1].toFloat()) }, plan, isNew, free, hour)
+    }
+
+    /** The selection box: lifted on a shadow, in the plan's colour where it's free, grey and dashed where it's taken. */
+    private fun drawBox(canvas: Canvas) {
+        val plan = picking ?: return
+        if (box.isEmpty) return
+        val radius = ui.dp(8f).toFloat()
+        canvas.save()
+        canvas.scale(boxScale, boxScale, box.centerX(), box.centerY())
+        fill.color = Color.BLACK; fill.alpha = 40
+        canvas.drawRoundRect(RectF(box).apply { offset(0f, ui.dp(3f).toFloat()) }, radius, radius, fill)
+        fill.alpha = 255
+        fill.color = if (pickFree) Palette.mix(plan.color, p.surface, 0.55f) else p.surface2
+        canvas.drawRoundRect(box, radius, radius, fill)
+        boxEdge.color = if (pickFree) plan.color else p.muted
+        boxEdge.pathEffect = if (pickFree) null else boxDash
+        canvas.drawRoundRect(RectF(box).apply { inset(ui.dp(1.25f).toFloat(), ui.dp(1.25f).toFloat()) }, radius, radius, boxEdge)
+        codePaint.color = p.text; codePaint.alpha = 255
+        // The start, and under it the end (a narrow column cut "15:00–17:00" short): or "Taken".
+        val x = box.left + ui.dp(4f)
+        val y = box.top + ui.dp(4f) + codePaint.textSize
+        canvas.drawText(if (pickFree) clockText(pickStart) else "Taken", x, y, codePaint)
+        if (pickFree && box.height() > codePaint.fontSpacing * 2 + ui.dp(8f)) canvas.drawText("–${clockText(pickEnd)}", x, y + codePaint.fontSpacing, codePaint)
+        canvas.restore()
+        if (!waiting || dragging) return
+        // Waiting to be dragged: a pill above it says so.
+        val text = "Drag to a free time"
+        val w = hintPaint.measureText(text) + ui.dp(16f)
+        val h = hintPaint.textSize + ui.dp(10f)
+        val cx = box.centerX().coerceIn(w / 2, width - w / 2)
+        val bottom = (box.top - ui.dp(6f)).coerceAtLeast(h)
+        fill.color = p.accent
+        canvas.drawRoundRect(RectF(cx - w / 2, bottom - h, cx + w / 2, bottom), h / 2, h / 2, fill)
+        canvas.drawText(text, cx, bottom - h / 2 + hintPaint.textSize * 0.36f, hintPaint)
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -736,28 +908,59 @@ class WeekGrid(
                 downX = e.x
                 downY = e.y
                 pressedLong = false
-                // Anywhere in the days: a class or plan can be tapped, a free time long-pressed.
+                // A box waiting after "change the time": the next touch takes it straight away.
+                if (waiting && picking != null) {
+                    dragging = true
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    halfHourAt(e.x, e.y).let { (d, start) -> moveBox(d, start) }
+                    return true
+                }
                 if (columnAt(e.x) == null) return false
                 postDelayed(longPress, android.view.ViewConfiguration.getLongPressTimeout().toLong())
                 return true
             }
-            MotionEvent.ACTION_MOVE -> if (kotlin.math.hypot(e.x - downX, e.y - downY) > slop) removeCallbacks(longPress)
+            MotionEvent.ACTION_MOVE -> {
+                if (dragging) halfHourAt(e.x, e.y).let { (d, start) -> moveBox(d, start) }
+                else if (kotlin.math.hypot(e.x - downX, e.y - downY) > slop) removeCallbacks(longPress)
+            }
             MotionEvent.ACTION_UP -> {
                 removeCallbacks(longPress)
+                if (dragging) { dragging = false; drop(); return true }
                 if (pressedLong) return true
                 planBlocks.firstOrNull { it.first.contains(e.x, e.y) }?.let { (r, plan) -> open(r, plan, false); performClick(); return true }
-                blocks.firstOrNull { it.first.contains(e.x, e.y) }?.let { onTap(it.second); performClick() }
+                blocks.firstOrNull { it.first.contains(e.x, e.y) }?.let { onTap(it.second); performClick(); return true }
+                // A free time: a second tap soon after, close by, opens a plan there.
+                val t = e.eventTime
+                if (t - lastTapAt < android.view.ViewConfiguration.getDoubleTapTimeout() && kotlin.math.hypot(e.x - lastTapX, e.y - lastTapY) < slop * 4) {
+                    lastTapAt = 0L
+                    openNewAt(e.x, e.y)
+                } else {
+                    lastTapAt = t
+                    lastTapX = e.x
+                    lastTapY = e.y
+                }
             }
-            MotionEvent.ACTION_CANCEL -> removeCallbacks(longPress)
+            MotionEvent.ACTION_CANCEL -> {
+                removeCallbacks(longPress)
+                if (dragging && !waiting) endPicking() else dragging = false
+            }
         }
         return true
     }
 
     override fun performClick() = super.performClick()
 
+    override fun onDetachedFromWindow() {
+        removeCallbacks(longPress)
+        if (picking != null) holding = false
+        super.onDetachedFromWindow()
+    }
+
     companion object {
         /** The id of a plan just saved, for the next grid drawn to pop it into place. */
         var landing: String? = null
+        /** A selection box is up: the page shouldn't be redrawn under it (the minute's redraw waits). */
+        var holding = false
     }
 }
 

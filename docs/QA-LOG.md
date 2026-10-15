@@ -18,6 +18,35 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (plans: a selection box to drag, double tap, change the time, "be honest")
+
+**Asked for:** the long press should bring up a coloured selection box that the user drags around the
+week, with vibration, to an empty cell; letting go there shows the plan card. A double tap on an
+empty cell shows the card. For a time that has passed, ask what they did ("be honest"). Pressing the
+time on the card brings the selection box back to choose again.
+
+**Change** (`WeekGrid`: `pickUp`, `moveBox`, `drop`, `startRepick`, `drawBox`, `openNewAt`;
+`PlanSheet`):
+- Long press anywhere in the week: a box pops up under the finger (from 60% with a bounce), lifted on
+  a shadow, an hour tall (less if a class comes sooner). It follows the finger half hour by half hour,
+  gliding there, with a tick for each free time and a softer one where it's taken (it turns grey and
+  dashed and says "Taken"). The page doesn't scroll or change week while it's up.
+- Let go on a free time: the card pops out of the box (as before). Let go where it's taken: the box
+  drops. A long press on a saved plan picks it up to move it (its old block hides meanwhile).
+- Double tap a free time: the card at once.
+- The card's time is a button ("Change time"): the card goes back down into its cell and the box waits
+  there with "Drag to a free time"; the next touch drags it, what was written and chosen comes along,
+  and letting go on a free time opens the card there. Let go where it's taken, and it springs back to
+  the last free time.
+- A time that has passed: "Looking back · Wednesday 14 Oct", and "What did you do? Be honest."
+- The minute's redraw of Week waits while a box is up (it would drop it).
+- Debug: `--es view week --ez sample true --ei boxDay D --ei boxAt MIN` draws the box waiting there.
+
+**Checked:** unit tests pass. Drawn off-screen on the phone: the box free (Tuesday 15:00, two hours in
+the plan's colour, "15:00 / –17:00", the hint pill above it) and taken (Tuesday 12:00 in dark: grey,
+dashed, "Taken"), and the card for a past time. The drag, its vibrations, the double tap and the
+card's way back down: on the phone.
+
 ## 15 October 2026 (holidays: readable, and their classes slashed and taken off the hours)
 
 **Asked for:** show holidays properly, with enough contrast to read; slash the classes on a holiday (a

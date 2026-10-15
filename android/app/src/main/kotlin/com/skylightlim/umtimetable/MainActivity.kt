@@ -112,7 +112,8 @@ class MainActivity : Activity(), SpectrumHost {
         override fun run() {
             val n = now()
             // Only screens that show the clock (countdowns, "in 2 h") need redrawing each minute.
-            if ("${n.dow}-${n.min.toInt()}" != lastMinute && view in setOf("day", "week", "due")) {
+            // Not under a selection box on Week: redrawing would drop it.
+            if ("${n.dow}-${n.min.toInt()}" != lastMinute && view in setOf("day", "week", "due") && !WeekGrid.holding) {
                 if (!pickedDay) sel = homeDay(timetable, n)
                 render(keepScroll = true)
             }
@@ -803,7 +804,13 @@ class MainActivity : Activity(), SpectrumHost {
 
     /** A plan's editor, out of its cell in the week grid; once it's saved or deleted, the week shows it. */
     override fun openPlan(from: android.graphics.RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float) =
-        PlanSheet.show(ui, from, plan, isNew, maxEnd, hourPx) { render(keepScroll = true) }
+        PlanSheet.show(ui, from, plan, isNew, maxEnd, hourPx, onRepick = { draft -> weekGrid()?.startRepick(draft) }) { render(keepScroll = true) }
+
+    /** The week grid on the page now (the minute's redraw may have replaced the one a card came from). */
+    private fun weekGrid(): WeekGrid? {
+        fun find(v: View): WeekGrid? = v as? WeekGrid ?: (v as? ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { find(g.getChildAt(it)) } }
+        return find(content)
+    }
 
     override fun showCourse(id: Int) {
         openCourse = id

@@ -29,11 +29,13 @@ import java.time.format.TextStyle
 import java.util.Locale
 
 /**
- * The plan editor, out of the week grid. A long press on a free time (or a tap on a plan) pops that
- * cell out of the grid: it lifts and swells where it is, tilting up off the page, then flies to the
+ * The plan editor, out of the week grid. Letting go of the selection box on a free time (or a double
+ * tap there, or a tap on a plan) pops that cell out of the grid: it lifts and swells where it is, tilting up off the page, then flies to the
  * middle of the screen, growing and turning to face the user, into a card: what the plan is, how long,
  * its colour and a reminder. Saved, the card shrinks back down into the cell, where the plan pops into
- * place; cancelled, it goes back empty; deleted, it vanishes in a spin.
+ * place; cancelled, it goes back empty; deleted, it vanishes in a spin. A tap on its time sends it back
+ * down too, and the grid's selection box waits there to be dragged to another time. A time that has
+ * passed asks what really happened.
  */
 object PlanSheet {
     /** The card's views, and what's been chosen on it so far. */
@@ -67,18 +69,30 @@ object PlanSheet {
             background = GradientDrawable().apply { setColor(color) }
         }
         val day = "${plan.date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.UK)} ${plan.date.dayOfMonth} ${plan.date.month.getDisplayName(TextStyle.SHORT, Locale.UK)}"
-        band.addView(ui.label(if (isNew) "New plan · $day" else "Plan · $day", p.inkMuted, 11f))
+        band.addView(ui.label(when { passed -> "Looking back · $day"; isNew -> "New plan · $day"; else -> "Plan · $day" }, p.inkMuted, 11f))
         val time = ui.text("", 30f, p.ink, ui.f.sign)
         fun showTime() { time.text = "${clockText(plan.start)}–${clockText(end)}" }
         showTime()
-        band.addView(time, ui.wide(top = 2f))
+        // The time is a button: it sends the card back to the grid, where the selection box picks another.
+        lateinit var editorRef: Editor
+        band.addView(ui.row(gap = 10f).apply {
+            addView(time, ui.grow())
+            addView(ui.text("Change time", 12.5f, p.ink, ui.f.bodyBold).apply {
+                background = ui.shape(Color.TRANSPARENT, 99f, p.inkMuted, 1.5f)
+                setPadding(ui.dp(10), ui.dp(5), ui.dp(10), ui.dp(5))
+            })
+            background = ui.pressable(ui.shape(Color.TRANSPARENT, 10f), 10f)
+            contentDescription = "${clockText(plan.start)} to ${clockText(end)}. Change time"
+            setOnClickListener { editorRef.close("repick") }
+        }, ui.wide(top = 2f))
         content.addView(band)
 
         val body = ui.column().apply { setPadding(ui.dp(20), ui.dp(16), ui.dp(20), ui.dp(20)) }
         content.addView(body)
         val field = EditText(c).apply {
             setText(plan.text)
-            hint = "What will you do?"
+            // A time that has passed is for saying what really happened.
+            hint = if (passed) "What did you do? Be honest." else "What will you do?"
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
             setTextColor(p.text)
             setHintTextColor(p.faint)
@@ -94,6 +108,7 @@ object PlanSheet {
         }
         body.addView(field)
         val editor = Editor(card, content, body, field)
+        editorRef = editor
 
         fun label(text: String) = body.addView(ui.label(text, p.muted, 10.5f), ui.wide(top = 18f, bottom = 8f))
 
@@ -176,7 +191,7 @@ object PlanSheet {
      * Shows the card for [plan] flying out of [from], the cell in the week grid (screen coordinates), an
      * hour there being [hourPx] tall; [onDone] runs after a save or delete.
      */
-    fun show(ui: Ui, from: RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float, onDone: () -> Unit) {
+    fun show(ui: Ui, from: RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float, onRepick: (Plan) -> Unit = {}, onDone: () -> Unit) {
         val c = ui.context
         val d = c.resources.displayMetrics.density
         val editor = build(ui, plan, isNew, maxEnd)
@@ -236,7 +251,16 @@ object PlanSheet {
                 }
                 "delete" -> { Plans.delete(c, plan.id); Haptics.back(card) }
             }
-            fun done() { dialog.dismiss(); if (how != "cancel") onDone() }
+            // Change the time: what's been chosen so far goes back to the grid with the box.
+            val draft = plan.copy(text = field.text.toString().trim(), color = editor.color, end = editor.end, remind = editor.remind)
+            fun done() {
+                dialog.dismiss()
+                when (how) {
+                    "repick" -> onRepick(draft)
+                    "cancel" -> Unit
+                    else -> onDone()
+                }
+            }
             if (!Motion.enabled) return@close done()
             content.animate().alpha(0f).setDuration(90).start()
             Motion.fade(scrim, scrim.alpha, 0f, 240)
