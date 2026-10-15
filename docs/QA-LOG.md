@@ -18,6 +18,18 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 16 October 2026 (Week: the grid swipes weeks, the rest of the page swipes to the days)
+
+**Asked for:** on Week, a swipe on the week calendar goes to another week; a swipe anywhere else goes
+back to Monday or Friday.
+
+**Change** (`SwipeScrollView.onSwipeTarget`, `MainActivity.render`): a swipe that starts on the grid's
+box moves only the grid and changes the week (the carousel, as before). A swipe anywhere else on the
+page (the break card, the key, the Courses list) moves the whole page and steps along the strip as from
+the Week cell: left to Monday, right to Friday, sliding in from that side.
+
+**Checked:** it builds; unit tests pass. The swipes: on the phone.
+
 ## 15 October 2026 (1.4.0-beta.1 published)
 
 **Asked for:** push all the changes, with a version name to suit how much changed.

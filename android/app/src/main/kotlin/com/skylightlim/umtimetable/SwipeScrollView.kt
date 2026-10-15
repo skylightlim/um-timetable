@@ -30,12 +30,15 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     /** Called with +1 for a swipe to the left (next) and -1 for a swipe to the right (previous). */
     var onSwipe: ((Int) -> Unit)? = null
     /**
-     * What follows the finger in a sideways swipe: the whole page, unless this gives a part of it (Week:
-     * its grid, a carousel). A swipe that goes through leaves that part where the finger let go of it,
-     * for [onSwipe] to carry on from; the whole page is put back first.
+     * A part of the page with swipes of its own (Week: its grid, a carousel). A swipe that starts on it
+     * (on the box it sits in) moves just that part and goes to [onSwipeTarget], which carries on from
+     * where the finger let go of it. A swipe anywhere else moves the whole page and goes to [onSwipe].
      */
     var swipeTarget: (() -> View?)? = null
-    private val dragged: View? get() = swipeTarget?.invoke() ?: page
+    var onSwipeTarget: ((Int) -> Unit)? = null
+    /** This swipe began on [swipeTarget]. */
+    private var onTarget = false
+    private val dragged: View? get() = (if (onTarget) swipeTarget?.invoke() else null) ?: page
     /** Called when the page is pulled down past the threshold and let go. */
     var onPull: (() -> Unit)? = null
     /** What the pull uncovers above the page. */
@@ -97,6 +100,10 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     private fun down(e: MotionEvent) {
         downX = e.x
         downY = e.y
+        onTarget = onSwipeTarget != null && swipeTarget?.invoke()?.let { t ->
+            val box = Rect()
+            ((t.parent as? View) ?: t).getGlobalVisibleRect(box) && box.contains(e.rawX.toInt(), e.rawY.toInt())
+        } == true
         swiping = false
         pulling = false
         pullingUp = false
@@ -148,9 +155,15 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
                 swiping = false
                 if (abs(dx) > minDistance || flick) {
                     if (!past) Haptics.threshold(this, true) // a short flick: the bump it skipped
-                    if (swipeTarget == null) page?.apply { animate().cancel(); translationX = 0f; alpha = 1f }
-                    else dragged?.animate()?.cancel()
-                    swipe(if (dx < 0) 1 else -1)
+                    val dir = if (dx < 0) 1 else -1
+                    val target = onSwipeTarget
+                    if (onTarget && target != null) {
+                        dragged?.animate()?.cancel()
+                        target(dir)
+                    } else {
+                        page?.apply { animate().cancel(); translationX = 0f; alpha = 1f }
+                        swipe(dir)
+                    }
                 } else {
                     settle()
                 }

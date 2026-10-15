@@ -384,13 +384,14 @@ class MainActivity : Activity(), SpectrumHost {
         (page as? ViewGroup)?.clipChildren = false
         content.addView(page)
         // Swipes step along the strip's cells, the Week grid among them (after Friday, before Monday).
-        // Swipes on Day step along the strip's cells, the Week grid among them (after Friday, before Monday);
-        // on Week they move to the next or the previous week.
-        // On Week only its grid follows a swipe, the carousel's card; elsewhere the whole page does.
+        // Swipes on Day step along the strip's cells, the Week grid among them (after Friday, before Monday).
+        // On Week, a swipe on the grid goes to the next or the previous week (only the grid moves, a
+        // carousel); a swipe anywhere else steps to Monday or Friday, as from the Week cell.
         scroll.swipeTarget = if (view == "week") { { content.getChildAt(content.childCount - 1)?.let(WeekScreen::grid) } } else null
+        scroll.onSwipeTarget = if (view == "week") { dir -> slideFar = true; shiftWeek(dir) } else null
         scroll.onSwipe = when (view) {
             "day" -> { dir -> slideFar = true; goCell(stripCell(sel, dir), dir) }
-            "week" -> { dir -> slideFar = true; shiftWeek(dir) }
+            "week" -> { dir -> slideFar = true; goCell(stripCell(WEEK_CELL, dir), dir) }
             else -> null
         }
         // Spectrum's tabs sync when pulled down.
