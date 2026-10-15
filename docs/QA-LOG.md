@@ -18,6 +18,39 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (plans: long-press a free time on Week)
+
+**Asked for** (thingstodo, Features): on the week page, long-press an empty cell to set what to do in
+that time, choose its colour and set a reminder, past cells too; the cell's pop-out must be fun and
+playful, as if it pops out and flies toward the user.
+
+**Change** (new `Plan`, `Plans`, `PlanReminders` in Plans.kt and `PlanSheet`; `WeekGrid`):
+- A long press on a free half hour of the week grid (any week, past ones too) starts a plan there: an
+  hour, or less if a class or another plan comes sooner (to 19:00 at most). It vibrates as the press
+  takes. A tap on a plan opens it again (so does a long press).
+- The pop-out: the cell lifts and swells 30% where it is, tilting up off the page and turning a little
+  (130 ms), then flies to the middle of the screen, growing and turning to face the user, and lands with
+  the app's settling spring while the screen dims; then the card's contents fade in and rise in turn.
+  Saved, the card shrinks back down into the cell (as long as the plan now is) and the plan pops into
+  place in the grid with a bounce; cancelled, it goes back empty; deleted, it shrinks away in a spin.
+- The card: a band in the plan's colour with its day and time; "What will you do?" (the keyboard comes
+  up for a new plan, its Done saves); How long (30 min to 3 h, only what fits); Colour (the theme's
+  course colours and its accent; the dot picked hops and the band changes colour); Reminder (Off, at
+  the start, 10 min, 30 min or 1 h before; for a time that has passed there's none, and if the app's
+  notifications are off it says so). Delete for a saved plan, Cancel, Save.
+- In the grid: the plan's colour as a light tint with a dashed edge, its start time and what it is;
+  faded once it's over. Under the key: "Plan · long-press a free time to add one".
+- Saved in the app's files (`plans.json`), for that date only. Reminders go out on a new "Plans"
+  notification channel, from one exact alarm for the next one due, re-armed after a reboot or update.
+  Sign out deletes the plans and cancels the alarm.
+- Debug: `--es view week --ez sample true` (made-up plans) and `--es view plan [--ez new false]`.
+
+**Checked:** unit tests pass, with new `PlansTest` (a plan saved and read back, with and without a
+reminder). Drawn off-screen on the phone: the week with made-up plans (past ones faded, a 30-minute one
+showing its time) and the editor card, new in light and saved in dark (with Delete). Not seen yet: the
+long press, the flight and the reminder going off. Try them on the phone. TalkBack can't add a plan
+yet (the grid has no action for a free time).
+
 ## 15 October 2026 (holidays on Week and Day)
 
 **Asked for** (thingstodo, Features): can holidays come from Spectrum, so the week calendar shows a

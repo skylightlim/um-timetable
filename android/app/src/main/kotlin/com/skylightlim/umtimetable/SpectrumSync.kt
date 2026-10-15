@@ -723,7 +723,7 @@ object AttendanceWatch {
     }
 }
 
-private fun exactAlarm(am: AlarmManager, at: Long, pi: PendingIntent) {
+internal fun exactAlarm(am: AlarmManager, at: Long, pi: PendingIntent) {
     if (am.canScheduleExactAlarms()) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
     else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
 }
@@ -733,6 +733,7 @@ object Notify {
     const val NEWS = "announcements"
     const val DUE = "deadlines"
     const val GRADES = "grades"
+    const val PLANS = "plans"
 
     private fun manager(c: Context) = c.getSystemService(NotificationManager::class.java)
 
@@ -751,6 +752,8 @@ object Notify {
                 .apply { description = "New assignments and reminders before they're due" },
             NotificationChannel(GRADES, "Marks", NotificationManager.IMPORTANCE_DEFAULT)
                 .apply { description = "When a lecturer releases a mark on Spectrum" },
+            NotificationChannel(PLANS, "Plans", NotificationManager.IMPORTANCE_HIGH)
+                .apply { description = "Reminders you set for your plans on the Week page" },
         ),
     )
 
@@ -816,7 +819,7 @@ class SpectrumSyncJob : JobService() {
     }
 }
 
-/** Attendance checks, deadline reminders, and re-arming both after a reboot or update. */
+/** Attendance checks, deadline and plan reminders, and re-arming them after a reboot or update. */
 class SpectrumAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val c = context.applicationContext
@@ -826,9 +829,11 @@ class SpectrumAlarmReceiver : BroadcastReceiver() {
                 when (intent.action) {
                     ACTION_ATTENDANCE -> SpectrumSync.run(c, attendanceOnly = true, background = true)
                     ACTION_REMINDER -> Reminders.fire(c)
+                    ACTION_PLAN -> PlanReminders.fire(c)
                     Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
                         Reminders.schedule(c)
                         AttendanceWatch.schedule(c)
+                        PlanReminders.schedule(c)
                     }
                 }
             } finally {
@@ -840,6 +845,7 @@ class SpectrumAlarmReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_ATTENDANCE = "com.skylightlim.umtimetable.ATTENDANCE_CHECK"
         const val ACTION_REMINDER = "com.skylightlim.umtimetable.DEADLINE_REMINDER"
+        const val ACTION_PLAN = "com.skylightlim.umtimetable.PLAN_REMINDER"
 
         fun intent(c: Context, action: String): PendingIntent = PendingIntent.getBroadcast(
             c, action.hashCode(),

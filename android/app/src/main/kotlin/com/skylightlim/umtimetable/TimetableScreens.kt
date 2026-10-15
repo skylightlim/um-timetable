@@ -38,6 +38,11 @@ interface Host {
     fun showCourse(id: Int)
     /** Weeks from the strip's own week ([daysFromToday]) to the one shown: swiping on Week moves it. */
     val weekShift: Int get() = 0
+    /**
+     * Opens the plan editor ([PlanSheet]) out of the week grid's cell [from] (screen coordinates) for
+     * [plan] ([isNew] if it isn't saved yet); it can run to [maxEnd] at most; an hour is [hourPx] tall.
+     */
+    fun openPlan(from: RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float) = Unit
 }
 
 /** Days from today to [day] (1 Monday … 5 Friday) of the week shown, [Host.weekShift] weeks on from the strip's own. */
@@ -314,7 +319,8 @@ object DayScreen {
 }
 
 object WeekScreen {
-    fun build(h: Host): View {
+    /** The week grid and the courses; [plans] instead of the saved ones (a still drawing's made-up plans). */
+    fun build(h: Host, plans: List<Plan>? = null): View {
         val ui = h.ui
         val p = ui.p
         val tt = h.timetable
@@ -326,7 +332,7 @@ object WeekScreen {
             background = ui.shape(p.surface, 18f, p.line)
             setPadding(ui.dp(2), ui.dp(10), ui.dp(6), ui.dp(8))
         }
-        card.addView(WeekGrid(ui, tt, h.now(), h.daysTo(1)) { s -> h.openSheet(s.course, s) })
+        card.addView(WeekGrid(ui, tt, h.now(), h.daysTo(1), plans ?: Plans.inWeek(ui.context, h.dateOf(1)), h::openPlan) { s -> h.openSheet(s.course, s) })
         val key = ui.row(gap = 16f).apply { setPadding(ui.dp(30), ui.dp(4), 0, 0) }
         fun keyItem(swatch: View, label: String) = ui.row(gap = 6f).apply {
             addView(swatch)
@@ -336,6 +342,12 @@ object WeekScreen {
         key.addView(keyItem(View(ui.context).apply { background = ui.shape(Color.TRANSPARENT, 3f, p.text, 1.5f); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(10)) }, "Tutorial"))
         key.addView(keyItem(View(ui.context).apply { setBackgroundColor(p.accent); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(3)) }, "Now"))
         card.addView(key)
+        // Plans: what a long press on a free time adds.
+        card.addView(ui.row(gap = 6f).apply {
+            setPadding(ui.dp(30), ui.dp(8), 0, ui.dp(2))
+            addView(View(ui.context).apply { background = ui.shape(Palette.mix(p.text, p.surface, 0.12f), 3f, p.muted, 1.2f, dash = 2.5f); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(10)) })
+            addView(ui.text("Plan · long-press a free time to add one", 12f, p.muted))
+        })
         page.addView(card)
         if (tt.sessions.isEmpty()) {
             page.addView(ui.text("No timetable yet · sign in to Spectrum in Courses", 13.5f, p.muted), ui.wide(top = 12f))
@@ -404,7 +416,16 @@ object WeekScreen {
 
 /** The Mon–Fri grid, drawn in one view: hour lines, today's column, class blocks and the now line. */
 @SuppressLint("ViewConstructor")
-class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: Now, monday: Int, private val onTap: (Session) -> Unit) : View(ui.context) {
+class WeekGrid(
+    private val ui: Ui,
+    private val tt: Timetable,
+    private val now: Now,
+    monday: Int,
+    /** The user's plans in this week (see [Plan]): drawn in their free times, opened by a tap. */
+    private val plans: List<Plan>,
+    private val onPlan: (from: RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float) -> Unit,
+    private val onTap: (Session) -> Unit,
+) : View(ui.context) {
     private val p = ui.p
     private val hour = ui.dp(48f).toFloat()
     private val head = ui.dp(22f).toFloat()
@@ -413,10 +434,13 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
     private val padY = ui.dp(8f).toFloat()
     private val startMin = 8 * 60
     private val blocks = mutableListOf<Pair<RectF, Session>>()
+    private val planBlocks = mutableListOf<Pair<RectF, Plan>>()
+    /** Each column's date, Monday first. */
+    private val dates = (0..4).map { LocalDate.now().plusDays((monday + it).toLong()) }
     /** Today's column, when the week shown (its Monday [monday] days from today) is this week. */
     private val today = now.dow.takeIf { it in 1..5 && monday + it - 1 == 0 }
     /** Each day's public holiday in Kuala Lumpur, Monday first; and whether the week is one of UM's without classes. */
-    private val holidays = (0..4).map { Holidays.on(LocalDate.now().plusDays((monday + it).toLong())) }
+    private val holidays = dates.map { Holidays.on(it) }
     private val weekOff = weekOff(LocalDate.now().plusDays(monday.toLong())) != null
 
     // The grid's boxes are as tall as their hours and a fifth of the width, so its text follows the system
@@ -433,6 +457,14 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
     private val nowPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.monoBold; textSize = sp(9.5f); color = p.accentInk; textAlign = Paint.Align.CENTER }
     private val holidayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodyBold; textSize = sp(10f); color = p.accentText; textAlign = Paint.Align.CENTER; letterSpacing = 0.12f }
     private val hatch = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = p.accent; alpha = 70; strokeWidth = ui.dp(1f).toFloat() }
+    private val planEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = ui.dp(1.5f).toFloat()
+        pathEffect = android.graphics.DashPathEffect(floatArrayOf(ui.dp(4f).toFloat(), ui.dp(3f).toFloat()), 0f)
+    }
+    /** A plan just saved pops into its place ([landing]). */
+    private var landId = landing.also { landing = null }
+    private var landScale = 1f
 
     init {
         contentDescription = "Week timetable: " + tt.sessions.joinToString("; ") { "${DAY_NAMES[it.day]} ${clockText(it.start)} ${it.course.code} ${it.type} ${it.room}" }
@@ -444,6 +476,7 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
 
     override fun onDraw(canvas: Canvas) {
         blocks.clear()
+        planBlocks.clear()
         val colW = (width - axis - gapX * 5) / 5
         val top = head + padY
         val bottom = top + hour * 11
@@ -475,6 +508,7 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
                 canvas.drawRect(left, nowY - ui.dp(0.5f), left + colW, nowY + ui.dp(0.5f), fill)
                 fill.alpha = 255
             }
+            for (plan in plans.filter { it.date == dates[d - 1] }) drawPlan(canvas, plan, RectF(left + ui.dp(1f), top + (plan.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (plan.end - startMin) / 60f * hour - 1))
             // Faded: today's classes that are over, and every class on a holiday or in a week without classes.
             for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), (isToday && now.min >= s.end) || holiday != null || weekOff)
         }
@@ -560,14 +594,126 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
         canvas.restore()
     }
 
+    /** A plan: its colour's tint with a dashed edge in the colour, what it is and when. Faded once it's over. */
+    private fun drawPlan(canvas: Canvas, plan: Plan, r: RectF) {
+        planBlocks += r to plan
+        val radius = ui.dp(7f).toFloat()
+        val alpha = if (plan.endsAt <= System.currentTimeMillis()) 115 else 255
+        canvas.save()
+        if (plan.id == landId) canvas.scale(landScale, landScale, r.centerX(), r.centerY())
+        fill.color = Palette.mix(plan.color, p.surface, 0.24f); fill.alpha = alpha
+        canvas.drawRoundRect(r, radius, radius, fill)
+        fill.alpha = 255
+        planEdge.color = plan.color; planEdge.alpha = alpha
+        canvas.drawRoundRect(RectF(r.left + 0.75f, r.top + 0.75f, r.right - 0.75f, r.bottom - 0.75f), radius, radius, planEdge)
+        val pad = ui.dp(4f).toFloat()
+        val w = (r.width() - pad * 2).coerceAtLeast(1f)
+        canvas.clipRect(r)
+        codePaint.color = p.courseText(plan.color); codePaint.alpha = alpha
+        canvas.drawText(clockText(plan.start), r.left + pad, r.top + pad + codePaint.textSize, codePaint)
+        val nameTop = r.top + pad + codePaint.textSize + ui.dp(3f)
+        val lines = ((r.bottom - pad - nameTop) / namePaint.fontSpacing).toInt()
+        if (lines >= 1) {
+            namePaint.color = p.text; namePaint.alpha = alpha
+            val layout = StaticLayout.Builder.obtain(plan.title, 0, plan.title.length, namePaint, w.toInt())
+                .setMaxLines(lines).setEllipsize(TextUtils.TruncateAt.END).setIncludePad(false).build()
+            canvas.translate(r.left + pad, nameTop)
+            layout.draw(canvas)
+        }
+        canvas.restore()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (landId == null || !Motion.enabled) return
+        landScale = 0.55f
+        android.animation.ValueAnimator.ofFloat(0.55f, 1f).apply {
+            interpolator = Motion.BOUNCY
+            duration = Motion.BOUNCY.duration
+            addUpdateListener { landScale = it.animatedValue as Float; invalidate() }
+            start()
+        }
+    }
+
+    // --- touch: a tap opens a class or a plan; a long press on a free time adds a plan -----------------
+
+    private var downX = 0f
+    private var downY = 0f
+    private var pressedLong = false
+    private val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+    private val longPress = Runnable { pressedLong = true; longPressAt(downX, downY) }
+
+    /** The day column (1–5) under [x], or null between columns or on the hour axis. */
+    private fun columnAt(x: Float): Int? {
+        val colW = (width - axis - gapX * 5) / 5
+        val k = ((x - axis - gapX) / (colW + gapX)).toInt()
+        val left = axis + gapX + k * (colW + gapX)
+        return (k + 1).takeIf { k in 0..4 && x >= left && x <= left + colW }
+    }
+
+    private fun longPressAt(x: Float, y: Float) {
+        planBlocks.firstOrNull { it.first.contains(x, y) }?.let { (r, plan) ->
+            Haptics.threshold(this, true)
+            return open(r, plan, false)
+        }
+        if (blocks.any { it.first.contains(x, y) }) return
+        val d = columnAt(x) ?: return
+        val top = head + padY
+        // The free half hour under the finger.
+        val start = (startMin + ((y - top) / hour * 2).toInt() * 30).takeIf { y >= top && it < 19 * 60 } ?: return
+        val date = dates[d - 1]
+        val busy = tt.day(d).map { it.start to it.end } + plans.filter { it.date == date }.map { it.start to it.end }
+        if (busy.any { (a, b) -> start in a until b }) return
+        val maxEnd = minOf(19 * 60, busy.map { it.first }.filter { it > start }.minOrNull() ?: Int.MAX_VALUE)
+        val end = minOf(start + 60, maxEnd)
+        val palette = Plans.palette(Scheme.load(context), p.accent)
+        val plan = Plan.new(date, start, end, palette[(plans.size + d) % palette.size])
+        val colW = (width - axis - gapX * 5) / 5
+        val left = axis + gapX + (d - 1) * (colW + gapX)
+        Haptics.threshold(this, true)
+        open(RectF(left + ui.dp(1f), top + (start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (end - startMin) / 60f * hour - 1), plan, true, maxEnd)
+    }
+
+    /** Opens [plan] out of its cell [r] (in this view), which becomes screen coordinates for the flight. */
+    private fun open(r: RectF, plan: Plan, isNew: Boolean, maxEnd: Int? = null) {
+        val at = IntArray(2).also(::getLocationOnScreen)
+        val free = maxEnd ?: run {
+            val busy = tt.day(plan.date.dayOfWeek.value).map { it.start } + plans.filter { it.date == plan.date && it.id != plan.id }.map { it.start }
+            minOf(19 * 60, busy.filter { it >= plan.end }.minOrNull() ?: Int.MAX_VALUE)
+        }
+        onPlan(RectF(r).apply { offset(at[0].toFloat(), at[1].toFloat()) }, plan, isNew, free, hour)
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        if (e.action == MotionEvent.ACTION_DOWN) return blocks.any { it.first.contains(e.x, e.y) }
-        if (e.action == MotionEvent.ACTION_UP) blocks.firstOrNull { it.first.contains(e.x, e.y) }?.let { onTap(it.second); performClick() }
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = e.x
+                downY = e.y
+                pressedLong = false
+                // Anywhere in the days: a class or plan can be tapped, a free time long-pressed.
+                if (columnAt(e.x) == null) return false
+                postDelayed(longPress, android.view.ViewConfiguration.getLongPressTimeout().toLong())
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> if (kotlin.math.hypot(e.x - downX, e.y - downY) > slop) removeCallbacks(longPress)
+            MotionEvent.ACTION_UP -> {
+                removeCallbacks(longPress)
+                if (pressedLong) return true
+                planBlocks.firstOrNull { it.first.contains(e.x, e.y) }?.let { (r, plan) -> open(r, plan, false); performClick(); return true }
+                blocks.firstOrNull { it.first.contains(e.x, e.y) }?.let { onTap(it.second); performClick() }
+            }
+            MotionEvent.ACTION_CANCEL -> removeCallbacks(longPress)
+        }
         return true
     }
 
     override fun performClick() = super.performClick()
+
+    companion object {
+        /** The id of a plan just saved, for the next grid drawn to pop it into place. */
+        var landing: String? = null
+    }
 }
 
 /** The class details sheet that slides up from the bottom, laid out as in redesign 1f. */

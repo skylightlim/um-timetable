@@ -800,6 +800,10 @@ class MainActivity : Activity(), SpectrumHost {
 
     override fun openSheet(course: Course, session: Session?) = ClassSheet.show(this, this, course, session)
 
+    /** A plan's editor, out of its cell in the week grid; once it's saved or deleted, the week shows it. */
+    override fun openPlan(from: android.graphics.RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float) =
+        PlanSheet.show(ui, from, plan, isNew, maxEnd, hourPx) { render(keepScroll = true) }
+
     override fun showCourse(id: Int) {
         openCourse = id
         setView("files")

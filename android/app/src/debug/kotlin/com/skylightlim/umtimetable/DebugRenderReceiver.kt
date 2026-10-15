@@ -33,6 +33,8 @@ import java.io.File
  * --es scheme gold|blue|red draws in that accent scheme instead of the chosen one.
  * --ez open true draws every fold and "Show more" opened.
  * view webbar draws the web screens' top bar (--es bar spectrum|maya|timeedit|login).
+ * view week with --ez sample true draws made-up plans on it; view plan draws the plan editor's card
+ * (--ez new false: a saved plan's, with Delete).
  * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200).
  * view signout draws the Sign out question's card. view settings draws the Settings sheet (--ez signedIn true|false
  * for either Account row); view signin the first-run sign-in poster, at screen height (or --ei height px).
@@ -64,7 +66,9 @@ class DebugRenderReceiver : BroadcastReceiver() {
             if (intent.getBooleanExtra("open", false)) expanded = object : HashSet<String>() { override fun contains(element: String) = true }
         }
         val page = when (view) {
-            "week" -> WeekScreen.build(host)
+            "week" -> WeekScreen.build(host, if (intent.getBooleanExtra("sample", false)) samplePlans(host) else null)
+            // The plan editor's card: --ez new false for a saved plan's (with Delete)
+            "plan" -> PlanSheet.build(host.ui, samplePlans(host)[1].let { if (intent.getBooleanExtra("new", true)) it.copy(text = "") else it }, intent.getBooleanExtra("new", true), 16 * 60 + 30).card
             "due" -> if (intent.getBooleanExtra("sample", false)) sampleDue(context, host) else SpectrumScreens.due(host)
             "news" -> SpectrumScreens.news(host)
             "files" -> SpectrumScreens.courses(host)
@@ -127,6 +131,17 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val bitmap = Bitmap.createBitmap(frame.measuredWidth, frame.measuredHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         frame.draw(Canvas(bitmap))
         save(context, bitmap, "$view${host.openCourse?.let { "-$it" } ?: ""}${if (dark) "-dark" else ""}")
+    }
+
+    /** Made-up plans in the week drawn: study, the gym, reading (none of them the user's). */
+    private fun samplePlans(host: Host): List<Plan> {
+        val palette = Plans.palette(Scheme.load(host.ui.context), host.ui.p.accent)
+        val monday = host.dateOf(1)
+        return listOf(
+            Plan("s1", monday.plusDays(1), 10 * 60, 11 * 60, "Group study for the quiz", palette[0], 10),
+            Plan("s2", monday.plusDays(2), 14 * 60, 16 * 60, "Gym", palette[3]),
+            Plan("s3", monday.plusDays(4), 11 * 60, 11 * 60 + 30, "Read chapter 3", palette[7], 0),
+        )
     }
 
     /** Made-up grade items: marks (one a scale word, one with feedback), a course total, unmarked items. */
