@@ -60,6 +60,15 @@ fun daysFromToday(tt: Timetable, now: Now, day: Int): Int {
     return ahead + day - (now.dow + ahead) % 7
 }
 
+/** The day strip's last cell, after Monday to Friday (1–5): the Week grid. */
+const val WEEK_CELL = 6
+
+/**
+ * The strip cell a swipe of [dir] (+1 left, -1 right) moves to from [cell]: Monday to Friday, then the
+ * Week grid, round again to Monday (and back from Monday to Week).
+ */
+fun stripCell(cell: Int, dir: Int): Int = Math.floorMod(cell - 1 + dir, WEEK_CELL) + 1
+
 fun dateIn(days: Int): Calendar = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, days) }
 
 /** "13 Oct", [days] from today. */

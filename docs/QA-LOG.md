@@ -18,6 +18,20 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (Week swipes like a day)
+
+**Asked for:** treat the Week cell like the day cells: swipe to it like a normal day, don't skip it.
+
+**Change** (`stripCell`, `MainActivity.goCell`): swipes on Day and on Week step along the strip's six
+cells: Monday to Friday, then Week, then round to Monday (and from Monday back to Week). Swiping left on
+Friday now shows the week grid instead of Monday. The week slides in from the side, its title follows
+and the strip's pill glides, as between days, with the swipe's own vibration only. Taps between the
+strip's cells also slide now (Week from a day comes in from the right, a day from Week from the
+left); from another tab Week still rises as before.
+
+**Checked:** it builds; unit tests pass, with a new one for the cell order (`HomeDayTest`). The swipes
+themselves: try them on the phone.
+
 ## 15 October 2026 (Sign out: hold the button)
 
 **Asked for:** on the Sign out question, the user should long press the Sign out button, and it should

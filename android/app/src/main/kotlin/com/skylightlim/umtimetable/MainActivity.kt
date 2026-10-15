@@ -364,7 +364,8 @@ class MainActivity : Activity(), SpectrumHost {
         // Nor is the page clipped: its cards rise into place, and spring back after a press, a little past its edges.
         (page as? ViewGroup)?.clipChildren = false
         content.addView(page)
-        scroll.onSwipe = if (view == "day") { dir -> slideFar = true; goDay(sel + dir, dir) } else null
+        // Swipes step along the strip's cells, the Week grid among them (after Friday, before Monday).
+        scroll.onSwipe = if (view == "day" || view == "week") { dir -> slideFar = true; goCell(stripCell(if (view == "week") WEEK_CELL else sel, dir), dir) } else null
         // Spectrum's tabs sync when pulled down.
         scroll.onPull = if (view in setOf("grades", "due", "news", "files") && SpectrumStore.signedIn(this)) ::refresh else null
         // The Courses list (where Settings used to sit, under the courses) opens them when pulled up.
@@ -453,7 +454,7 @@ class MainActivity : Activity(), SpectrumHost {
         }
         val weekWords = if (semester?.kind == AcademicCalendar.Kind.TEACHING) "Week ${semester.n} of ${semester.of} of the semester" else weekName
         strip.addView(chip("$weekWords, ${tt.sessions.size} classes a week", *weekParts.toTypedArray()).apply {
-            setOnClickListener { setView("week") }
+            setOnClickListener { goCell(WEEK_CELL) }
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.15f).apply { marginStart = ui.dp(6) })
         stripGlider.moveTo(index, if (view == "day" && daysFromToday(tt, n, sel) == 0) p.accent else p.text)
         stripIndex = index
@@ -666,12 +667,27 @@ class MainActivity : Activity(), SpectrumHost {
             day > 5 -> 1
             else -> day
         }
-        pickedDay = true
-        if (d == sel && view == "day") return
-        pendingSlide = if (view != "day") 0 else if (dir != 0) dir else if (d > sel) 1 else -1
-        if (view == "day" && !slideFar) Haptics.tick(shell)
-        sel = d
-        setView("day")
+        goCell(d, dir)
+    }
+
+    /**
+     * Shows the strip's [cell]: a day (1–5) or the Week grid ([WEEK_CELL]). From another cell the page slides
+     * in from the side it's on ([dir] for a swipe), as from one day to the next; from another tab it rises.
+     */
+    private fun goCell(cell: Int, dir: Int = 0) {
+        val week = cell == WEEK_CELL
+        if (!week) pickedDay = true
+        val here = when (view) {
+            "week" -> WEEK_CELL
+            "day" -> sel
+            else -> null
+        }
+        if (here == cell) return
+        pendingSlide = if (here == null) 0 else if (dir != 0) dir else if (cell > here) 1 else -1
+        // A tap vibrates (a swipe already bumped at its threshold). Day to day here: the view stays "day", so go doesn't.
+        if (view == "day" && !week && !slideFar) Haptics.tick(shell)
+        if (!week) sel = cell
+        go(if (week) "week" else "day", if (slideFar) null else Haptics::tick)
     }
 
     // Back: leave a course page, then return to Day; on Day (false), Android's own back leaves the app.
