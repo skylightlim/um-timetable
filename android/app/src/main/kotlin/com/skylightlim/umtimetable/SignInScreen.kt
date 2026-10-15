@@ -196,6 +196,7 @@ object SignInScreen {
         private val presser = Motion.Presser(this)
         var stage: View? = null
         var statement: List<TextView> = emptyList()
+        private val paint = Paint()
 
         override fun dispatchTouchEvent(e: MotionEvent): Boolean {
             presser.onTouch(e)
@@ -206,7 +207,7 @@ object SignInScreen {
             val dm = resources.displayMetrics
             val room = MeasureSpec.getSize(widthMeasureSpec) - paddingLeft - paddingRight
             // As large as the longest line fits the width.
-            val paint = Paint().apply { typeface = statement.firstOrNull()?.typeface }
+            paint.typeface = statement.firstOrNull()?.typeface
             var px = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, STATEMENT_SP, dm)
             paint.textSize = px
             val widest = STATEMENT.maxOf { paint.measureText(it) }

@@ -344,6 +344,7 @@ private class PillButton(ui: Ui) : TextView(ui.context) {
 }
 
 /** A short accent bar sweeping along the bar's hairline, again and again, while it's shown. */
+@SuppressLint("ViewConstructor")
 private class SweepBar(context: Context, color: Int) : View(context) {
     private val paint = Paint().apply { this.color = color }
     private var sweeping: ValueAnimator? = null
