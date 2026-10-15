@@ -177,7 +177,8 @@ open class FitText(context: Context, private val maxPx: Float, private val wides
                 widest != null -> maxOf(paint.measureText(widest), paint.measureText(all))
                 else -> paint.measureText(all)
             }
-            val size = if (needed > 0f) minOf(maxPx, textSize * room / needed) else maxPx
+            // 2% short of the room when it shrinks: fitted to the exact width, the last letter wrapped ("Spectru / m").
+            val size = if (needed > 0f) minOf(maxPx, textSize * room * 0.98f / needed) else maxPx
             if (kotlin.math.abs(size - textSize) > 0.5f) setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
         }
         super.onMeasure(widthSpec, heightSpec)

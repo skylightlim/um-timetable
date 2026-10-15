@@ -31,8 +31,9 @@ import java.io.File
  * --ef fontScale 1.3 draws at a larger system font size (this render only).
  * --es scheme gold|blue|red draws in that accent scheme instead of the chosen one.
  * --ez open true draws every fold and "Show more" opened.
+ * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200).
  * view signout draws the Sign out question's card. view settings draws the Settings sheet (--ez signedIn true|false
- * for either Account row); view signin the first-run sign-in poster, at screen height.
+ * for either Account row); view signin the first-run sign-in poster, at screen height (or --ei height px).
  * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
  * Nth class of the week (0 first).
  */
@@ -43,6 +44,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         if (intent.getStringExtra("view") == "tabicons") return tabIcons(context)
         if (intent.getStringExtra("view") == "duel") return duel(context, intent.getBooleanExtra("dark", false))
         if (intent.getStringExtra("view") == "duelloop") return duelLoop(context)
+        if (intent.getStringExtra("view") == "scene") return scene(context, intent.getIntExtra("step", 200))
         val view = intent.getStringExtra("view") ?: "files"
         val dark = intent.getBooleanExtra("dark", false)
         val width = intent.getIntExtra("width", context.resources.displayMetrics.widthPixels)
@@ -101,7 +103,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         }
         frame.measure(
             View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
-            if (view == "signin") View.MeasureSpec.makeMeasureSpec(context.resources.displayMetrics.heightPixels, View.MeasureSpec.EXACTLY) else View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            if (view == "signin") View.MeasureSpec.makeMeasureSpec(intent.getIntExtra("height", context.resources.displayMetrics.heightPixels), View.MeasureSpec.EXACTLY) else View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
         )
         frame.layout(0, 0, frame.measuredWidth, frame.measuredHeight)
         val bitmap = Bitmap.createBitmap(frame.measuredWidth, frame.measuredHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
@@ -196,6 +198,36 @@ class DebugRenderReceiver : BroadcastReceiver() {
      * The tab icons' animations as a contact sheet (tabicons.png): one row per icon, a frame every 80 ms
      * from the start. Drawn on a software canvas, so each animation runs on this thread.
      */
+    /** The sign-in poster's fight ([DuelScene]) as a contact sheet: a frame every [step] ms, 0 to 5 s, on the poster's blue. */
+    private fun scene(context: Context, step: Int) {
+        val c = ContextThemeWrapper(context, R.style.Theme_UMTimetable)
+        val ui = Ui(c, Palette.LIGHT, Fonts(c))
+        val view = DuelView(ui, 0xFFF1F5FE.toInt(), 0xFF132B7C.toInt(), stage = true)
+        val scene = DuelScene(view)
+        val w = 480
+        val h = 270
+        val times = (0..5000 step step).toList()
+        val cols = 4
+        val rows = (times.size + cols - 1) / cols
+        val sheet = Bitmap.createBitmap(w * cols, h * rows, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF132B7C.toInt()) }
+        val canvas = Canvas(sheet)
+        view.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
+        view.layout(0, 0, w, h)
+        val label = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFB8C7E9.toInt(); textSize = 22f }
+        val grid = android.graphics.Paint().apply { color = 0xFF4E66A3.toInt(); style = android.graphics.Paint.Style.STROKE }
+        for ((i, t) in times.withIndex()) {
+            view.poses = scene.at(t.toFloat())
+            scene.sparkAt(t.toFloat())?.let { (x, y, age) -> view.sparkStill(x, y, age) } ?: view.sparkStill(60f, 0f, 2f)
+            canvas.save()
+            canvas.translate((i % cols) * w.toFloat(), (i / cols) * h.toFloat())
+            view.draw(canvas)
+            canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), grid)
+            canvas.drawText("$t ms", 10f, 28f, label)
+            canvas.restore()
+        }
+        save(context, sheet, "scene")
+    }
+
     private fun tabIcons(context: Context) {
         val pending = goAsync()
         val ids = listOf(R.drawable.avd_tab_day, R.drawable.avd_tab_week, R.drawable.avd_tab_grades, R.drawable.avd_tab_due, R.drawable.avd_tab_news, R.drawable.avd_tab_courses)

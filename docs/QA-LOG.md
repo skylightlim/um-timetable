@@ -18,6 +18,47 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (sign-in poster: the fight, new steps, everything moving in)
+
+**Asked for:** rethink the sign-in page's 1, 2, 3; check the spacing and make the numbers larger; a
+5-second fight between the cow and the horse in the empty space at the top (or a better idea); move the
+sign-in button up a little; animate everything so it feels alive and playful; audit it with the frontend
+skill.
+
+**Change** (`SignInScreen`; `DuelView` poses and stage; new `DuelScene`):
+- **The fight** fills the room above the statement, across the whole screen width (`DuelView(stage =
+  true)`). It lasts 5 s: they run in from the screen's edges with little hops, square up (rearing back,
+  crouching), clash with a spark, flurry with two more, crouch and leap to clash in the air, lock
+  blades while the cow pushes the horse back (the lock judders, sparks flicker), hop apart and bow.
+  Then they stand en garde, breathing out of step. A tap on them plays it again. The art is the
+  existing monochrome cow and horse in the poster's white on blue, so a redesign of the pair (the
+  todo's "FOR SYNC animation") carries over. `DuelView` now draws each fighter from a pose (across,
+  up, lean, sword, squash); its pull and loader motion are unchanged (made from `progress` as before).
+- **Steps** say what happens after the button, in order: 1 SiswaMail "Microsoft's page", 2 Timetable
+  "From TimeEdit", 3 Spectrum "Due, marks, news". The numbers are Big Shoulders 44sp (were Instrument
+  Sans 20sp). Each sub-line fits one line on this phone.
+- **Spacing:** brand, 10dp, the bar; 8dp, the fight; 8dp, the statement, now three set lines at one
+  size (48sp, or as large as "Your whole semester" fits); 22dp, the steps; 24dp, the button; 12dp, the
+  note. 40dp under the note instead of 24dp, so the button sits 16dp higher.
+- **Coming in:** the brand rises, the bar draws across from its red end, the fight starts, the
+  statement's lines rise one after another, the step lines grow down, the numbers pop from their
+  baseline and their words rise, then the button and the note. The button's arrow nudges right twice
+  every 3.2 s. Nothing moves with "Remove animations".
+- **Short phones:** if the fight would get less than a fifth of the screen, the statement shrinks (to
+  half at most); if the pair would be under 40dp tall, the fight isn't drawn. Step titles shrink rather
+  than break inside a word. `FitText` now fits to 98% of the room, as text fitted to the exact width
+  wrapped its last letter.
+
+**Audit (frontend-design):** one signature (the fight); yellow still only on the bar and the button;
+the numbering is a real order; the type is the app's own; the motion is one entrance and then quiet
+(breathing, the arrow). Text on the blue: 11.6:1 and 7.4:1.
+
+**Checked:** it builds; unit tests pass. Drawn off-screen on the phone: the fight as a frame every
+200 ms (`--es view scene`, new): the clashes meet blade to blade where the sparks fly, and the jump's
+spark is at the top of the leap. The poster at the phone's size, and at 360 × 576dp at font size 1.0
+and 1.3. At 1.3 the fight hides and the statement shrinks; nothing is cut off. The entrance and the
+fight's timing: watch them on the phone after a sign out.
+
 ## 15 October 2026 (the tab bar says Week on the week grid)
 
 **Asked for:** on the week panel, the tab bar's Day should change to Week too.
