@@ -121,9 +121,10 @@ object Motion {
             if (v is ViewGroup) for (i in v.childCount - 1 downTo 0) {
                 val child = v.getChildAt(i)
                 clickableAt(child, x, y)?.let { return it }
-                // A scrolling panel takes every touch on it, so nothing under it is pressed. Without this, a
-                // tap on a sheet's empty space sank the scrim behind it, uncovering light strips at the edges.
-                if (child is ScrollView && hit(child, x, y)) return null
+                // A scrolling panel, or anything else that takes touches (a dialog's card), takes every touch
+                // on it, so nothing under it is pressed. Without this, pressing a sheet's or a card's empty
+                // space sank the scrim behind it, uncovering light strips at the edges.
+                if ((child is ScrollView || child.isClickable) && hit(child, x, y)) return null
             }
             // A switch's options don't sink: its gliding pill is their feedback, and a sunk label left the pill behind.
             return v.takeIf { it.isClickable && it.isEnabled && it.hasOnClickListeners() && it.parent !is SegmentPill }

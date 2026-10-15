@@ -18,6 +18,20 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (pressing a card no longer uncovers the scrim's edges)
+
+**Reported:** pressing the plan card, the dark see-through layer behind it showed white gaps.
+
+**Found:** press feedback (`Motion.Presser`) looks for the clickable view under the finger. The card takes
+touches (it's clickable, so a tap on it isn't a tap outside) but has no tap action of its own, so the
+search went past it to the scrim, which closes the card when tapped, and sank that: the shrunken scrim
+uncovered the screen's edges.
+
+**Change:** the search stops at anything under the finger that takes touches, not only at scrolling
+panels, as Android does when it delivers the touch. So pressing a card's empty space presses nothing.
+
+**Checked:** it builds; unit tests pass. Press the plan card on the phone.
+
 ## 15 October 2026 (plans: long-press a free time on Week)
 
 **Asked for** (thingstodo, Features): on the week page, long-press an empty cell to set what to do in
