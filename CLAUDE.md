@@ -115,6 +115,9 @@ snapshot of `main`'s tree instead:
   `clipToPadding = false` on any padded one: the padding clips too.
 - Press feedback (`Motion.Presser`) presses the topmost view that takes touches. Overlay cards are
   `isClickable = true` (no listener needed), so pressing one leaves the scrim behind it alone.
+- Springs (`Motion.Spring`) are damped like iOS's (0.78 and up: no swing back) and take a start speed:
+  whatever a finger lets go of springs on with `toward(from, to, pxPerSecond)` from the tracker's
+  speed, or it stalls before moving on. `SpringTest` checks they settle to rest by their duration.
 - With "Remove animations" on, animator durations are zero: anything that must take time (holding Sign
   out) keeps time with a `Handler`, and its animation only shows it.
 - The minute ticker redraws Day, Week and Due; state living in a page (the plan selection box) holds it
