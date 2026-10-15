@@ -211,7 +211,8 @@ class BottomSheet(context: Context, private var content: View, darkSheet: Boolea
                     val vy = velocity?.yVelocity ?: 0f
                     if (e.actionMasked == MotionEvent.ACTION_UP && (dy > body.height / 4f || vy > 1000 * density)) close()
                     else {
-                        body.animate().translationY(0f).spring(Motion.SETTLE).start()
+                        // Back up from the speed it was let go at.
+                        body.animate().translationY(0f).spring(Motion.SETTLE.toward(body.translationY, 0f, vy)).start()
                         Motion.fade(scrim, scrim.alpha, 1f)
                     }
                 }

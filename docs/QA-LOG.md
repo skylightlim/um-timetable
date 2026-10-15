@@ -18,6 +18,28 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 16 October 2026 (springs carry on at the finger's speed; no-overshoot springs end smoothly)
+
+**Asked for** (continuing "use iOS-like animation"): springs that don't look laggy.
+
+**Found:** besides the overshoot (tuned in the previous entry), two things. Every spring started from
+rest, so a drag let go stalled for a moment before moving on. And the springs that don't overshoot
+(SMOOTH, QUICK: the theme spreading, folds, Show more) stopped at about 97%: their duration came from the
+underdamped formula, and the last frame jumped the remaining 3%.
+
+**Change** (`Motion.Spring`, `toward`; `SwipeScrollView`, `WeekScreen.shift`, `Motion.slideIn`,
+`BottomSheet`):
+- A spring can start at a speed (distances a second), as on iOS. What a finger lets go of carries on
+  at the finger's speed: the week carousel, a Day page swiped in, a swipe that springs back, the page
+  pulled down to sync (or up for Settings) going to where it rests, and the sheet dragged and let go.
+  The finger's speed is now tracked for every touch on the page, not only swipes.
+- The critically damped springs run until they're within half a percent (SMOOTH 422 → 592 ms, QUICK
+  253 → 355 ms; the motion is the same, without the jump at the end).
+
+**Checked:** unit tests pass, with new `SpringTest`: every spring from 0 to rest at 1 and settled at
+its end, one given 3 distances a second leaves at that speed, BOUNCY peaks at 1–4% past. On the phone:
+not yet, it was disconnected.
+
 ## 16 October 2026 (plans on Day too)
 
 **Asked for:** every plan the user adds should also show on the Day tab.

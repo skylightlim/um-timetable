@@ -383,7 +383,7 @@ class MainActivity : Activity(), SpectrumHost {
         // On Week, a swipe on the grid goes to the next or the previous week (only the grid moves, a
         // carousel); a swipe anywhere else steps to Monday or Friday, as from the Week cell.
         scroll.swipeTarget = if (view == "week") { { content.getChildAt(content.childCount - 1)?.let(WeekScreen::grid) } } else null
-        scroll.onSwipeTarget = if (view == "week") { dir -> slideFar = true; shiftWeek(dir) } else null
+        scroll.onSwipeTarget = if (view == "week") { dir -> slideFar = true; shiftWeek(dir, scroll.releaseVelocity) } else null
         scroll.onSwipe = when (view) {
             "day" -> { dir -> slideFar = true; goCell(stripCell(sel, dir), dir) }
             "week" -> { dir -> slideFar = true; goCell(stripCell(WEEK_CELL, dir), dir) }
@@ -395,7 +395,8 @@ class MainActivity : Activity(), SpectrumHost {
         scroll.onPullUp = if (view == "files" && openCourse == null) ::openSettings else null
         if (pendingSlide != 0) {
             // Another day: from the side it was swiped in from, or from close by after a tap.
-            Motion.slideIn(page, pendingSlide * if (slideFar) scroll.width * 0.35f else ui.dp(40f).toFloat())
+            // A swipe's page carries on at the finger's speed; a tap's comes from close by, from rest.
+            Motion.slideIn(page, pendingSlide * if (slideFar) scroll.width * 0.35f else ui.dp(40f).toFloat(), if (slideFar) scroll.releaseVelocity else 0f)
             pendingSlide = 0
         } else if (enter) {
             Motion.enter(page, ui.dp(16f).toFloat())
@@ -750,13 +751,13 @@ class MainActivity : Activity(), SpectrumHost {
      * grid slides over to the new week as a carousel ([WeekScreen.shift]), and the title and the strip's
      * dates roll over from the same side. (Drawing the whole page again dropped frames as it began.)
      */
-    private fun shiftWeek(by: Int) {
+    private fun shiftWeek(by: Int, pxPerSecond: Float = 0f) {
         if (by == 0) return
         val dir = Integer.signum(by)
         weekShift += by
         pickedDay = true // the day the strip lands on stays put when Day is opened from this week
         val page = content.getChildAt(content.childCount - 1)
-        if (view == "week" && page != null && WeekScreen.shift(page, this, dir)) {
+        if (view == "week" && page != null && WeekScreen.shift(page, this, dir, pxPerSecond)) {
             pendingSlide = dir
             showTitle(now())
             pendingSlide = 0

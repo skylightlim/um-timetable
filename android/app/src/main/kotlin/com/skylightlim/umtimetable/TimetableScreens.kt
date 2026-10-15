@@ -431,10 +431,10 @@ object WeekScreen {
     /**
      * [page] going to the week shown now ([Host.weekShift] has just moved, [dir] +1 for a later week):
      * only what changes changes. The grid's new week slides in from that side as the old one carries on
-     * out from where the finger left it, the two together like a carousel; the break card follows; the
+     * out from where the finger left it (at its speed, [pxPerSecond]), the two together like a carousel; the break card follows; the
      * Courses list is redrawn once the slide is over (it's below the grid). False if [page] isn't Week.
      */
-    fun shift(page: View, h: Host, dir: Int): Boolean {
+    fun shift(page: View, h: Host, dir: Int, pxPerSecond: Float = 0f): Boolean {
         val parts = page.tag as? Parts ?: return false
         val box = parts.gridBox
         val old = box.getChildAt(box.childCount - 1)
@@ -444,8 +444,10 @@ object WeekScreen {
         if (Motion.enabled && old != null && box.width > 0) {
             val from = old.translationX
             grid.translationX = from + dir * step
-            old.animate().translationX(-dir * step).alpha(0.3f).spring(Motion.SETTLE).withEndAction { box.removeView(old) }.start()
-            grid.animate().translationX(0f).spring(Motion.SETTLE).start()
+            // Both on one spring, already moving at the finger's speed when it let go.
+            val spring = Motion.SETTLE.toward(from, -dir * step, pxPerSecond)
+            old.animate().translationX(-dir * step).alpha(0.3f).spring(spring).withEndAction { box.removeView(old) }.start()
+            grid.animate().translationX(0f).spring(spring).start()
         } else if (old != null) {
             box.removeView(old)
         }

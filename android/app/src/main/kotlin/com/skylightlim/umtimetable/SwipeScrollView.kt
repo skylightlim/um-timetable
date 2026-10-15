@@ -38,6 +38,9 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     var onSwipeTarget: ((Int) -> Unit)? = null
     /** This swipe began on [swipeTarget]. */
     private var onTarget = false
+    /** The finger's speed across (px a second, + to the right) when the last swipe was let go, for what follows to carry on at. */
+    var releaseVelocity = 0f
+        private set
     private val dragged: View? get() = (if (onTarget) swipeTarget?.invoke() else null) ?: page
     /** Called when the page is pulled down past the threshold and let go. */
     var onPull: (() -> Unit)? = null
@@ -89,11 +92,17 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     }
 
     override fun dispatchTouchEvent(e: MotionEvent): Boolean {
-        if (onSwipe != null) {
-            if (e.actionMasked == MotionEvent.ACTION_DOWN) velocity = (velocity ?: VelocityTracker.obtain()).apply { clear() }
-            velocity?.addMovement(e)
-        }
+        // Every touch, for swipes and pulls alike: what they let go of carries on at the finger's speed.
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) velocity = (velocity ?: VelocityTracker.obtain()).apply { clear() }
+        velocity?.addMovement(e)
         return super.dispatchTouchEvent(e)
+    }
+
+    /** The finger's speed now, px a second: across ([y] false) or down. */
+    private fun speed(y: Boolean): Float {
+        val v = velocity ?: return 0f
+        v.computeCurrentVelocity(1000)
+        return if (y) v.yVelocity else v.xVelocity
     }
 
     /** A new touch: the drag state starts afresh. */
@@ -156,6 +165,7 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
                 if (abs(dx) > minDistance || flick) {
                     if (!past) Haptics.threshold(this, true) // a short flick: the bump it skipped
                     val dir = if (dx < 0) 1 else -1
+                    releaseVelocity = vx * 0.9f // the page moves at 0.9 of the finger
                     val target = onSwipeTarget
                     if (onTarget && target != null) {
                         dragged?.animate()?.cancel()
@@ -165,10 +175,10 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
                         swipe(dir)
                     }
                 } else {
-                    settle()
+                    settle(vx * 0.9f)
                 }
             }
-            MotionEvent.ACTION_CANCEL -> { swiping = false; settle() }
+            MotionEvent.ACTION_CANCEL -> { swiping = false; settle(0f) }
         }
         return true
     }
@@ -189,13 +199,14 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
             }
             MotionEvent.ACTION_UP -> {
                 pulling = false
+                // The page moves at half the finger's speed.
                 if (past) {
                     held = true
                     pullIndicator?.syncing()
-                    lower(pullIndicator?.height?.toFloat() ?: pullDistance)
+                    lower(pullIndicator?.height?.toFloat() ?: pullDistance, speed(true) * 0.5f)
                     onPull?.invoke()
                 } else {
-                    lower(0f)
+                    lower(0f, speed(true) * 0.5f)
                 }
             }
             MotionEvent.ACTION_CANCEL -> { pulling = false; lower(0f) }
@@ -219,7 +230,7 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
             }
             MotionEvent.ACTION_UP -> {
                 pullingUp = false
-                lower(0f)
+                lower(0f, speed(true) * 0.5f)
                 if (past) onPullUp?.invoke()
             }
             MotionEvent.ACTION_CANCEL -> { pullingUp = false; lower(0f) }
@@ -227,14 +238,14 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
         return true
     }
 
-    /** Moves the page to [y] below where it rests (above, when negative), the indicators following it. */
-    private fun lower(y: Float) {
+    /** Moves the page to [y] below where it rests (above, when negative), the indicators following it; let go at [pxPerSecond]. */
+    private fun lower(y: Float, pxPerSecond: Float = 0f) {
         val page = page ?: return
         fun follow(at: Float) {
             pullIndicator?.follow(at.coerceAtLeast(0f))
             pullUpIndicator?.follow((-at).coerceAtLeast(0f))
         }
-        page.animate().translationY(y).spring(Motion.SETTLE).setUpdateListener { follow(page.translationY) }.start()
+        page.animate().translationY(y).spring(Motion.SETTLE.toward(page.translationY, y, pxPerSecond)).setUpdateListener { follow(page.translationY) }.start()
         if (!Motion.enabled) follow(y)
     }
 
@@ -256,10 +267,10 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
         pullUpIndicator?.follow(0f)
     }
 
-    /** Not far enough: back to where it was. */
-    private fun settle() {
+    /** Not far enough: back to where it was, from the speed it was let go at. */
+    private fun settle(pxPerSecond: Float) {
         val page = dragged ?: return
-        page.animate().translationX(0f).spring(Motion.BOUNCY).start()
+        page.animate().translationX(0f).spring(Motion.BOUNCY.toward(page.translationX, 0f, pxPerSecond)).start()
         Motion.fade(page, page.alpha, 1f)
     }
 
