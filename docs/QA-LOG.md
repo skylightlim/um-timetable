@@ -18,6 +18,20 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (Sign out: the phone cries while it's held)
+
+**Asked for:** while Sign out is held, vibrate as if the app is crying, not just once at the start.
+
+**Change** (`Haptics.cry` and `hush`; `HoldButton`): pressing the button starts one vibration lasting
+the rest of the hold (1.1 s from the start). It's sobbing: bursts of three hics (a low tick, then
+ticks), each burst stronger (from 30% up) and quicker than the last, with shorter pauses between, and
+a rising wail filling the last stretch. Built from the motor's primitives at the user's vibration
+strength, timed with their real durations; a phone without them gets the same bursts as pulses.
+Letting go stops it at once; signing out stops it and gives the threshold click. Off means silent.
+
+**Checked:** it builds; unit tests pass. Not felt yet: hold Sign out on the phone. `dumpsys
+vibrator_manager` will show what was played.
+
 ## 15 October 2026 (web screens: a top bar like the main screen's)
 
 **Asked for:** on the Spectrum and MAYA pages the top bar looked ugly and unrefined. Design it with the

@@ -126,8 +126,8 @@ object ConfirmDialog {
 
 /**
  * A button that acts only when held, for what can't be undone (Sign out deletes everything). Pressed, a
- * darker fill sweeps across it in [HOLD_MS] while it sinks a little; at the end it pops, vibrates and runs
- * [onHeld]. Let go early (or slide off) and the fill drains back; a quick tap shakes it, as its label says
+ * darker fill sweeps across it in [HOLD_MS] while it sinks a little and the phone sobs ([Haptics.cry]);
+ * at the end it pops, clicks and runs [onHeld]. Let go early (or slide off) and the fill drains back; a quick tap shakes it, as its label says
  * to hold. TalkBack's double tap runs it at once ([action] is its name there). One line, shrinking if the
  * half card is narrow.
  */
@@ -188,7 +188,8 @@ class HoldButton(ui: Ui, label: String, action: String, fill: Int, ink: Int, pri
                 holding = true
                 downAt = SystemClock.uptimeMillis()
                 parent?.requestDisallowInterceptTouchEvent(true)
-                Haptics.tick(this)
+                // The app cries for as long as it's held, harder toward the end.
+                Haptics.cry(this, (HOLD_MS * (1 - progress)).toLong())
                 // Linear, so it reads as time running out; a little sink over the same time.
                 fillTo(1f, (HOLD_MS * (1 - progress)).toLong(), null)
                 animate().scaleX(0.97f).scaleY(0.97f).setDuration(HOLD_MS).setInterpolator(null).start()
@@ -205,6 +206,7 @@ class HoldButton(ui: Ui, label: String, action: String, fill: Int, ink: Int, pri
     private fun letGo(tap: Boolean) {
         holding = false
         timer.removeCallbacks(done)
+        Haptics.hush(this)
         fillTo(0f, 260, Motion.QUICK)
         animate().scaleX(1f).scaleY(1f).spring(Motion.BOUNCY).start()
         if (!tap) return
@@ -221,6 +223,7 @@ class HoldButton(ui: Ui, label: String, action: String, fill: Int, ink: Int, pri
         holding = false
         timer.removeCallbacks(done)
         fillTo(1f, 80, null)
+        Haptics.hush(this)
         Haptics.threshold(this, true)
         if (!Motion.enabled) return onHeld()
         // A pop, then the action once it's seen.
