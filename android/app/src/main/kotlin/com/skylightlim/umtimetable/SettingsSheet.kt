@@ -24,12 +24,15 @@ object SettingsSheet {
      */
     fun show(h: SpectrumHost, context: Context) = Open(h, context).also { it.sheet.show() }
 
+    /** What a redrawn sheet shows moving: the look's pill gliding on from [lookFrom]. */
+    data class Moved(val lookFrom: Int? = null)
+
     /** The sheet on screen. */
     class Open(private val h: SpectrumHost, private val context: Context) {
         val sheet: BottomSheet = BottomSheet(context, content(), h.ui.p.dark)
         val showing get() = sheet.showing
 
-        private fun content(): View = build(h, context, restyle = ::restyle) { sheet.close() }
+        private fun content(moved: Moved? = null): View = build(h, context, moved = moved, restyle = ::restyle) { sheet.close() }
 
         /** Redrawn as it is now: the app is back from what a row opened (a new timetable, notifications allowed, signed in). */
         fun refresh() = sheet.replace(content(), null, h.ui.p.dark)
@@ -39,26 +42,28 @@ object SettingsSheet {
 
         /**
          * A new look or theme ([change]): the page behind takes it from the title, and the sheet, still
-         * open, from [from] (what was tapped). With the same colours (Auto to Light on a light phone) the
-         * sheet stays as it is.
+         * open, from [from] (what was tapped), redrawn showing [moved]. With the same colours (Auto to
+         * Light on a light phone) the sheet stays as it is, its switch already gliding.
          */
-        private fun restyle(from: View, change: () -> Unit) {
+        private fun restyle(from: View, moved: Moved, change: () -> Unit) {
             val before = h.ui.p
             val at = sheet.centreOf(from)
             change()
-            if (h.ui.p != before) sheet.replace(content(), at, h.ui.p.dark)
+            if (h.ui.p != before) sheet.replace(content(moved), at, h.ui.p.dark)
         }
     }
 
     /**
-     * The sheet's content. [restyle] makes a change of look or theme, given what was tapped; [close]
-     * slides the sheet away.
+     * The sheet's content. [restyle] makes a change of look or theme, given what was tapped and what the
+     * redrawn sheet should show moving; [moved] is that, when this is the redrawn sheet. [close] slides
+     * the sheet away.
      */
     fun build(
         h: SpectrumHost,
         context: Context,
         signedIn: Boolean = SpectrumStore.signedIn(context),
-        restyle: (View, () -> Unit) -> Unit = { _, change -> change() },
+        moved: Moved? = null,
+        restyle: (View, Moved, () -> Unit) -> Unit = { _, _, change -> change() },
         close: () -> Unit,
     ): View {
         val ui = h.ui
@@ -122,11 +127,13 @@ object SettingsSheet {
             setOnClickListener { onClick() }
         }
 
-        // The look: it spreads over the page from the title, and over the sheet from the switch.
+        // The look: it spreads over the page from the title, and over the sheet from the option tapped, its
+        // pill still gliding there from the old one.
         label("Appearance", top = 16f)
-        lateinit var look: View
-        look = ui.segmented(Look.entries.map { it.label }, h.look.ordinal, fill = true) { i -> restyle(look) { h.setLook(Look.entries[i]) } }
-        sheet.addView(look)
+        sheet.addView(ui.segmented(Look.entries.map { it.label }, h.look.ordinal, fill = true, from = moved?.lookFrom) { i, v ->
+            val from = h.look.ordinal
+            restyle(v, Moved(lookFrom = from)) { h.setLook(Look.entries[i]) }
+        })
 
         // The accent scheme: a swatch of each, the chosen one outlined; it spreads as the look does, from the swatch.
         label("Theme")
@@ -145,7 +152,7 @@ object SettingsSheet {
                         for (c in scheme.courseColors.take(4)) addView(View(context).apply { background = ui.shape(c, 99f) }, LinearLayout.LayoutParams(ui.dp(9), ui.dp(9)))
                     }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
                     addView(ui.text(scheme.label, 13f, if (chosen) p.text else p.muted, ui.f.bodySemi), LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(6) })
-                    if (!chosen) setOnClickListener { Haptics.tick(this); restyle(this) { h.setScheme(scheme) } }
+                    if (!chosen) setOnClickListener { Haptics.tick(this); restyle(this, Moved()) { h.setScheme(scheme) } }
                 }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             }
         })
@@ -168,7 +175,7 @@ object SettingsSheet {
         ))
 
         label("Vibration")
-        sheet.addView(ui.segmented(Haptics.Level.entries.map { it.label }, Haptics.level(context).ordinal, fill = true) { i -> Haptics.setLevel(context, Haptics.Level.entries[i]) })
+        sheet.addView(ui.segmented(Haptics.Level.entries.map { it.label }, Haptics.level(context).ordinal, fill = true) { i, _ -> Haptics.setLevel(context, Haptics.Level.entries[i]) })
 
         // The app's version, and the newest one on GitHub (Updater).
         section("About", listOf(

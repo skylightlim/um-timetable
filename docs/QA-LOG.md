@@ -18,6 +18,20 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (switches glide to the new option)
+
+**Asked for:** changing Appearance or Vibration, the highlight just appeared on the new option; it
+should move there.
+
+**Change** (`Ui.segmented`, `SegmentPill`): the accent pill is drawn by the switch's row behind its
+options, at an option's index that's fractional while it moves. A tap glides it to the option on the
+app's bouncy spring; the new label turns to the ink colour as the pill arrives and the old one back to
+grey (quickly, as the day strip's labels do). With a new look the Settings sheet is redrawn in the new
+colours (previous entry): its Appearance switch starts at the old option and glides on, and the new
+colours spread from the option tapped. News' For me / All switch is the same control.
+
+**Checked:** it builds; unit tests pass. Tried on the phone: see the entry for this batch above.
+
 ## 15 October 2026 (Settings stays open)
 
 **Asked for:** after a setting is changed or a button pressed, the Settings sheet shouldn't hide by
@@ -36,7 +50,7 @@ itself; only when the user hides it.
 - Check for updates and Sign out show their card over the sheet. Sign out restarts the screen, so the
   sheet is dismissed with it (`onDestroy`) rather than left as a leaked window.
 
-**Checked:** it builds; unit tests pass. Tried on the phone: see the entry for this batch below.
+**Checked:** it builds; unit tests pass. Tried on the phone: see the entry for this batch above.
 
 ## 15 October 2026 (status-bar icon: the shield)
 
