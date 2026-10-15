@@ -250,7 +250,7 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
 }
 
 /**
- * What pulling a page down uncovers: the cow and the horse ([DuelView]) swinging their swords in as the
+ * What pulling a page down uncovers: the cow and the horse ([DuelView]) swinging their lightsabers in as the
  * page comes down, crossing them when it's far enough to sync, fighting while the sync runs and
  * clashing once more when it's done; with what letting go will do and when Spectrum last synced.
  * It stays pinned behind the top of the page, so the duel is in full view by the time they cross.
@@ -301,7 +301,7 @@ class PullIndicator(private val ui: Ui, private val lastSync: () -> String) : Li
 
 /**
  * What pulling the Courses list up uncovers: the settings gear, turning as the page comes up, and what
- * letting go will do. Past the threshold it gives a little pop, as the swords crossing do for a sync.
+ * letting go will do. Past the threshold it gives a little pop, as the blades crossing do for a sync.
  */
 @SuppressLint("ViewConstructor")
 class PullUpIndicator(ui: Ui) : LinearLayout(ui.context) {

@@ -18,6 +18,33 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (the cow and the horse redesigned: six-packs and lightsabers)
+
+**Asked for** (thingstodo, FOR SYNC animation): redesign the cow and the horse with Duolingo's bird as
+the style reference, give them six-packs, and have them duel with lightsabers instead of swords; funny
+and hilarious is fine.
+
+**Change** (`DuelView`: the shapes, `saberArm`, `sixPack`, `eyes`, the spark):
+- Round, chunky cartoon shapes like Duo's: the cow one big round body; the horse a round crown with a
+  long face, chin tucked in, on a thick neck. Both have huge round eyes with glinting pupils turned to
+  the other, and angry brows.
+- Funny: the cow shouts as it fights, mouth open with its tongue out; the horse grins with two buck
+  teeth and has a crest of hair standing up between its ears and a mane down its neck.
+- Six-packs: chest arcs and a rounded block in thirds and halves on each belly. The saber arm has a
+  bicep.
+- Lightsabers: a hilt with two bands and an emitter in the hoof, the blade in two layers of glow. On a
+  light page the core is white, outlined; on a dark page (and the sign-in poster's blue) the bright ink
+  is the core. The clash is a flash and five rays.
+- Still monochrome, same 120 × 60 box, same poses and swing: the pull mark, the loader and the sign-in
+  fight all use it, and the blades still cross where the spark flies. Nothing pokes above the box (the
+  horse's ears and crest sit lower than at first), so the pull mark doesn't cut them off.
+- Prototyped as SVG first (light, dark, poster; at the phone's real size), and the Kotlin shapes were
+  generated from the prototype rather than copied by hand.
+
+**Checked:** it builds; unit tests pass. Drawn off-screen on the phone: the pull frames light and dark
+(`--es view duel`) and the sign-in fight's frames (`--es view scene`), matching the prototype. The pull
+and the loader moving: on the phone.
+
 ## 15 October 2026 (theme dots: the big one no longer cut off at the top of its hop)
 
 **Reported:** at the top of its hop, the largest dot was cut off.
