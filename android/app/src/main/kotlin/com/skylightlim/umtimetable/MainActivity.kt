@@ -882,11 +882,8 @@ class MainActivity : Activity(), SpectrumHost {
     override fun openPlan(from: android.graphics.RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float) =
         PlanSheet.show(ui, from, plan, isNew, maxEnd, hourPx, onRepick = { draft -> weekGrid()?.startRepick(draft) }) { render(keepScroll = true) }
 
-    /** The week grid on the page now (the minute's redraw may have replaced the one a card came from). */
-    private fun weekGrid(): WeekGrid? {
-        fun find(v: View): WeekGrid? = v as? WeekGrid ?: (v as? ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { find(g.getChildAt(it)) } }
-        return find(content)
-    }
+    /** The week grid on the page now (the minute's redraw may have replaced the one a card came from; mid-slide, the newer of two). */
+    private fun weekGrid(): WeekGrid? = content.getChildAt(content.childCount - 1)?.let(WeekScreen::grid) as? WeekGrid
 
     override fun showCourse(id: Int) {
         openCourse = id
