@@ -464,7 +464,8 @@ class MainActivity : Activity(), SpectrumHost {
             null -> "Week" to null
         }
         val weekParts = listOfNotNull(
-            ui.text(weekName, 22f, if (week) p.ground else p.text, ui.f.sign),
+            // One line, shrinking to fit the chip: "Revision" at 22sp is wider than it.
+            ui.fitText(weekName, 22f, if (week) p.ground else p.text, ui.f.sign, lines = 1),
             weekOf?.let { ui.text(it, 10.5f, if (week) p.ground else p.muted, ui.f.bodyBold, caps = true, spacing = 0.1f) },
         )
         for ((k, t) in weekParts.withIndex()) {

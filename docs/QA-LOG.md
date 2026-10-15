@@ -18,6 +18,16 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (the strip's Week chip: "Revision" fits)
+
+**Asked for:** make "Revision" fit its box on the strip, smaller if need be.
+
+**Change:** the Week chip's label is one line that shrinks to fit the chip (`fitText`, from 22sp). On
+this phone "Revision" comes out at about 17sp; "W3", "Break" and "Exams" stay 22sp or nearly.
+
+**Checked:** it builds; unit tests pass. The strip isn't drawn by the off-screen renderer: see it on
+the phone in revision week (from 18 January), or swipe Week 14 weeks on.
+
 ## 15 October 2026 (pressing a card no longer uncovers the scrim's edges)
 
 **Reported:** pressing the plan card, the dark see-through layer behind it showed white gaps.
