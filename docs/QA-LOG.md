@@ -18,6 +18,21 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (the chosen theme's dots hop)
+
+**Asked for:** when the theme colour is changed, all the dots in the chosen theme should jump or bounce.
+
+**Change** (`Motion.hop`, `SettingsSheet`): picking a theme redraws the still-open sheet in its colours
+(spreading from the swatch), and the new swatch's five dots jump one after another, left to right, 70 ms
+apart. Each one crouches, leaps (9dp for the big accent dot, 8dp for the course dots), lands with a
+squash from its bottom edge, then makes a smaller second hop: about 0.7 s each, all done in about a
+second. The swatch doesn't clip them; they stay inside its padding. Nothing hops with "Remove
+animations" on.
+
+**Checked:** it builds; unit tests pass. The sheet drawn off-screen on the phone (debug renderer, light
+Gold and dark Blue) still shows the switches' pills and the swatches as before. The hop itself can't be
+drawn off-screen: try it on the phone.
+
 ## 15 October 2026 (switches glide to the new option)
 
 **Asked for:** changing Appearance or Vibration, the highlight just appeared on the new option; it

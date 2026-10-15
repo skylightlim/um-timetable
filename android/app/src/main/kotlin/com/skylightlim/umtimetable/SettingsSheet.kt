@@ -24,8 +24,8 @@ object SettingsSheet {
      */
     fun show(h: SpectrumHost, context: Context) = Open(h, context).also { it.sheet.show() }
 
-    /** What a redrawn sheet shows moving: the look's pill gliding on from [lookFrom]. */
-    data class Moved(val lookFrom: Int? = null)
+    /** What a redrawn sheet shows moving: the look's pill gliding on from [lookFrom]; the chosen theme's dots hopping ([hop]). */
+    data class Moved(val lookFrom: Int? = null, val hop: Boolean = false)
 
     /** The sheet on screen. */
     class Open(private val h: SpectrumHost, private val context: Context) {
@@ -135,7 +135,8 @@ object SettingsSheet {
             restyle(v, Moved(lookFrom = from)) { h.setLook(Look.entries[i]) }
         })
 
-        // The accent scheme: a swatch of each, the chosen one outlined; it spreads as the look does, from the swatch.
+        // The accent scheme: a swatch of each, the chosen one outlined; it spreads as the look does, from the
+        // swatch, whose dots then hop.
         label("Theme")
         sheet.addView(ui.row(gap = 8f).apply {
             for (scheme in Scheme.entries) {
@@ -147,12 +148,17 @@ object SettingsSheet {
                     background = ui.pressable(ui.shape(p.surface2, 12f, if (chosen) p.text else 0, 2f), 12f)
                     contentDescription = "${scheme.label} theme${if (chosen) ", chosen" else ""}"
                     // The theme's accent, then four of its course colours.
-                    addView(ui.row(gap = 4f).apply {
+                    clipChildren = false // the dots hop up into the swatch's padding
+                    val dots = ui.row(gap = 4f).apply {
+                        clipChildren = false
                         addView(View(context).apply { background = ui.shape(scheme.applyTo(p).accent, 99f) }, LinearLayout.LayoutParams(ui.dp(18), ui.dp(18)).apply { marginEnd = ui.dp(2) })
                         for (c in scheme.courseColors.take(4)) addView(View(context).apply { background = ui.shape(c, 99f) }, LinearLayout.LayoutParams(ui.dp(9), ui.dp(9)))
-                    }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+                    }
+                    addView(dots, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+                    // Just chosen: its dots jump one after another, left to right, as the new colours spread from here.
+                    if (chosen && moved?.hop == true) for (i in 0 until dots.childCount) Motion.hop(dots.getChildAt(i), 90L + i * 70L, ui.dp(if (i == 0) 9f else 8f).toFloat())
                     addView(ui.text(scheme.label, 13f, if (chosen) p.text else p.muted, ui.f.bodySemi), LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(6) })
-                    if (!chosen) setOnClickListener { Haptics.tick(this); restyle(this, Moved()) { h.setScheme(scheme) } }
+                    if (!chosen) setOnClickListener { Haptics.tick(this); restyle(this, Moved(hop = true)) { h.setScheme(scheme) } }
                 }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             }
         })

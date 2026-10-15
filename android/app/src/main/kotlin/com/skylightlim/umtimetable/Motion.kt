@@ -341,6 +341,33 @@ object Motion {
         v.animate().scaleX(1f).scaleY(1f).spring(BOUNCY).start()
     }
 
+    /**
+     * A little jump on the spot after [delay] ms: it crouches, leaps [height] px, lands with a squash, then
+     * a smaller hop, about 0.7 s in all. Its parent must not clip it (clipChildren false up to where
+     * there's room). Squashes from its bottom edge, so it looks to land on something.
+     */
+    fun hop(v: View, delay: Long, height: Float) {
+        if (!enabled) return
+        // A keyframe's interpolator shapes the stretch that ends at it: rising slows, falling speeds up.
+        val up = android.view.animation.DecelerateInterpolator(1.6f)
+        val down = android.view.animation.AccelerateInterpolator(1.6f)
+        fun key(t: Float, value: Float, ease: TimeInterpolator? = null) = android.animation.Keyframe.ofFloat(t, value).apply { ease?.let { interpolator = it } }
+        fun keys(property: android.util.Property<View, Float>, vararg k: android.animation.Keyframe) = android.animation.PropertyValuesHolder.ofKeyframe(property, *k)
+        val y = keys(View.TRANSLATION_Y, key(0f, 0f), key(0.1f, 0f), key(0.36f, -height, up), key(0.58f, 0f, down), key(0.7f, -height * 0.32f, up), key(0.82f, 0f, down), key(1f, 0f))
+        // Crouch, stretch on the way up, squash on landing, and less on the second.
+        val sy = keys(View.SCALE_Y, key(0f, 1f), key(0.1f, 0.78f), key(0.22f, 1.12f), key(0.36f, 1f), key(0.58f, 1f), key(0.63f, 0.8f), key(0.7f, 1.04f), key(0.82f, 1f), key(0.86f, 0.92f), key(1f, 1f))
+        val sx = keys(View.SCALE_X, key(0f, 1f), key(0.1f, 1.16f), key(0.22f, 0.92f), key(0.36f, 1f), key(0.58f, 1f), key(0.63f, 1.15f), key(0.7f, 0.98f), key(0.82f, 1f), key(0.86f, 1.05f), key(1f, 1f))
+        v.post {
+            v.pivotX = v.width / 2f
+            v.pivotY = v.height.toFloat()
+            ObjectAnimator.ofPropertyValuesHolder(v, y, sy, sx).apply {
+                duration = 720
+                startDelay = delay
+                interpolator = null
+            }.start()
+        }
+    }
+
     /** The drawn chevron of a fold: pointing down when shut, up when open. */
     fun chevron(ui: Ui, open: Boolean, color: Int = ui.p.muted) = ImageView(ui.context).apply {
         setImageResource(R.drawable.ic_chevron)
