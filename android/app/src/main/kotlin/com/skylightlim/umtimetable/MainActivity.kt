@@ -502,7 +502,7 @@ class MainActivity : Activity(), SpectrumHost {
         val line = when {
             page != null -> SpectrumScreens.summary(this, view)
             view == "day" -> dayGlance(tt.day(sel))
-            view == "week" -> weekDeadlines(daysTo(1))
+            view == "week" -> weekLine(daysTo(1))
             else -> null
         }
         val today = view == "day" && days == 0
@@ -561,6 +561,16 @@ class MainActivity : Activity(), SpectrumHost {
         fun remove() { (poster.parent as? ViewGroup)?.removeView(poster) }
         if (!Motion.enabled) { remove(); return }
         poster.animate().translationY(-poster.height.toFloat()).setInterpolator(Motion.EXIT).setDuration(320).withEndAction { remove() }.start()
+    }
+
+    /**
+     * The line under Week's title: a week of UM's calendar without classes, the week's public holidays
+     * ("Deepavali Mon"), then its Spectrum deadlines.
+     */
+    private fun weekLine(monday: Int): String? {
+        val first = LocalDate.now().plusDays(monday.toLong())
+        val holidays = (0..4).mapNotNull { k -> Holidays.on(first.plusDays(k.toLong()))?.let { "${it.name} ${DAY_SHORT[k + 1]}" } }
+        return listOfNotNull(weekOff(first), holidays.joinToString(", ").ifEmpty { null }, weekDeadlines(monday)).joinToString(" · ").ifEmpty { null }
     }
 
     /**

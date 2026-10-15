@@ -29,6 +29,7 @@ import java.io.File
  * view due with --ez sample true draws made-up deadlines (late, minutes, hours, days) and attendance
  * (open, about to open, not in Spectrum's calendar).
  * --ef fontScale 1.3 draws at a larger system font size (this render only).
+ * --ei weekShift N draws day and week N weeks on from the strip's own week (as swiping on Week does).
  * --es scheme gold|blue|red draws in that accent scheme instead of the chosen one.
  * --ez open true draws every fold and "Show more" opened.
  * view webbar draws the web screens' top bar (--es bar spectrum|maya|timeedit|login).
@@ -59,6 +60,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val scheme = forced ?: Scheme.load(context)
         val host = Host(c, Ui(c, scheme.applyTo(if (dark) Palette.DARK else Palette.LIGHT), Fonts(c)), now, forced).apply {
             openCourse = intent.getIntExtra("course", 0).takeIf { it > 0 }
+            weekShift = intent.getIntExtra("weekShift", 0)
             if (intent.getBooleanExtra("open", false)) expanded = object : HashSet<String>() { override fun contains(element: String) = true }
         }
         val page = when (view) {
@@ -366,6 +368,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
     private class Host(private val context: Context, override val ui: Ui, private val at: Now? = null, private val scheme0: Scheme? = null) : SpectrumHost {
         override val timetable get() = scheme0?.let { Timetable.parse(Timetable.json(context)).recolored(it) } ?: Timetable.load(context)
         override fun now() = at ?: Now.current()
+        override var weekShift = 0
         override fun render() = Unit
         override fun goDay(day: Int, dir: Int) = Unit
         override fun setView(view: String) = Unit

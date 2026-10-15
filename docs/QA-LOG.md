@@ -18,6 +18,37 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (holidays on Week and Day)
+
+**Asked for** (thingstodo, Features): can holidays come from Spectrum, so the week calendar shows a
+week or day is on holiday?
+
+**Found:** no. Spectrum's calendar (core_calendar_get_calendar_events with site events, and the
+monthly view for October to December) holds only course events: 141 attendance sessions and 3
+assignment deadlines, and no site events at all. The raw replies were deleted from the phone and the
+computer afterwards. The user chose built-in Kuala Lumpur public holidays instead.
+
+**Change** (new `Holidays`; `weekOff`, `offCard`, `WeekGrid.drawHoliday`, `MainActivity.weekLine`):
+- `Holidays`: Kuala Lumpur's public holidays from September 2026 to December 2027, from the Prime
+  Minister's Department schedules (HKA-2026.pdf, HKA_2027.pdf, the W.P. Kuala Lumpur column), with
+  the Monday after a Sunday holiday as a replacement day (Holidays Act 1951, s. 3). Not 8 June 2027,
+  which is disputed (Awal Muharram on Sunday, the Agong's birthday already on Monday). Dates the
+  schedule marks as subject to change are flagged.
+- Week: a holiday's column is tinted and hatched in the accent, with its name running up the middle;
+  its day name is in the accent and its classes faded. The line under the title names the week's
+  holidays ("Deepavali Mon"). A break, revision or exam week from UM's calendar has a card above the
+  grid ("Mid-semester break · No classes this week"), the line says so too, and every class is
+  faded.
+- Day: a holiday has a card at the top ("Public holiday · Deepavali (replacement) · In Kuala Lumpur",
+  "the date may still move" if so), as does a day in a week without classes; its classes are faded
+  and there's no Now block.
+- Debug: `--ei weekShift N` draws Day and Week N weeks on.
+
+**Checked:** unit tests pass, with new `HolidaysTest`: this semester's dates, KL's own and not
+Selangor's, replacements only after Sundays, and weekdays matching the schedule's. Drawn off-screen on
+the phone: Week 4 weeks on (9 November, Deepavali's replacement Monday), Week 7 weeks on in dark (the
+mid-semester break), and that Monday's Day page.
+
 ## 15 October 2026 (Week: swipe to other weeks)
 
 **Asked for** (thingstodo, Features): on the week page, swipe to another week, next or previous, to use

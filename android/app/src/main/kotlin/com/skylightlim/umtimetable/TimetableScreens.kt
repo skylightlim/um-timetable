@@ -19,6 +19,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import java.time.LocalDate
 import java.util.Calendar
 import kotlin.math.ceil
 
@@ -41,6 +42,32 @@ interface Host {
 
 /** Days from today to [day] (1 Monday … 5 Friday) of the week shown, [Host.weekShift] weeks on from the strip's own. */
 fun Host.daysTo(day: Int): Int = daysFromToday(timetable, now(), day) + 7 * weekShift
+
+/** The date of [day] (1 Monday … 5 Friday) in the week shown. */
+fun Host.dateOf(day: Int): LocalDate = LocalDate.now().plusDays(daysTo(day).toLong())
+
+/** A week of UM's calendar with no classes: "Mid-semester break", "Revision week", "Exams"; null for a teaching week. */
+fun weekOff(date: LocalDate): String? = when (AcademicCalendar.week(date)?.kind) {
+    AcademicCalendar.Kind.BREAK -> "Mid-semester break"
+    AcademicCalendar.Kind.REVISION -> "Revision week"
+    AcademicCalendar.Kind.EXAMS -> "Exams"
+    else -> null
+}
+
+/**
+ * Why a day or week has no classes: a public holiday in Kuala Lumpur ([holiday]), or UM's break,
+ * revision or exam week ([week]). A card in the accent's tint, above the day's classes or the week grid.
+ */
+fun offCard(ui: Ui, holiday: Holidays.Holiday?, week: String?): View = ui.column().apply {
+    val p = ui.p
+    background = ui.shape(Palette.mix(p.accent, p.surface, 0.16f), 18f)
+    setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(16))
+    addView(ui.label(if (holiday != null) "Public holiday" else "UM calendar", p.accentText, 11f))
+    addView(ui.text(holiday?.label ?: week.orEmpty(), 26f, p.text, ui.f.sign), ui.wide(top = 4f))
+    val sub = if (holiday != null) listOfNotNull("In Kuala Lumpur", week, "the date may still move".takeIf { holiday.tentative })
+    else listOf("No classes this week")
+    addView(ui.text(sub.joinToString(" · "), 13f, p.muted), ui.wide(top = 2f))
+}
 
 /**
  * The day Day opens on: today while it still has a class to come, otherwise the next weekday with
@@ -162,10 +189,15 @@ object DayScreen {
         val now = h.now()
         val list = h.timetable.day(day)
         val isToday = h.daysTo(day) == 0
+        // A public holiday, or a week of UM's calendar without classes: said first, and the classes faded.
+        val holiday = Holidays.on(h.dateOf(day))
+        val week = weekOff(h.dateOf(day))
+        val off = holiday != null || week != null
         // The day's name and date are in the top bar.
         val page = ui.column().apply { setPadding(0, ui.dp(2), 0, 0) }
-        // The Now block is for the week the strip starts on, not another one swiped to.
-        if (h.weekShift == 0 && day == homeDay(h.timetable, now)) page.addView(status(h, now), ui.wide(bottom = 18f))
+        if (off) page.addView(offCard(ui, holiday, week), ui.wide(bottom = 14f))
+        // The Now block is for the week the strip starts on, not another one swiped to, nor a day off.
+        if (!off && h.weekShift == 0 && day == homeDay(h.timetable, now)) page.addView(status(h, now), ui.wide(bottom = 18f))
         if (list.isEmpty()) page.addView(ui.text("No classes", 15f, p.muted), ui.wide(top = 12f))
 
         val agenda = ui.column(gap = 8f)
@@ -173,6 +205,7 @@ object DayScreen {
             val prev = list.getOrNull(i - 1)
             if (prev != null && s.start > prev.end) agenda.addView(gap(ui, prev, s, isToday, now))
             val state = when {
+                off -> "past"
                 !isToday -> ""
                 now.min >= s.end -> "past"
                 now.min >= s.start -> "live"
@@ -287,6 +320,8 @@ object WeekScreen {
         val tt = h.timetable
         // The week's dates are in the top bar and its week of the semester on the Week chip.
         val page = ui.column().apply { setPadding(0, ui.dp(2), 0, 0) }
+        // A break, revision or exam week says so above the grid (whose classes are then faded).
+        weekOff(h.dateOf(1))?.let { page.addView(offCard(ui, null, it), ui.wide(bottom = 12f)) }
         val card = ui.column().apply {
             background = ui.shape(p.surface, 18f, p.line)
             setPadding(ui.dp(2), ui.dp(10), ui.dp(6), ui.dp(8))
@@ -380,6 +415,9 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
     private val blocks = mutableListOf<Pair<RectF, Session>>()
     /** Today's column, when the week shown (its Monday [monday] days from today) is this week. */
     private val today = now.dow.takeIf { it in 1..5 && monday + it - 1 == 0 }
+    /** Each day's public holiday in Kuala Lumpur, Monday first; and whether the week is one of UM's without classes. */
+    private val holidays = (0..4).map { Holidays.on(LocalDate.now().plusDays((monday + it).toLong())) }
+    private val weekOff = weekOff(LocalDate.now().plusDays(monday.toLong())) != null
 
     // The grid's boxes are as tall as their hours and a fifth of the width, so its text follows the system
     // font size only up to 1.15×: past that, names broke into syllables ("Pro- / gram- / ming"). A class's
@@ -393,6 +431,8 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
     private val namePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodySemi; textSize = sp(10f) }
     private val roomPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.sign; textSize = sp(15f) }
     private val nowPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.monoBold; textSize = sp(9.5f); color = p.accentInk; textAlign = Paint.Align.CENTER }
+    private val holidayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodyBold; textSize = sp(10f); color = p.accentText; textAlign = Paint.Align.CENTER; letterSpacing = 0.12f }
+    private val hatch = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = p.accent; alpha = 70; strokeWidth = ui.dp(1f).toFloat() }
 
     init {
         contentDescription = "Week timetable: " + tt.sessions.joinToString("; ") { "${DAY_NAMES[it.day]} ${clockText(it.start)} ${it.course.code} ${it.type} ${it.room}" }
@@ -418,12 +458,14 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
         for (d in 1..5) {
             val left = axis + gapX + (d - 1) * (colW + gapX)
             val isToday = d == today
-            dayPaint.color = if (isToday) p.accentText else p.muted
+            val holiday = holidays[d - 1]
+            dayPaint.color = if (isToday || holiday != null) p.accentText else p.muted
             canvas.drawText(DAY_SHORT[d], left + colW / 2, head - ui.dp(8f), dayPaint)
             if (isToday) {
                 fill.color = Palette.mix(p.accent, p.surface, 0.07f)
                 canvas.drawRoundRect(RectF(left, top, left + colW, bottom), ui.dp(6f).toFloat(), ui.dp(6f).toFloat(), fill)
             }
+            if (holiday != null) drawHoliday(canvas, holiday, RectF(left, top, left + colW, bottom))
             fill.color = p.line
             for (h in 0..11) canvas.drawRect(left, top + h * hour, left + colW, top + h * hour + 1, fill)
             // A faint guide across the other days, under their classes, so "now" lines up across the week.
@@ -433,7 +475,8 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
                 canvas.drawRect(left, nowY - ui.dp(0.5f), left + colW, nowY + ui.dp(0.5f), fill)
                 fill.alpha = 255
             }
-            for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), isToday && now.min >= s.end)
+            // Faded: today's classes that are over, and every class on a holiday or in a week without classes.
+            for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), (isToday && now.min >= s.end) || holiday != null || weekOff)
         }
         if (nowY == null || today == null) return
         // Today's line goes over the classes (a class in progress is when it matters most), in the app's
@@ -450,6 +493,27 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
         fill.color = p.accent
         canvas.drawRoundRect(pill, pillH / 2, pillH / 2, fill)
         canvas.drawText(clockText(now.min.toInt()), pill.centerX(), nowY + nowPaint.textSize * 0.35f, nowPaint)
+    }
+
+    /** A holiday's column: tinted and hatched in the accent, its name running up the middle, under the (faded) classes. */
+    private fun drawHoliday(canvas: Canvas, holiday: Holidays.Holiday, col: RectF) {
+        val radius = ui.dp(6f).toFloat()
+        fill.color = Palette.mix(p.accent, p.surface, 0.12f)
+        canvas.drawRoundRect(col, radius, radius, fill)
+        canvas.save()
+        canvas.clipRect(col)
+        val step = ui.dp(10f).toFloat()
+        var x = col.left - col.height()
+        while (x < col.right) {
+            canvas.drawLine(x, col.bottom, x + col.height(), col.top, hatch)
+            x += step
+        }
+        canvas.restore()
+        canvas.save()
+        canvas.rotate(-90f, col.centerX(), col.centerY())
+        val name = TextUtils.ellipsize(holiday.label.uppercase(), holidayPaint, col.height() - ui.dp(24f), TextUtils.TruncateAt.END).toString()
+        canvas.drawText(name, col.centerX(), col.centerY() + holidayPaint.textSize * 0.35f, holidayPaint)
+        canvas.restore()
     }
 
     private fun drawBlock(canvas: Canvas, s: Session, r: RectF, past: Boolean) {
