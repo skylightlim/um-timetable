@@ -163,7 +163,7 @@ grey (quickly, as the day strip's labels do). With a new look the Settings sheet
 colours (previous entry): its Appearance switch starts at the old option and glides on, and the new
 colours spread from the option tapped. News' For me / All switch is the same control.
 
-**Checked:** it builds; unit tests pass. Tried on the phone: see the entry for this batch above.
+**Checked:** it builds; unit tests pass. The sheet drawn off-screen on the phone (light Gold, dark Blue): both switches show their pill on the chosen option. The glide itself: try it on the phone.
 
 ## 15 October 2026 (Settings stays open)
 
@@ -183,7 +183,7 @@ itself; only when the user hides it.
 - Check for updates and Sign out show their card over the sheet. Sign out restarts the screen, so the
   sheet is dismissed with it (`onDestroy`) rather than left as a leaked window.
 
-**Checked:** it builds; unit tests pass. Tried on the phone: see the entry for this batch above.
+**Checked:** it builds; unit tests pass. Not tried by hand yet: on the phone, change the look and the theme with the sheet open, and open TimeEdit from it and come back.
 
 ## 15 October 2026 (status-bar icon: the shield)
 
