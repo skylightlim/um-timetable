@@ -189,7 +189,8 @@ fun dayGlance(list: List<Session>): String =
     if (list.isEmpty()) "No classes" else "${list.size} ${if (list.size == 1) "class" else "classes"} · ${clockText(list.first().start)}–${clockText(list.last().end)}"
 
 object DayScreen {
-    fun build(h: Host, day: Int): View {
+    /** [day]'s page; [sample] instead of the saved plans (a still drawing's made-up ones). */
+    fun build(h: Host, day: Int, sample: List<Plan>? = null): View {
         val ui = h.ui
         val p = ui.p
         val now = h.now()
@@ -206,21 +207,67 @@ object DayScreen {
         if (!off && h.weekShift == 0 && day == homeDay(h.timetable, now)) page.addView(status(h, now), ui.wide(bottom = 18f))
         if (list.isEmpty()) page.addView(ui.text("No classes", 15f, p.muted), ui.wide(top = 12f))
 
+        // The day's classes and the user's plans for that date, in time order, with the free time between.
+        val date = h.dateOf(day)
+        val plans = (sample ?: Plans.all(ui.context)).filter { it.date == date }
+        val items = (list.map { Triple(it.start, it.end, it as Any) } + plans.map { Triple(it.start, it.end, it as Any) }).sortedBy { it.first }
         val agenda = ui.column(gap = 8f)
-        list.forEachIndexed { i, s ->
-            val prev = list.getOrNull(i - 1)
-            if (prev != null && s.start > prev.end) agenda.addView(gap(ui, prev, s, isToday, now))
-            val state = when {
-                off -> "past"
-                !isToday -> ""
-                now.min >= s.end -> "past"
-                now.min >= s.start -> "live"
-                else -> ""
+        var until: Int? = null
+        for ((start, end, item) in items) {
+            until?.let { if (start > it) agenda.addView(gap(ui, it, start, isToday, now)) }
+            until = maxOf(until ?: end, end)
+            when (item) {
+                is Session -> agenda.addView(slot(h, item, when {
+                    off -> "past"
+                    !isToday -> ""
+                    now.min >= item.end -> "past"
+                    now.min >= item.start -> "live"
+                    else -> ""
+                }))
+                is Plan -> agenda.addView(planSlot(h, item, items))
             }
-            agenda.addView(slot(h, s, state))
         }
         page.addView(agenda)
         return page
+    }
+
+    /**
+     * One of the user's plans, among the classes: its times, "Plan" (with its reminder) and what it is,
+     * on its colour's tint with a dashed edge, as in the week grid; faded once it's over. A tap opens its
+     * card out of this one.
+     */
+    private fun planSlot(h: Host, plan: Plan, day: List<Triple<Int, Int, Any>>): View {
+        val ui = h.ui
+        val p = ui.p
+        val over = plan.endsAt <= System.currentTimeMillis()
+        val card = ui.row(gap = 10f).apply {
+            background = ui.pressable(ui.shape(Palette.mix(plan.color, p.surface, 0.24f), 16f, plan.color, 1.5f, dash = 5f), 16f)
+            setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(14))
+            contentDescription = "Plan, ${clockText(plan.start)} to ${clockText(plan.end)}: ${plan.title}"
+        }
+        card.addView(ui.column().apply {
+            addView(ui.text(clockText(plan.start), 14f, p.text, ui.f.monoBold))
+            addView(ui.text(clockText(plan.end), 12f, p.text, ui.f.mono).apply { alpha = 0.7f }, ui.wide(top = 2f))
+        }, LinearLayout.LayoutParams(ui.dp(52), ViewGroup.LayoutParams.WRAP_CONTENT))
+        val remind = plan.remind?.let { r -> Plan.REMINDERS.firstOrNull { it.first == r }?.second }
+        card.addView(ui.column().apply {
+            addView(ui.text(listOfNotNull(if (over) "PLAN · DONE" else "PLAN", remind?.let { "REMINDER ${it.uppercase()}" }).joinToString(" · "), 11f, p.courseText(plan.color), ui.f.monoBold))
+            addView(ui.text(plan.title, 15f, p.text, ui.f.bodySemi), ui.wide(top = 3f))
+        }, ui.grow())
+        card.setOnClickListener {
+            // The free time after it (to the next class or plan, or 19:00), and the card's height per hour for the way back.
+            val maxEnd = minOf(19 * 60, day.filter { it.third !== plan && it.first >= plan.end }.minOfOrNull { it.first } ?: Int.MAX_VALUE)
+            val at = IntArray(2).also(card::getLocationOnScreen)
+            val from = RectF(at[0].toFloat(), at[1].toFloat(), (at[0] + card.width).toFloat(), (at[1] + card.height).toFloat())
+            h.openPlan(from, plan, false, maxEnd, card.height / ((plan.end - plan.start) / 60f))
+        }
+        if (over) card.alpha = 0.42f
+        // Just saved from this card: it pops back into place.
+        if (WeekGrid.landing == plan.id) {
+            WeekGrid.landing = null
+            Motion.pop(card, 0.85f)
+        }
+        return card
     }
 
     /** The class in progress, or the next one, as a big yellow block with its course name. */
@@ -268,15 +315,16 @@ object DayScreen {
     }
 
     /** Free time between two classes, as in redesign 1a: a quiet line between its length and its times. */
-    private fun gap(ui: Ui, prev: Session, next: Session, isToday: Boolean, now: Now): View {
+    /** The free time from [from] to [to] (minutes) between two classes or plans. */
+    private fun gap(ui: Ui, from: Int, to: Int, isToday: Boolean, now: Now): View {
         val p = ui.p
-        val inGap = isToday && now.min >= prev.end && now.min < next.start
+        val inGap = isToday && now.min >= from && now.min < to
         val color = if (inGap) p.accentText else p.muted
         return ui.row(gap = 10f).apply {
             setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(4))
-            addView(ui.text("${if (inGap) "Free now" else "Free"} · ${durationText(next.start - prev.end)}", 12f, color, ui.f.mono))
+            addView(ui.text("${if (inGap) "Free now" else "Free"} · ${durationText(to - from)}", 12f, color, ui.f.mono))
             addView(View(ui.context).apply { setBackgroundColor(if (inGap) p.accent else p.line) }, LinearLayout.LayoutParams(0, ui.dp(1), 1f))
-            addView(ui.text(if (inGap) "next in ${durationText(ceil(next.start - now.min).toInt())}" else "${clockText(prev.end)}–${clockText(next.start)}", 12f, color, ui.f.mono))
+            addView(ui.text(if (inGap) "next in ${durationText(ceil(to - now.min).toInt())}" else "${clockText(from)}–${clockText(to)}", 12f, color, ui.f.mono))
         }
     }
 

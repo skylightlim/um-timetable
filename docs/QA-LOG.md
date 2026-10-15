@@ -18,6 +18,20 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 16 October 2026 (plans on Day too)
+
+**Asked for:** every plan the user adds should also show on the Day tab.
+
+**Change** (`DayScreen.planSlot`; `gap` takes times; `MainActivity.repick`): Day lists the date's
+plans among its classes in time order, as cards like the classes': start and end on the left, "PLAN"
+(or "PLAN · DONE" once it's over, then faded) with its reminder ("REMINDER 10 MIN"), and what it is, on
+its colour's tint with a dashed edge as in the week grid. The "Free" lines now run between classes and
+plans alike. A tap opens the plan's card out of this one; saved, it pops back into place. "Change time"
+from Day opens Week at the plan's week, the selection box waiting there.
+- Debug: `--es view day --ez sample true` draws the made-up plans.
+
+**Checked:** it builds; unit tests pass. Not drawn or tried yet: the phone was disconnected.
+
 ## 16 October 2026 (springs tuned like iOS's)
 
 **Asked for:** the springs that overshoot a little and snap back look laggy; make them like iOS.

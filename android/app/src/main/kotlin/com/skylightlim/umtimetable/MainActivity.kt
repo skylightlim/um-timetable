@@ -876,7 +876,17 @@ class MainActivity : Activity(), SpectrumHost {
 
     /** A plan's editor, out of its cell in the week grid; once it's saved or deleted, the week shows it. */
     override fun openPlan(from: android.graphics.RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float) =
-        PlanSheet.show(ui, from, plan, isNew, maxEnd, hourPx, onRepick = { draft -> weekGrid()?.startRepick(draft) }) { render(keepScroll = true) }
+        PlanSheet.show(ui, from, plan, isNew, maxEnd, hourPx, onRepick = ::repick) { render(keepScroll = true) }
+
+    /** "Change time" on a plan's card: the selection box waits on Week, in the plan's week (opened if need be, from Day). */
+    private fun repick(draft: Plan) {
+        if (view == "week" && Plan.weekOf(draft.date) == Plan.weekOf(dateOf(1))) return weekGrid()?.startRepick(draft) ?: Unit
+        val stripMonday = LocalDate.now().plusDays(daysFromToday(timetable, now(), 1).toLong())
+        weekShift = java.time.temporal.ChronoUnit.WEEKS.between(stripMonday, Plan.weekOf(draft.date)).toInt()
+        if (view == "week") render(keepScroll = true) else goCell(WEEK_CELL)
+        // Once the grid is laid out: the box is placed from its size.
+        content.post { weekGrid()?.startRepick(draft) }
+    }
 
     /** The week grid on the page now (the minute's redraw may have replaced the one a card came from; mid-slide, the newer of two). */
     private fun weekGrid(): WeekGrid? = content.getChildAt(content.childCount - 1)?.let(WeekScreen::grid) as? WeekGrid
