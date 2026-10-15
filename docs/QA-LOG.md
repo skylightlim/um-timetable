@@ -18,6 +18,17 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (holiday classes: no slash)
+
+**Asked for:** remove the slash on classes cancelled by a holiday; it looked bad.
+
+**Change** (`WeekGrid.drawBlock`): classes on a holiday or in a week without classes are faded only,
+as a class that's over is. The holiday's pill, the hatching and the Courses list's struck-through hours
+stay.
+
+**Checked:** drawn off-screen on the phone: Week 4 weeks on (Deepavali's Monday) and 7 weeks on (the
+break): faded, no slashes.
+
 ## 15 October 2026 (plans: a selection box to drag, double tap, change the time, "be honest")
 
 **Asked for:** the long press should bring up a coloured selection box that the user drags around the

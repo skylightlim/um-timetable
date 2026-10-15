@@ -481,7 +481,6 @@ class WeekGrid(
     private val roomPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.sign; textSize = sp(15f) }
     private val nowPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.monoBold; textSize = sp(9.5f); color = p.accentInk; textAlign = Paint.Align.CENTER }
     private val holidayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodyBold; textSize = sp(10.5f); color = p.accentInk; textAlign = Paint.Align.CENTER; letterSpacing = 0.1f }
-    private val slash = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = ui.dp(2f).toFloat(); strokeCap = Paint.Cap.ROUND }
     private val hatch = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = p.accent; alpha = 70; strokeWidth = ui.dp(1f).toFloat() }
     private val planEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -536,9 +535,9 @@ class WeekGrid(
             }
             // (Not the one being moved with the selection box: it's in the box.)
             for (plan in plans.filter { it.date == dates[d - 1] && it.id != picking?.id }) drawPlan(canvas, plan, RectF(left + ui.dp(1f), top + (plan.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (plan.end - startMin) / 60f * hour - 1))
-            // Faded: today's classes that are over. Faded and slashed: those on a holiday or in a week without classes.
+            // Faded: today's classes that are over, and those on a holiday or in a week without classes.
             val cancelled = holiday != null || weekOff
-            for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), cancelled || (isToday && now.min >= s.end), cancelled)
+            for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), cancelled || (isToday && now.min >= s.end))
             // The holiday's name goes over its (faded) classes, so it can always be read.
             if (holiday != null) drawHolidayName(canvas, holiday, RectF(left, top, left + colW, bottom))
         }
@@ -592,7 +591,7 @@ class WeekGrid(
         canvas.restore()
     }
 
-    private fun drawBlock(canvas: Canvas, s: Session, r: RectF, past: Boolean, cancelled: Boolean = false) {
+    private fun drawBlock(canvas: Canvas, s: Session, r: RectF, past: Boolean) {
         blocks += r to s
         val c = s.course.color
         val radius = ui.dp(7f).toFloat()
@@ -632,11 +631,6 @@ class WeekGrid(
         roomPaint.color = textColor; roomPaint.alpha = alpha
         if (r.height() >= roomPaint.textSize + codePaint.textSize + pad * 2) {
             canvas.drawText(TextUtils.ellipsize(s.room, roomPaint, w.toFloat(), TextUtils.TruncateAt.END).toString(), r.left + pad, r.bottom - pad, roomPaint)
-        }
-        // Not happening (a holiday, a week without classes): slashed corner to corner.
-        if (cancelled) {
-            slash.color = textColor
-            canvas.drawLine(r.right - pad, r.top + pad, r.left + pad, r.bottom - pad, slash)
         }
         canvas.restore()
     }
