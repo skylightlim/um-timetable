@@ -358,27 +358,49 @@ object WeekScreen {
     }
 
     /**
-     * Each course with its hours a week, laid out and ordered as the Courses tab (by code): code and
+     * Each course with its hours this week, laid out and ordered as the Courses tab (by code): code and
      * occurrence, the name, the hours by kind of class, and the week's hours on the right; lines between
-     * courses only; then the totals. A course opens its class sheet.
+     * courses only; then the totals. A course opens its class sheet. Classes that don't happen this week
+     * (on a public holiday, or all of them in a break, revision or exam week) are taken off the hours:
+     * a kind of class with none left is struck through, and a course with none left is struck through
+     * whole, at 0 h.
      */
     private fun courses(h: Host): View {
         val ui = h.ui
         val p = ui.p
         val tt = h.timetable
+        val monday = h.dateOf(1)
+        val offWeek = weekOff(monday) != null
+        fun cancelled(s: Session) = offWeek || Holidays.on(monday.plusDays((s.day - 1).toLong())) != null
+        val anyCancelled = tt.sessions.any(::cancelled)
         val list = ui.column()
         list.addView(ui.text("COURSES", 28f, p.text, ui.f.sign).apply { letterSpacing = 0.02f }, ui.wide(bottom = 4f))
         val order = listOf("Lecture", "Tutorial")
-        fun byType(sessions: List<Session>) = sessions.groupBy { it.type }.toList()
+        fun types(sessions: List<Session>) = sessions.groupBy { it.type }.toList()
             .sortedWith(compareBy({ order.indexOf(it.first).let { i -> if (i < 0) order.size else i } }, { it.first }))
-            .map { (type, ss) -> "$type ${hoursText(ss.sumOf { it.end - it.start })}" }
+        fun byType(sessions: List<Session>) = types(sessions).map { (type, ss) -> "$type ${hoursText(ss.sumOf { it.end - it.start })}" }
+        /** "Lecture 2 h · Tutorial 1 h", with each kind's hours this week; a kind with nothing left struck through at its usual hours. */
+        fun parts(sessions: List<Session>): CharSequence {
+            val out = android.text.SpannableStringBuilder()
+            for ((type, ss) in types(sessions)) {
+                if (out.isNotEmpty()) out.append(" · ")
+                val left = ss.filterNot(::cancelled)
+                val from = out.length
+                out.append("$type ${hoursText((if (left.isEmpty()) ss else left).sumOf { it.end - it.start })}")
+                if (left.isEmpty()) out.setSpan(android.text.style.StrikethroughSpan(), from, out.length, 0)
+            }
+            return out
+        }
+        fun strike(t: android.widget.TextView) = t.apply { paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG }
         tt.courses.sortedWith(compareBy({ it.code.ifEmpty { "~" } }, { it.name })).forEachIndexed { n, course ->
             if (n > 0) list.addView(View(ui.context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
             val sessions = tt.sessions.filter { it.course == course }
-            val total = sessions.sumOf { it.end - it.start }
-            val sub = (byType(sessions) + listOfNotNull("online".takeIf { sessions.any { it.room == "Online" } })).joinToString(" · ")
+            val left = sessions.filterNot(::cancelled)
+            val none = sessions.isNotEmpty() && left.isEmpty()
+            val total = left.sumOf { it.end - it.start }
+            val sub = android.text.SpannableStringBuilder(parts(sessions)).apply { if (sessions.any { it.room == "Online" }) append(" · online") }
             val codeLine = ui.row().apply {
-                addView(ui.text(course.code, 12f, p.courseText(course.color), ui.f.monoBold))
+                addView(ui.text(course.code, 12f, p.courseText(course.color), ui.f.monoBold).also { if (none) strike(it) })
                 addView(ui.text(" · Occ ${course.occ}", 12f, p.faint, ui.f.mono))
                 setPadding(0, 0, 0, ui.dp(2))
             }
@@ -386,27 +408,30 @@ object WeekScreen {
                 minimumHeight = ui.dp(60)
                 setPadding(0, ui.dp(10), 0, ui.dp(10))
                 background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
-                contentDescription = "${course.code}, occurrence ${course.occ}, ${course.name}: $sub, ${hoursText(total)} a week"
+                contentDescription = "${course.code}, occurrence ${course.occ}, ${course.name}: ${if (none) "no classes this week" else "$sub, ${hoursText(total)}"}"
                 setOnClickListener { h.openSheet(course, null) }
-                addView(View(ui.context).apply { background = ui.shape(course.color, 99f) }, LinearLayout.LayoutParams(ui.dp(12), ui.dp(12)))
+                addView(View(ui.context).apply { background = ui.shape(course.color, 99f); if (none) alpha = 0.4f }, LinearLayout.LayoutParams(ui.dp(12), ui.dp(12)))
                 addView(ui.column().apply {
                     addView(codeLine)
-                    addView(ui.text(course.name, 15f, p.text, ui.f.bodySemi))
-                    addView(ui.text(sub, 12.5f, p.muted), ui.wide(top = 2f))
+                    addView(ui.text(course.name, 15f, if (none) p.muted else p.text, ui.f.bodySemi).also { if (none) strike(it) })
+                    addView(ui.text(sub, 12.5f, p.muted).also { if (none) strike(it) }, ui.wide(top = 2f))
                 }, ui.grow())
-                addView(ui.text(hoursText(total), 22f, p.text, ui.f.sign))
+                addView(ui.text(hoursText(total), 22f, if (none) p.muted else p.text, ui.f.sign))
             })
         }
         // The week in total, under a heavier line.
         list.addView(View(ui.context).apply { setBackgroundColor(p.text) }, ui.wide(top = 4f).apply { height = ui.dp(1.5f) })
-        val all = tt.sessions.sumOf { it.end - it.start }
+        val held = tt.sessions.filterNot(::cancelled)
+        val all = held.sumOf { it.end - it.start }
+        val count = "${held.size} ${if (held.size == 1) "class" else "classes"} ${if (anyCancelled) "this week" else "a week"}"
+        val totals = listOf(count) + byType(held)
         list.addView(ui.row(gap = 12f).apply {
             minimumHeight = ui.dp(60)
             setPadding(ui.dp(24), ui.dp(10), 0, ui.dp(10))
-            contentDescription = "Total: ${tt.sessions.size} classes, ${hoursText(all)} a week"
+            contentDescription = "Total: $count, ${hoursText(all)}"
             addView(ui.column().apply {
                 addView(ui.text("Total", 15f, p.text, ui.f.bodyBold))
-                addView(ui.text("${tt.sessions.size} ${if (tt.sessions.size == 1) "class" else "classes"} a week · ${byType(tt.sessions).joinToString(" · ")}", 12.5f, p.muted), ui.wide(top = 2f))
+                addView(ui.text(totals.joinToString(" · "), 12.5f, p.muted), ui.wide(top = 2f))
             }, ui.grow())
             addView(ui.text(hoursText(all), 26f, p.text, ui.f.sign))
         })
@@ -455,7 +480,8 @@ class WeekGrid(
     private val namePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodySemi; textSize = sp(10f) }
     private val roomPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.sign; textSize = sp(15f) }
     private val nowPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.monoBold; textSize = sp(9.5f); color = p.accentInk; textAlign = Paint.Align.CENTER }
-    private val holidayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodyBold; textSize = sp(10f); color = p.accentText; textAlign = Paint.Align.CENTER; letterSpacing = 0.12f }
+    private val holidayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodyBold; textSize = sp(10.5f); color = p.accentInk; textAlign = Paint.Align.CENTER; letterSpacing = 0.1f }
+    private val slash = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = ui.dp(2f).toFloat(); strokeCap = Paint.Cap.ROUND }
     private val hatch = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = p.accent; alpha = 70; strokeWidth = ui.dp(1f).toFloat() }
     private val planEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -509,8 +535,11 @@ class WeekGrid(
                 fill.alpha = 255
             }
             for (plan in plans.filter { it.date == dates[d - 1] }) drawPlan(canvas, plan, RectF(left + ui.dp(1f), top + (plan.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (plan.end - startMin) / 60f * hour - 1))
-            // Faded: today's classes that are over, and every class on a holiday or in a week without classes.
-            for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), (isToday && now.min >= s.end) || holiday != null || weekOff)
+            // Faded: today's classes that are over. Faded and slashed: those on a holiday or in a week without classes.
+            val cancelled = holiday != null || weekOff
+            for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), cancelled || (isToday && now.min >= s.end), cancelled)
+            // The holiday's name goes over its (faded) classes, so it can always be read.
+            if (holiday != null) drawHolidayName(canvas, holiday, RectF(left, top, left + colW, bottom))
         }
         if (nowY == null || today == null) return
         // Today's line goes over the classes (a class in progress is when it matters most), in the app's
@@ -529,8 +558,8 @@ class WeekGrid(
         canvas.drawText(clockText(now.min.toInt()), pill.centerX(), nowY + nowPaint.textSize * 0.35f, nowPaint)
     }
 
-    /** A holiday's column: tinted and hatched in the accent, its name running up the middle, under the (faded) classes. */
-    private fun drawHoliday(canvas: Canvas, holiday: Holidays.Holiday, col: RectF) {
+    /** A holiday's column: tinted and hatched in the accent, under its (faded, slashed) classes. */
+    private fun drawHoliday(canvas: Canvas, @Suppress("UNUSED_PARAMETER") holiday: Holidays.Holiday, col: RectF) {
         val radius = ui.dp(6f).toFloat()
         fill.color = Palette.mix(p.accent, p.surface, 0.12f)
         canvas.drawRoundRect(col, radius, radius, fill)
@@ -543,14 +572,25 @@ class WeekGrid(
             x += step
         }
         canvas.restore()
+    }
+
+    /** The holiday's name up the middle of its column, on a solid accent pill (ink on the accent, as the Now block). */
+    private fun drawHolidayName(canvas: Canvas, holiday: Holidays.Holiday, col: RectF) {
+        val name = TextUtils.ellipsize(holiday.label.uppercase(), holidayPaint, col.height() - ui.dp(40f), TextUtils.TruncateAt.END).toString()
+        val w = holidayPaint.measureText(name) + ui.dp(18f)
+        val h = holidayPaint.textSize + ui.dp(12f)
         canvas.save()
         canvas.rotate(-90f, col.centerX(), col.centerY())
-        val name = TextUtils.ellipsize(holiday.label.uppercase(), holidayPaint, col.height() - ui.dp(24f), TextUtils.TruncateAt.END).toString()
-        canvas.drawText(name, col.centerX(), col.centerY() + holidayPaint.textSize * 0.35f, holidayPaint)
+        val pill = RectF(col.centerX() - w / 2, col.centerY() - h / 2, col.centerX() + w / 2, col.centerY() + h / 2)
+        fill.color = p.surface // a ring in the card's colour lifts it off the classes under it
+        canvas.drawRoundRect(RectF(pill).apply { inset(-ui.dp(2f).toFloat(), -ui.dp(2f).toFloat()) }, h, h, fill)
+        fill.color = p.accent
+        canvas.drawRoundRect(pill, h / 2, h / 2, fill)
+        canvas.drawText(name, col.centerX(), col.centerY() + holidayPaint.textSize * 0.36f, holidayPaint)
         canvas.restore()
     }
 
-    private fun drawBlock(canvas: Canvas, s: Session, r: RectF, past: Boolean) {
+    private fun drawBlock(canvas: Canvas, s: Session, r: RectF, past: Boolean, cancelled: Boolean = false) {
         blocks += r to s
         val c = s.course.color
         val radius = ui.dp(7f).toFloat()
@@ -590,6 +630,11 @@ class WeekGrid(
         roomPaint.color = textColor; roomPaint.alpha = alpha
         if (r.height() >= roomPaint.textSize + codePaint.textSize + pad * 2) {
             canvas.drawText(TextUtils.ellipsize(s.room, roomPaint, w.toFloat(), TextUtils.TruncateAt.END).toString(), r.left + pad, r.bottom - pad, roomPaint)
+        }
+        // Not happening (a holiday, a week without classes): slashed corner to corner.
+        if (cancelled) {
+            slash.color = textColor
+            canvas.drawLine(r.right - pad, r.top + pad, r.left + pad, r.bottom - pad, slash)
         }
         canvas.restore()
     }

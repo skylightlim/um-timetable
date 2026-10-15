@@ -18,6 +18,28 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (holidays: readable, and their classes slashed and taken off the hours)
+
+**Asked for:** show holidays properly, with enough contrast to read; slash the classes on a holiday (a
+lecture only, or the whole course if all its classes) and recalculate the hours; in the mid-semester
+break slash every course and show 0 h and 0 classes.
+
+**Change** (`WeekGrid.drawHolidayName`, `drawBlock(cancelled)`, `WeekScreen.courses`):
+- The holiday's name runs up its column on a solid accent pill with the ink colour on it (as on the Now
+  block), ringed in the card's colour and drawn over the column's classes, so the classes never cover
+  it. It was the accent's text colour straight on the hatching, half under the classes.
+- Classes on a holiday or in a week without classes (break, revision, exams) are faded and slashed
+  corner to corner in their text colour.
+- Courses under the grid count this week only: a kind of class with nothing left this week ("Lecture
+  2 h") is struck through; a course with nothing left is struck through whole (code, name, hours line),
+  its dot faded, at 0 h; otherwise its hours are what's left. The total says "N classes this week" and
+  the hours left by kind. In a break week every course is struck through at 0 h and the total is "0
+  classes this week", 0 h.
+
+**Checked:** unit tests pass. Drawn off-screen on the phone: Week 4 weeks on (Deepavali's replacement
+Monday: its three classes slashed; GIG1003 struck through at 0 h, WIX1001 and WIX1002's lectures struck,
+14 h in all) and 7 weeks on in dark (the break: everything slashed and struck, 0 h).
+
 ## 15 October 2026 (the strip's Week chip: "Revision" fits)
 
 **Asked for:** make "Revision" fit its box on the strip, smaller if need be.
