@@ -29,10 +29,16 @@ import java.io.File
  * view due with --ez sample true draws made-up deadlines (late, minutes, hours, days) and attendance
  * (open, about to open, not in Spectrum's calendar).
  * --ef fontScale 1.3 draws at a larger system font size (this render only).
+ * --ei weekShift N draws day and week N weeks on from the strip's own week (as swiping on Week does).
  * --es scheme gold|blue|red draws in that accent scheme instead of the chosen one.
  * --ez open true draws every fold and "Show more" opened.
+ * view webbar draws the web screens' top bar (--es bar spectrum|maya|timeedit|login).
+ * view week with --ez sample true draws made-up plans on it (--ei boxDay 2 --ei boxAt 900: with the selection box
+ * waiting on Tuesday 15:00); view plan draws the plan editor's card
+ * (--ez new false: a saved plan's, with Delete).
+ * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200).
  * view signout draws the Sign out question's card. view settings draws the Settings sheet (--ez signedIn true|false
- * for either Account row); view signin the first-run sign-in poster, at screen height.
+ * for either Account row); view signin the first-run sign-in poster, at screen height (or --ei height px).
  * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
  * Nth class of the week (0 first).
  */
@@ -43,6 +49,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         if (intent.getStringExtra("view") == "tabicons") return tabIcons(context)
         if (intent.getStringExtra("view") == "duel") return duel(context, intent.getBooleanExtra("dark", false))
         if (intent.getStringExtra("view") == "duelloop") return duelLoop(context)
+        if (intent.getStringExtra("view") == "scene") return scene(context, intent.getIntExtra("step", 200))
         val view = intent.getStringExtra("view") ?: "files"
         val dark = intent.getBooleanExtra("dark", false)
         val width = intent.getIntExtra("width", context.resources.displayMetrics.widthPixels)
@@ -56,10 +63,13 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val scheme = forced ?: Scheme.load(context)
         val host = Host(c, Ui(c, scheme.applyTo(if (dark) Palette.DARK else Palette.LIGHT), Fonts(c)), now, forced).apply {
             openCourse = intent.getIntExtra("course", 0).takeIf { it > 0 }
+            weekShift = intent.getIntExtra("weekShift", 0)
             if (intent.getBooleanExtra("open", false)) expanded = object : HashSet<String>() { override fun contains(element: String) = true }
         }
         val page = when (view) {
-            "week" -> WeekScreen.build(host)
+            "week" -> WeekScreen.build(host, if (intent.getBooleanExtra("sample", false)) samplePlans(host) else null)
+            // The plan editor's card: --ez new false for a saved plan's (with Delete)
+            "plan" -> PlanSheet.build(host.ui, samplePlans(host)[1].let { if (intent.getBooleanExtra("new", true)) it.copy(text = "") else it }, intent.getBooleanExtra("new", true), 16 * 60 + 30).card
             "due" -> if (intent.getBooleanExtra("sample", false)) sampleDue(context, host) else SpectrumScreens.due(host)
             "news" -> SpectrumScreens.news(host)
             "files" -> SpectrumScreens.courses(host)
@@ -77,7 +87,14 @@ class DebugRenderReceiver : BroadcastReceiver() {
                     else -> pageTitle(host.ui, page, SpectrumScreens.summary(host, mapOf("Courses" to "files").getOrElse(page) { page.lowercase() }))
                 }, host.ui.grow())
             }
-            "signout" -> ConfirmDialog.card(host.ui, MainActivity.SIGN_OUT_TITLE, MainActivity.SIGN_OUT_BODY, "Sign out", {}, {})
+            // The web screens' top bar: --es bar spectrum|maya|timeedit|login
+            "webbar" -> when (intent.getStringExtra("bar") ?: "maya") {
+                "spectrum" -> WebBar(host.ui, "Spectrum", "Assignment 2: Group report (Week 6)", "Done", null, null, compact = true) {}
+                "login" -> WebBar(host.ui, "SiswaMail", "Sign in to Spectrum", "Cancel", "Sign in with your SiswaMail. Your login stays on this phone; the app only talks to Spectrum.", null, compact = false) {}
+                "timeedit" -> WebBar(host.ui, "TimeEdit", "Get your timetable", "Close", "Reading your 5 courses on TimeEdit…", "Get timetable", compact = false) {}.also { it.action.isEnabled = false }
+                else -> WebBar(host.ui, "MAYA", "Import your timetable", "Close", "Sign in to MAYA, and the app opens your timetable and reads it. Your password goes only to MAYA or Microsoft; this app never sees it.", "Read this page", compact = false) {}
+            }.view.apply { setBackgroundColor(host.ui.p.ground) }
+            "signout" -> ConfirmDialog.card(host.ui, MainActivity.SIGN_OUT_TITLE, MainActivity.SIGN_OUT_BODY, "Sign out", {}, {}, hold = true)
             "sheet" -> {
                 val tt = Timetable.load(context)
                 val course = tt.courses.first { it.code == intent.getStringExtra("code") }
@@ -96,17 +113,41 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val frame = FrameLayout(c).apply {
             setBackgroundColor(host.ui.p.ground)
             // A sheet runs edge to edge, from the bottom of the screen.
-            if (view != "sheet" && view != "settings" && view != "signin") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
+            if (view != "sheet" && view != "settings" && view != "signin" && view != "webbar") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
             addView(page)
         }
         frame.measure(
             View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
-            if (view == "signin") View.MeasureSpec.makeMeasureSpec(context.resources.displayMetrics.heightPixels, View.MeasureSpec.EXACTLY) else View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            if (view == "signin") View.MeasureSpec.makeMeasureSpec(intent.getIntExtra("height", context.resources.displayMetrics.heightPixels), View.MeasureSpec.EXACTLY) else View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
         )
         frame.layout(0, 0, frame.measuredWidth, frame.measuredHeight)
+        // Week with --ez sample true --ei boxDay D --ei boxAt MIN: the selection box waiting there (taken or free).
+        if (intent.hasExtra("boxDay")) {
+            fun grid(v: View): WeekGrid? = v as? WeekGrid ?: (v as? android.view.ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { grid(g.getChildAt(it)) } }
+            grid(frame)?.previewBox(samplePlans(host)[1], intent.getIntExtra("boxDay", 2), intent.getIntExtra("boxAt", 15 * 60))
+        }
+        // Settings with --ef hopAt 0.36: the chosen theme's dots posed that far into their hop.
+        if (intent.hasExtra("hopAt")) {
+            fun find(v: View): android.view.ViewGroup? =
+                if (v is android.view.ViewGroup && v.contentDescription?.endsWith("theme, chosen") == true) v
+                else (v as? android.view.ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { find(g.getChildAt(it)) } }
+            val dots = find(frame)?.getChildAt(0) as? android.view.ViewGroup
+            for (i in 0 until (dots?.childCount ?: 0)) Motion.hopAnimator(dots!!.getChildAt(i), host.ui.dp(if (i == 0) 9f else 8f).toFloat()).setCurrentFraction(intent.getFloatExtra("hopAt", 0.36f))
+        }
         val bitmap = Bitmap.createBitmap(frame.measuredWidth, frame.measuredHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         frame.draw(Canvas(bitmap))
         save(context, bitmap, "$view${host.openCourse?.let { "-$it" } ?: ""}${if (dark) "-dark" else ""}")
+    }
+
+    /** Made-up plans in the week drawn: study, the gym, reading (none of them the user's). */
+    private fun samplePlans(host: Host): List<Plan> {
+        val palette = Plans.palette(Scheme.load(host.ui.context), host.ui.p.accent)
+        val monday = host.dateOf(1)
+        return listOf(
+            Plan("s1", monday.plusDays(1), 10 * 60, 11 * 60, "Group study for the quiz", palette[0], 10),
+            Plan("s2", monday.plusDays(2), 14 * 60, 16 * 60, "Gym", palette[3]),
+            Plan("s3", monday.plusDays(4), 11 * 60, 11 * 60 + 30, "Read chapter 3", palette[7], 0),
+        )
     }
 
     /** Made-up grade items: marks (one a scale word, one with feedback), a course total, unmarked items. */
@@ -196,9 +237,39 @@ class DebugRenderReceiver : BroadcastReceiver() {
      * The tab icons' animations as a contact sheet (tabicons.png): one row per icon, a frame every 80 ms
      * from the start. Drawn on a software canvas, so each animation runs on this thread.
      */
+    /** The sign-in poster's fight ([DuelScene]) as a contact sheet: a frame every [step] ms, 0 to 5 s, on the poster's blue. */
+    private fun scene(context: Context, step: Int) {
+        val c = ContextThemeWrapper(context, R.style.Theme_UMTimetable)
+        val ui = Ui(c, Palette.LIGHT, Fonts(c))
+        val view = DuelView(ui, 0xFFF1F5FE.toInt(), 0xFF132B7C.toInt(), stage = true)
+        val scene = DuelScene(view)
+        val w = 480
+        val h = 270
+        val times = (0..5000 step step).toList()
+        val cols = 4
+        val rows = (times.size + cols - 1) / cols
+        val sheet = Bitmap.createBitmap(w * cols, h * rows, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF132B7C.toInt()) }
+        val canvas = Canvas(sheet)
+        view.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
+        view.layout(0, 0, w, h)
+        val label = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFB8C7E9.toInt(); textSize = 22f }
+        val grid = android.graphics.Paint().apply { color = 0xFF4E66A3.toInt(); style = android.graphics.Paint.Style.STROKE }
+        for ((i, t) in times.withIndex()) {
+            view.poses = scene.at(t.toFloat())
+            scene.sparkAt(t.toFloat())?.let { (x, y, age) -> view.sparkStill(x, y, age) } ?: view.sparkStill(60f, 0f, 2f)
+            canvas.save()
+            canvas.translate((i % cols) * w.toFloat(), (i / cols) * h.toFloat())
+            view.draw(canvas)
+            canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), grid)
+            canvas.drawText("$t ms", 10f, 28f, label)
+            canvas.restore()
+        }
+        save(context, sheet, "scene")
+    }
+
     private fun tabIcons(context: Context) {
         val pending = goAsync()
-        val ids = listOf(R.drawable.avd_tab_day, R.drawable.avd_tab_grades, R.drawable.avd_tab_due, R.drawable.avd_tab_news, R.drawable.avd_tab_courses)
+        val ids = listOf(R.drawable.avd_tab_day, R.drawable.avd_tab_week, R.drawable.avd_tab_grades, R.drawable.avd_tab_due, R.drawable.avd_tab_news, R.drawable.avd_tab_courses)
         val times = (0..9).map { it * 80L }
         val cell = 120
         val sheet = Bitmap.createBitmap(cell * times.size, cell * ids.size, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFFEEF1F4.toInt()) }
@@ -297,6 +368,53 @@ class DebugRenderReceiver : BroadcastReceiver() {
         time("x10 Regex compile") { repeat(10) { Regex("(?i)<img") } }
         time("x10 plain()") { for (a in news) SpectrumSync.plain(a.optString("html")) }
         time("widget render") { WidgetRenderer.build(context, Timetable.load(context), Now.current(), 320f, 420f) }
+        // A week swipe: the Week page built for another week, laid out and drawn; then the grid's draw alone.
+        run {
+            val host = Host(c, ui)
+            var build = 0L; var measure = 0L; var draw = 0L
+            val canvas = Canvas(Bitmap.createBitmap(width, 4000, Bitmap.Config.ARGB_8888))
+            var grid: WeekGrid? = null
+            repeat(n + 1) { i ->
+                host.weekShift = i % 8
+                val t0 = System.nanoTime()
+                val page = WeekScreen.build(host)
+                val t1 = System.nanoTime()
+                val frame = FrameLayout(c).apply { addView(page) }
+                frame.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                frame.layout(0, 0, frame.measuredWidth, frame.measuredHeight)
+                val t2 = System.nanoTime()
+                frame.draw(canvas)
+                val t3 = System.nanoTime()
+                if (i > 0) { build += t1 - t0; measure += t2 - t1; draw += t3 - t2 }
+                fun find(v: View): WeekGrid? = v as? WeekGrid ?: (v as? android.view.ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { find(g.getChildAt(it)) } }
+                grid = find(frame)
+            }
+            Log.i("UMTimetable", "bench week page built: build %.2f ms, measure+layout %.2f ms, draw %.2f ms".format(build / 1e6 / n, measure / 1e6 / n, draw / 1e6 / n))
+            grid?.let { g -> time("week grid draw") { g.draw(canvas) } }
+            // What a swipe does now: the same page shifted in place (a new grid in the carousel), laid out and drawn.
+            host.weekShift = 0
+            val page = WeekScreen.build(host)
+            val frame = FrameLayout(c).apply { addView(page) }
+            fun lay() {
+                frame.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                frame.layout(0, 0, frame.measuredWidth, frame.measuredHeight)
+            }
+            lay()
+            var shift = 0L; var layout = 0L; var paint = 0L
+            repeat(n + 1) { i ->
+                host.weekShift = i % 8 + 1
+                val t0 = System.nanoTime()
+                WeekScreen.shift(page, host, 1)
+                val t1 = System.nanoTime()
+                lay()
+                val t2 = System.nanoTime()
+                frame.draw(canvas)
+                val t3 = System.nanoTime()
+                (WeekScreen.grid(page)?.parent as? android.view.ViewGroup)?.let { box -> while (box.childCount > 1) box.removeViewAt(0) }
+                if (i > 0) { shift += t1 - t0; layout += t2 - t1; paint += t3 - t2 }
+            }
+            Log.i("UMTimetable", "bench week swipe now: shift %.2f ms, measure+layout %.2f ms, draw %.2f ms".format(shift / 1e6 / n, layout / 1e6 / n, paint / 1e6 / n))
+        }
         for (view in listOf("day", "week", "grades", "due", "news", "files")) time("page $view") {
             val host = Host(c, ui)
             val page = when (view) {
@@ -318,6 +436,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
     private class Host(private val context: Context, override val ui: Ui, private val at: Now? = null, private val scheme0: Scheme? = null) : SpectrumHost {
         override val timetable get() = scheme0?.let { Timetable.parse(Timetable.json(context)).recolored(it) } ?: Timetable.load(context)
         override fun now() = at ?: Now.current()
+        override var weekShift = 0
         override fun render() = Unit
         override fun goDay(day: Int, dir: Int) = Unit
         override fun setView(view: String) = Unit

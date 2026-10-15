@@ -9,7 +9,7 @@ import java.io.File
 
 /**
  * Sign out: everything the app keeps on the phone goes, and it starts again as if just installed.
- * That's the Spectrum sign-in and its data, the timetable, the settings, and the web pages' cookies,
+ * That's the Spectrum sign-in and its data, the timetable, the plans, the settings, and the web pages' cookies,
  * storage and cache (so TimeEdit, MAYA and Microsoft are signed out too). Files the user saved to
  * Downloads are theirs and stay. Runs on the main thread (the web cache needs a WebView).
  */
@@ -39,6 +39,7 @@ object AppReset {
         // With nothing left, these cancel their alarms.
         Reminders.schedule(c)
         AttendanceWatch.schedule(c)
+        PlanReminders.schedule(c)
         TimetableWidget.updateAll(c)
     }
 }

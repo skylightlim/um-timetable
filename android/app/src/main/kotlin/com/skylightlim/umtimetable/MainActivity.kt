@@ -32,6 +32,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
+import com.skylightlim.umtimetable.Motion.spring
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
@@ -53,6 +54,8 @@ class MainActivity : Activity(), SpectrumHost {
         private set
     /** The sign-in poster over the app on first run (see [showWelcome]). */
     private var welcome: View? = null
+    /** The Settings sheet, while it's open: it stays until the user closes it. */
+    private var settings: SettingsSheet.Open? = null
 
     override val timetable: Timetable get() = Timetable.load(this)
     override fun now() = Now.current()
@@ -61,6 +64,8 @@ class MainActivity : Activity(), SpectrumHost {
     private var sel = 1
     /** The user chose [sel]; otherwise Day follows the next class (see [homeDay]). */
     private var pickedDay = false
+    /** Weeks from the strip's own week to the one shown, moved by swiping on Week; back to 0 off Day and Week. */
+    override var weekShift = 0
     override var openCourse: Int? = null
     override var syncing = false
 
@@ -91,7 +96,16 @@ class MainActivity : Activity(), SpectrumHost {
     private var presser: Motion.Presser? = null
     /** Where the strip's pill is (0–4 Monday–Friday, 5 Week) and which tab is lit, so a change animates. */
     private var stripIndex = -1
+    /** The strip's day chips (the chip, its day name and its date) and the Week chip's labels, for a week shift to change in place. */
+    private val stripDays = mutableListOf<Triple<View, TextView, TextView>>()
+    private var weekChip: View? = null
+    private var weekNameText: TextView? = null
+    private var weekOfText: TextView? = null
+    /** When the Week chip was last tapped: a second tap soon after, on another week, brings back this one. */
+    private var weekChipTap = 0L
     private var tabShown: String? = null
+    /** Whether the Day tab says Week (on the week grid); null after the tabs are built, so it's set without animating. */
+    private var dayTabWeek: Boolean? = null
     private val badgeCounts = mutableMapOf<String, Int>()
     private var pendingSlide = 0
     /** The next day arrives from the side it was swiped in from, rather than from close by (a tap). */
@@ -105,7 +119,8 @@ class MainActivity : Activity(), SpectrumHost {
         override fun run() {
             val n = now()
             // Only screens that show the clock (countdowns, "in 2 h") need redrawing each minute.
-            if ("${n.dow}-${n.min.toInt()}" != lastMinute && view in setOf("day", "week", "due")) {
+            // Not under a selection box on Week: redrawing would drop it.
+            if ("${n.dow}-${n.min.toInt()}" != lastMinute && view in setOf("day", "week", "due") && !WeekGrid.holding) {
                 if (!pickedDay) sel = homeDay(timetable, n)
                 render(keepScroll = true)
             }
@@ -149,7 +164,7 @@ class MainActivity : Activity(), SpectrumHost {
         setIntent(intent)
         intent.getIntExtra(EXTRA_COURSE, 0).takeIf { it > 0 }?.let { openCourse = it; setView("files"); return }
         intent.getStringExtra(EXTRA_VIEW)?.takeIf { it in VIEWS }?.let {
-            if (it == "day") { pickedDay = false; sel = homeDay(timetable, now()) }
+            if (it == "day") { pickedDay = false; weekShift = 0; sel = homeDay(timetable, now()) }
             go(it, null)
         }
     }
@@ -158,6 +173,8 @@ class MainActivity : Activity(), SpectrumHost {
         super.onResume()
         if (!pickedDay) sel = homeDay(timetable, now())
         if (fresh) fresh = false else render(keepScroll = true)
+        // Back from what a Settings row opened (TimeEdit, Android's settings, the sign-in): the sheet shows how it went.
+        settings?.takeIf { it.showing }?.refresh()
         ticker.post(tick)
         // Grades arrive after the rest of a sync (they can take Spectrum much longer).
         SpectrumSync.onGrades = { if (view == "grades") render(keepScroll = true) else renderTabs() }
@@ -168,6 +185,13 @@ class MainActivity : Activity(), SpectrumHost {
         super.onPause()
         ticker.removeCallbacks(tick)
         SpectrumSync.onGrades = null
+    }
+
+    override fun onDestroy() {
+        // Sign out restarts the screen with the sheet still open (its Sign out button asked first).
+        settings?.dismiss()
+        settings = null
+        super.onDestroy()
     }
 
     private fun prefs() = getSharedPreferences("ui", MODE_PRIVATE)
@@ -277,6 +301,7 @@ class MainActivity : Activity(), SpectrumHost {
         tabs.removeAllViews()
         tabViews.clear()
         badges.clear()
+        dayTabWeek = null
         val p = ui.p
         for ((i, t) in TABS.withIndex()) {
             val (id, label, iconRes) = t
@@ -309,11 +334,16 @@ class MainActivity : Activity(), SpectrumHost {
                         Haptics.back(this)
                         openCourse = null
                         render()
-                    } else if (id == view && id == "day" && pickedDay) {
+                    } else if (id == view && id == "day" && (pickedDay || weekShift != 0)) {
                         Haptics.back(this)
                         pickedDay = false
+                        weekShift = 0
                         sel = homeDay(timetable, now())
                         render()
+                    } else if (id == "day" && view == "week" && weekShift != 0) {
+                        // Week on another week: the tab (now "Week") brings back the strip's own week first.
+                        Haptics.back(this)
+                        shiftWeek(-weekShift)
                     } else {
                         setView(id)
                     }
@@ -353,7 +383,16 @@ class MainActivity : Activity(), SpectrumHost {
         // Nor is the page clipped: its cards rise into place, and spring back after a press, a little past its edges.
         (page as? ViewGroup)?.clipChildren = false
         content.addView(page)
-        scroll.onSwipe = if (view == "day") { dir -> slideFar = true; goDay(sel + dir, dir) } else null
+        // Swipes step along the strip's cells, the Week grid among them (after Friday, before Monday).
+        // Swipes on Day step along the strip's cells, the Week grid among them (after Friday, before Monday);
+        // on Week they move to the next or the previous week.
+        // On Week only its grid follows a swipe, the carousel's card; elsewhere the whole page does.
+        scroll.swipeTarget = if (view == "week") { { content.getChildAt(content.childCount - 1)?.let(WeekScreen::grid) } } else null
+        scroll.onSwipe = when (view) {
+            "day" -> { dir -> slideFar = true; goCell(stripCell(sel, dir), dir) }
+            "week" -> { dir -> slideFar = true; shiftWeek(dir) }
+            else -> null
+        }
         // Spectrum's tabs sync when pulled down.
         scroll.onPull = if (view in setOf("grades", "due", "news", "files") && SpectrumStore.signedIn(this)) ::refresh else null
         // The Courses list (where Settings used to sit, under the courses) opens them when pulled up.
@@ -378,6 +417,7 @@ class MainActivity : Activity(), SpectrumHost {
         if (stripFrame.visibility != View.VISIBLE) return
         strip.removeAllViews()
         stripTrack.removeAllViews()
+        stripDays.clear()
         val index = if (view == "week") 5 else sel - 1
         // The pill glides; the two labels it leaves and reaches change colour with it.
         val moved = stripIndex != -1 && stripIndex != index
@@ -404,7 +444,7 @@ class MainActivity : Activity(), SpectrumHost {
         }
         for (d in 1..5) {
             val selected = index == d - 1
-            val days = daysFromToday(tt, n, d)
+            val days = daysTo(d)
             val today = days == 0
             val name = ui.text(DAY_SHORT[d], 10.5f, fg(today, selected), ui.f.bodyBold, caps = true, spacing = 0.1f)
             val date = ui.text(dateIn(days).get(Calendar.DAY_OF_MONTH).toString(), 22f, fg(today, selected), ui.f.sign)
@@ -416,35 +456,43 @@ class MainActivity : Activity(), SpectrumHost {
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ui.dp(6))
                 for (s in tt.day(d)) addView(View(context).apply { background = ui.shape(s.course.color, 99f) }, LinearLayout.LayoutParams(ui.dp(6), ui.dp(6)))
             }
-            val description = tt.day(d).size.let { k -> "${DAY_NAMES[d]} ${dateText(days)}, $k ${if (k == 1) "class" else "classes"}" }
-            strip.addView(chip(description, name, date, dots).apply {
+            val dayChip = chip(dayWords(d, days), name, date, dots).apply {
                 setOnClickListener { pickedDay = true; goDay(d) }
-            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { if (d > 1) marginStart = ui.dp(6) })
+            }
+            strip.addView(dayChip, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { if (d > 1) marginStart = ui.dp(6) })
+            stripDays += Triple(dayChip, name, date)
         }
         // The week grid lives under Day: one more chip after Friday, saying which week of the semester it is.
         val week = index == 5
-        val semester = AcademicCalendar.week(LocalDate.now().plusDays(daysFromToday(tt, n, 1).toLong()))
-        val (weekName, weekOf) = when (semester?.kind) {
-            AcademicCalendar.Kind.TEACHING -> "W${semester.n}" to "of ${semester.of}"
-            AcademicCalendar.Kind.BREAK -> "Break" to null
-            AcademicCalendar.Kind.REVISION -> "Revision" to null
-            AcademicCalendar.Kind.EXAMS -> "Exams" to null
-            null -> "Week" to null
-        }
-        val weekParts = listOfNotNull(
-            ui.text(weekName, 22f, if (week) p.ground else p.text, ui.f.sign),
-            weekOf?.let { ui.text(it, 10.5f, if (week) p.ground else p.muted, ui.f.bodyBold, caps = true, spacing = 0.1f) },
-        )
+        val (weekName, weekOf, weekWords) = semesterLabel()
+        // One line, shrinking to fit the chip: "Revision" at 22sp is wider than it. "of 14" only in a teaching week.
+        val nameText = ui.fitText(weekName, 22f, if (week) p.ground else p.text, ui.f.sign, lines = 1)
+        val ofText = ui.text(weekOf.orEmpty(), 10.5f, if (week) p.ground else p.muted, ui.f.bodyBold, caps = true, spacing = 0.1f).apply { if (weekOf == null) visibility = View.GONE }
+        val weekParts = listOf(nameText, ofText)
         for ((k, t) in weekParts.withIndex()) {
             val rest = if (k == 0) p.text else p.muted
             if (moved && week) Motion.tint(t, rest, p.ground)
             if (moved && stripIndex == 5) Motion.tint(t, p.ground, rest, 90)
         }
-        val weekWords = if (semester?.kind == AcademicCalendar.Kind.TEACHING) "Week ${semester.n} of ${semester.of} of the semester" else weekName
-        strip.addView(chip("$weekWords, ${tt.sessions.size} classes a week", *weekParts.toTypedArray()).apply {
-            setOnClickListener { setView("week") }
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.15f).apply { marginStart = ui.dp(6) })
-        stripGlider.moveTo(index, if (view == "day" && daysFromToday(tt, n, sel) == 0) p.accent else p.text)
+        val chipView = chip("$weekWords, ${tt.sessions.size} classes a week", *weekParts.toTypedArray()).apply {
+            setOnClickListener {
+                // On another week, a double tap brings back this one; otherwise it opens Week.
+                val t = android.os.SystemClock.uptimeMillis()
+                if (view == "week" && weekShift != 0 && t - weekChipTap < android.view.ViewConfiguration.getDoubleTapTimeout()) {
+                    weekChipTap = 0L
+                    Haptics.back(this)
+                    shiftWeek(-weekShift)
+                } else {
+                    weekChipTap = t
+                    goCell(WEEK_CELL)
+                }
+            }
+        }
+        strip.addView(chipView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.15f).apply { marginStart = ui.dp(6) })
+        weekChip = chipView
+        weekNameText = nameText
+        weekOfText = ofText
+        stripGlider.moveTo(index, if (view == "day" && daysTo(sel) == 0) p.accent else p.text)
         stripIndex = index
     }
 
@@ -458,10 +506,10 @@ class MainActivity : Activity(), SpectrumHost {
         val tt = timetable
         val big = view == "day" || view == "week"
         val page = PAGE_TITLES[view]
-        val days = daysFromToday(tt, n, sel)
+        val days = daysTo(sel)
         val words = when {
             view == "day" -> listOf(DAY_NAMES[sel], dateText(days))
-            view == "week" -> listOf(weekRange(daysFromToday(tt, n, 1)))
+            view == "week" -> listOf(weekRange(daysTo(1)))
             page != null -> listOf(page)
             else -> listOf("${DAY_NAMES[n.dow]} ${dateText(0)}")
         }
@@ -470,7 +518,7 @@ class MainActivity : Activity(), SpectrumHost {
         val line = when {
             page != null -> SpectrumScreens.summary(this, view)
             view == "day" -> dayGlance(tt.day(sel))
-            view == "week" -> weekDeadlines(daysFromToday(tt, n, 1))
+            view == "week" -> weekLine(daysTo(1))
             else -> null
         }
         val today = view == "day" && days == 0
@@ -491,7 +539,10 @@ class MainActivity : Activity(), SpectrumHost {
     }
 
     /** Settings (theme, imports, notifications, vibration, account), as in redesign 1p. */
-    private fun openSettings() = SettingsSheet.show(this, this)
+    private fun openSettings() {
+        if (settings?.showing == true) return
+        settings = SettingsSheet.show(this, this)
+    }
 
     override fun setLook(look: Look) {
         if (look != this.look) restyle(titleBox) { this.look = look; Look.save(this, look) }
@@ -529,20 +580,36 @@ class MainActivity : Activity(), SpectrumHost {
     }
 
     /**
-     * The Spectrum deadlines in the strip's week (Monday [monday] days from today, to Sunday) not yet
-     * passed: "3 deadlines this week" (or "next week" once the strip shows it); null when not signed in.
+     * The line under Week's title: a week of UM's calendar without classes, the week's public holidays
+     * ("Deepavali Mon"), then its Spectrum deadlines.
+     */
+    private fun weekLine(monday: Int): String? {
+        val first = LocalDate.now().plusDays(monday.toLong())
+        val holidays = (0..4).mapNotNull { k -> Holidays.on(first.plusDays(k.toLong()))?.let { "${it.name} ${DAY_SHORT[k + 1]}" } }
+        return listOfNotNull(weekOff(first), holidays.joinToString(", ").ifEmpty { null }, weekDeadlines(monday)).joinToString(" · ").ifEmpty { null }
+    }
+
+    /**
+     * The Spectrum deadlines in the week shown (Monday [monday] days from today, to Sunday): those not yet
+     * passed ("3 deadlines this week", "next week"), or all of them for a week that's over ("last week");
+     * null when not signed in.
      */
     private fun weekDeadlines(monday: Int): String? {
         if (!SpectrumStore.signedIn(this)) return null
         val from = startOfDay(dateIn(monday).timeInMillis)
         val to = startOfDay(dateIn(monday + 7).timeInMillis)
         val now = System.currentTimeMillis()
-        val n = SpectrumStore.array(this, "due").objects().count { it.getLong("due") in maxOf(from, now) until to }
-        val which = if (monday > 0) "next week" else "this week"
+        val n = SpectrumStore.array(this, "due").objects().count { it.getLong("due") in (if (to <= now) from else maxOf(from, now)) until to }
+        val which = when (monday) {
+            in -6..0 -> " this week"
+            in 1..7 -> " next week"
+            in -13..-7 -> " last week"
+            else -> ""
+        }
         return when (n) {
-            0 -> "No deadlines $which"
-            1 -> "1 deadline $which"
-            else -> "$n deadlines $which"
+            0 -> "No deadlines$which"
+            1 -> "1 deadline$which"
+            else -> "$n deadlines$which"
         }
     }
 
@@ -586,6 +653,17 @@ class MainActivity : Activity(), SpectrumHost {
         val unread = SpectrumStore.array(this, "news").objects().count { it.optBoolean("forMe", true) && it.getInt("id").toString() !in seenNews }
         val newMarks = SpectrumStore.array(this, "grades").objects().count { !it.isNull("raw") && !SpectrumSync.isAttendance(it) && SpectrumSync.gradeKey(it) !in seenGrades }
         val counts = mapOf("news" to unread, "grades" to newMarks, "due" to SpectrumScreens.openAttendance(this))
+        // On the week grid the Day tab is Week, with the grid's icon: the label rolls over and the icon draws itself in.
+        val week = view == "week"
+        if (week != dayTabWeek) tabViews["day"]?.let { (tab, icon, text) ->
+            val animate = dayTabWeek != null && Motion.enabled
+            dayTabWeek = week
+            val label = if (week) "Week" else "Day"
+            icon.setImageResource(if (week) R.drawable.avd_tab_week else R.drawable.avd_tab_day)
+            tab.contentDescription = label
+            rollLabel(text, label, animate)
+            if (animate) (icon.drawable as? android.graphics.drawable.AnimatedVectorDrawable)?.start()
+        }
         var lit = 0
         for ((id, views) in tabViews) {
             val (_, icon, text) = views
@@ -609,6 +687,29 @@ class MainActivity : Activity(), SpectrumHost {
         if (tabShown != null && tabShown != shown && Motion.enabled) (tabViews[shown]?.second?.drawable as? android.graphics.drawable.AnimatedVectorDrawable)?.start()
         tabShown = shown
         tabGlider.moveTo(lit, p.surface)
+    }
+
+    /** A tab's label changing in place: the old one slips up and out, the new one rises in under it. */
+    private fun rollLabel(text: TextView, to: String, animate: Boolean) =
+        if (animate) roll(text, to, 0f, ui.dp(6f).toFloat()) else { text.animate().cancel(); text.text = to; text.translationX = 0f; text.translationY = 0f; text.alpha = 1f }
+
+    /** A text changing in place: the old one slips out away from ([dx], [dy]), the new one comes in from there. */
+    private fun roll(text: TextView, to: String, dx: Float, dy: Float) {
+        text.animate().cancel()
+        if (!Motion.enabled || text.text.toString() == to) {
+            text.text = to
+            text.translationX = 0f
+            text.translationY = 0f
+            text.alpha = 1f
+            return
+        }
+        text.animate().translationX(-dx).translationY(-dy).alpha(0f).setDuration(90).setInterpolator(Motion.EXIT).withEndAction {
+            text.text = to
+            text.translationX = dx
+            text.translationY = dy
+            text.animate().translationX(0f).translationY(0f).spring(Motion.SETTLE).start()
+            Motion.fade(text, 0f, 1f, 140)
+        }.start()
     }
 
     private fun markNewsSeenSoon() {
@@ -640,10 +741,77 @@ class MainActivity : Activity(), SpectrumHost {
         if (view !in VIEWS) return
         val changed = view != this.view
         if (changed) scroll.resetPull()
+        // Another tab: Day and Week start again from the strip's own week.
+        if (view != "day" && view != "week") weekShift = 0
         this.view = view
         prefs().edit().putString("view", view).apply()
         if (changed) feel?.invoke(shell)
         render(keepScroll = false, enter = changed)
+    }
+
+    /**
+     * [by] weeks on (or back, negative) from the week shown on Week. Only what changes changes: the
+     * grid slides over to the new week as a carousel ([WeekScreen.shift]), and the title and the strip's
+     * dates roll over from the same side. (Drawing the whole page again dropped frames as it began.)
+     */
+    private fun shiftWeek(by: Int) {
+        if (by == 0) return
+        val dir = Integer.signum(by)
+        weekShift += by
+        pickedDay = true // the day the strip lands on stays put when Day is opened from this week
+        val page = content.getChildAt(content.childCount - 1)
+        if (view == "week" && page != null && WeekScreen.shift(page, this, dir)) {
+            pendingSlide = dir
+            showTitle(now())
+            pendingSlide = 0
+            slideFar = false
+            shiftStrip(dir)
+            return
+        }
+        pendingSlide = dir
+        render(keepScroll = true)
+    }
+
+    /** The strip for the week shown now, in place: each date and the Week chip's label roll over from the side the week came from. */
+    private fun shiftStrip(dir: Int) {
+        val p = ui.p
+        val tt = timetable
+        if (stripDays.size != 5) return renderTop(now())
+        val dx = dir * ui.dp(12f).toFloat()
+        for ((k, views) in stripDays.withIndex()) {
+            val (chip, name, date) = views
+            val d = k + 1
+            val days = daysTo(d)
+            val colour = if (days == 0) p.accentText else p.text // none is chosen on Week; today's in the accent
+            name.setTextColor(colour)
+            date.setTextColor(colour)
+            roll(date, dateIn(days).get(Calendar.DAY_OF_MONTH).toString(), dx, 0f)
+            chip.contentDescription = dayWords(d, days)
+        }
+        val (weekName, weekOf, weekWords) = semesterLabel()
+        weekNameText?.let { roll(it, weekName, dx, 0f) }
+        weekOfText?.apply {
+            visibility = if (weekOf == null) View.GONE else View.VISIBLE
+            if (weekOf != null) roll(this, weekOf, dx, 0f)
+        }
+        weekChip?.contentDescription = "$weekWords, ${tt.sessions.size} classes a week"
+    }
+
+    /** A day chip's words for TalkBack: "Monday 9 Nov, 3 classes". */
+    private fun dayWords(d: Int, days: Int) = timetable.day(d).size.let { k -> "${DAY_NAMES[d]} ${dateText(days)}, $k ${if (k == 1) "class" else "classes"}" }
+
+    /** The Week chip's label for the week shown: "W3" and "of 14", or "Break", "Revision", "Exams"; and its words for TalkBack. */
+    private fun semesterLabel(): Triple<String, String?, String> {
+        val semester = AcademicCalendar.week(LocalDate.now().plusDays(daysTo(1).toLong()))
+        val (name, of) = when (semester?.kind) {
+            AcademicCalendar.Kind.TEACHING -> "W${semester.n}" to "of ${semester.of}"
+            AcademicCalendar.Kind.BREAK -> "Break" to null
+            AcademicCalendar.Kind.REVISION -> "Revision" to null
+            AcademicCalendar.Kind.EXAMS -> "Exams" to null
+            null -> "Week" to null
+        }
+        val words = if (semester?.kind == AcademicCalendar.Kind.TEACHING) "Week ${semester.n} of ${semester.of} of the semester" else name
+        return Triple(name, of, words)
     }
 
     override fun goDay(day: Int, dir: Int) {
@@ -652,12 +820,27 @@ class MainActivity : Activity(), SpectrumHost {
             day > 5 -> 1
             else -> day
         }
-        pickedDay = true
-        if (d == sel && view == "day") return
-        pendingSlide = if (view != "day") 0 else if (dir != 0) dir else if (d > sel) 1 else -1
-        if (view == "day" && !slideFar) Haptics.tick(shell)
-        sel = d
-        setView("day")
+        goCell(d, dir)
+    }
+
+    /**
+     * Shows the strip's [cell]: a day (1–5) or the Week grid ([WEEK_CELL]). From another cell the page slides
+     * in from the side it's on ([dir] for a swipe), as from one day to the next; from another tab it rises.
+     */
+    private fun goCell(cell: Int, dir: Int = 0) {
+        val week = cell == WEEK_CELL
+        if (!week) pickedDay = true
+        val here = when (view) {
+            "week" -> WEEK_CELL
+            "day" -> sel
+            else -> null
+        }
+        if (here == cell) return
+        pendingSlide = if (here == null) 0 else if (dir != 0) dir else if (cell > here) 1 else -1
+        // A tap vibrates (a swipe already bumped at its threshold). Day to day here: the view stays "day", so go doesn't.
+        if (view == "day" && !week && !slideFar) Haptics.tick(shell)
+        if (!week) sel = cell
+        go(if (week) "week" else "day", if (slideFar) null else Haptics::tick)
     }
 
     // Back: leave a course page, then return to Day; on Day (false), Android's own back leaves the app.
@@ -667,6 +850,7 @@ class MainActivity : Activity(), SpectrumHost {
             openCourse = null
             render()
         } else if (view != "day") {
+            weekShift = 0
             go("day", Haptics::back)
         } else return false
         return true
@@ -693,6 +877,13 @@ class MainActivity : Activity(), SpectrumHost {
     }
 
     override fun openSheet(course: Course, session: Session?) = ClassSheet.show(this, this, course, session)
+
+    /** A plan's editor, out of its cell in the week grid; once it's saved or deleted, the week shows it. */
+    override fun openPlan(from: android.graphics.RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float) =
+        PlanSheet.show(ui, from, plan, isNew, maxEnd, hourPx, onRepick = { draft -> weekGrid()?.startRepick(draft) }) { render(keepScroll = true) }
+
+    /** The week grid on the page now (the minute's redraw may have replaced the one a card came from; mid-slide, the newer of two). */
+    private fun weekGrid(): WeekGrid? = content.getChildAt(content.childCount - 1)?.let(WeekScreen::grid) as? WeekGrid
 
     override fun showCourse(id: Int) {
         openCourse = id
@@ -747,8 +938,8 @@ class MainActivity : Activity(), SpectrumHost {
     @Suppress("DEPRECATION")
     override fun signIn() = startActivityForResult(Intent(this, LoginActivity::class.java), REQ_LOGIN)
 
-    /** One tap on a link at the bottom of Courses shouldn't wipe the sign-in: ask first. */
-    override fun signOut() = ConfirmDialog.show(ui, SIGN_OUT_TITLE, SIGN_OUT_BODY, "Sign out") { signOutNow() }
+    /** Sign out can't be undone: ask first, and only a held button signs out. */
+    override fun signOut() = ConfirmDialog.show(ui, SIGN_OUT_TITLE, SIGN_OUT_BODY, "Sign out", hold = true) { signOutNow() }
 
     /** Sign out deletes everything, and the app starts again at the first-run poster. */
     private fun signOutNow() {

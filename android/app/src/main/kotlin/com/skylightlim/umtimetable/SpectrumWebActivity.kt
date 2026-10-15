@@ -15,7 +15,7 @@ class SpectrumWebActivity : WebScreen() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setUp("Spectrum", "Done", compact = true)
+        setUp("Spectrum", "Opening the page…", "Done", compact = true)
         web.setDownloadListener { url, _, disposition, mime, length ->
             Downloads.open(this, url, URLUtil.guessFileName(url, disposition, mime), mime, length, "Spectrum")
         }

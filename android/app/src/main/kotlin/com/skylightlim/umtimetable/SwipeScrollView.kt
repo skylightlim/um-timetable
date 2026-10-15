@@ -29,6 +29,13 @@ import kotlin.math.sign
 class SwipeScrollView(context: Context) : ScrollView(context) {
     /** Called with +1 for a swipe to the left (next) and -1 for a swipe to the right (previous). */
     var onSwipe: ((Int) -> Unit)? = null
+    /**
+     * What follows the finger in a sideways swipe: the whole page, unless this gives a part of it (Week:
+     * its grid, a carousel). A swipe that goes through leaves that part where the finger let go of it,
+     * for [onSwipe] to carry on from; the whole page is put back first.
+     */
+    var swipeTarget: (() -> View?)? = null
+    private val dragged: View? get() = swipeTarget?.invoke() ?: page
     /** Called when the page is pulled down past the threshold and let go. */
     var onPull: (() -> Unit)? = null
     /** What the pull uncovers above the page. */
@@ -125,7 +132,7 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
         if (!swiping || swipe == null) return super.onTouchEvent(e)
         val dx = e.x - downX
         when (e.actionMasked) {
-            MotionEvent.ACTION_MOVE -> page?.apply {
+            MotionEvent.ACTION_MOVE -> dragged?.apply {
                 // Follows the finger from where the swipe was recognised, a touch slower.
                 translationX = (dx - sign(dx) * slop) * 0.9f
                 alpha = 1f - (abs(translationX) / width.coerceAtLeast(1)) * 0.5f
@@ -141,7 +148,8 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
                 swiping = false
                 if (abs(dx) > minDistance || flick) {
                     if (!past) Haptics.threshold(this, true) // a short flick: the bump it skipped
-                    page?.apply { animate().cancel(); translationX = 0f; alpha = 1f }
+                    if (swipeTarget == null) page?.apply { animate().cancel(); translationX = 0f; alpha = 1f }
+                    else dragged?.animate()?.cancel()
                     swipe(if (dx < 0) 1 else -1)
                 } else {
                     settle()
@@ -237,7 +245,7 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
 
     /** Not far enough: back to where it was. */
     private fun settle() {
-        val page = page ?: return
+        val page = dragged ?: return
         page.animate().translationX(0f).spring(Motion.BOUNCY).start()
         Motion.fade(page, page.alpha, 1f)
     }
@@ -250,7 +258,7 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
 }
 
 /**
- * What pulling a page down uncovers: the cow and the horse ([DuelView]) swinging their swords in as the
+ * What pulling a page down uncovers: the cow and the horse ([DuelView]) swinging their lightsabers in as the
  * page comes down, crossing them when it's far enough to sync, fighting while the sync runs and
  * clashing once more when it's done; with what letting go will do and when Spectrum last synced.
  * It stays pinned behind the top of the page, so the duel is in full view by the time they cross.
@@ -301,7 +309,7 @@ class PullIndicator(private val ui: Ui, private val lastSync: () -> String) : Li
 
 /**
  * What pulling the Courses list up uncovers: the settings gear, turning as the page comes up, and what
- * letting go will do. Past the threshold it gives a little pop, as the swords crossing do for a sync.
+ * letting go will do. Past the threshold it gives a little pop, as the blades crossing do for a sync.
  */
 @SuppressLint("ViewConstructor")
 class PullUpIndicator(ui: Ui) : LinearLayout(ui.context) {

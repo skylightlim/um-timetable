@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Day tab while it shows the week grid: the frame draws itself round, then the header line goes
+     across and the two column lines drop down, one after the other. At rest it's ic_tab_week. -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <aapt:attr name="android:drawable">
+        <vector android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+            <path android:name="frame" android:pathData="M6.0,4.5 h12.0 a2.5,2.5 0 0 1 2.5,2.5 v10.0 a2.5,2.5 0 0 1 -2.5,2.5 h-12.0 a2.5,2.5 0 0 1 -2.5,-2.5 v-10.0 a2.5,2.5 0 0 1 2.5,-2.5 z" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
+            <path android:name="header" android:pathData="M3.5,9h17" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" />
+            <path android:name="col1" android:pathData="M9.2,9v10.5" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" />
+            <path android:name="col2" android:pathData="M14.8,9v10.5" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" />
+        </vector>
+    </aapt:attr>
+    <!-- Each part waits as a flat keyframe, hidden (a round cap on an empty line would show as a dot), then draws in. -->
+    <target android:name="frame"><aapt:attr name="android:animation">
+        <objectAnimator android:duration="320" android:interpolator="@android:interpolator/fast_out_slow_in" android:propertyName="trimPathEnd" android:valueFrom="0" android:valueTo="1" android:valueType="floatType" />
+    </aapt:attr></target>
+    <target android:name="header"><aapt:attr name="android:animation">
+        <objectAnimator android:duration="360"><propertyValuesHolder android:propertyName="trimPathEnd">
+            <keyframe android:fraction="0" android:value="0" /><keyframe android:fraction="0.33" android:value="0" />
+            <keyframe android:fraction="1" android:value="1" android:interpolator="@android:interpolator/fast_out_slow_in" />
+        </propertyValuesHolder><propertyValuesHolder android:propertyName="strokeAlpha">
+            <keyframe android:fraction="0" android:value="0" /><keyframe android:fraction="0.33" android:value="0" />
+            <keyframe android:fraction="0.34" android:value="1" /><keyframe android:fraction="1" android:value="1" />
+        </propertyValuesHolder></objectAnimator>
+    </aapt:attr></target>
+    <target android:name="col1"><aapt:attr name="android:animation">
+        <objectAnimator android:duration="430"><propertyValuesHolder android:propertyName="trimPathEnd">
+            <keyframe android:fraction="0" android:value="0" /><keyframe android:fraction="0.47" android:value="0" />
+            <keyframe android:fraction="1" android:value="1" android:interpolator="@android:interpolator/fast_out_slow_in" />
+        </propertyValuesHolder><propertyValuesHolder android:propertyName="strokeAlpha">
+            <keyframe android:fraction="0" android:value="0" /><keyframe android:fraction="0.47" android:value="0" />
+            <keyframe android:fraction="0.48" android:value="1" /><keyframe android:fraction="1" android:value="1" />
+        </propertyValuesHolder></objectAnimator>
+    </aapt:attr></target>
+    <target android:name="col2"><aapt:attr name="android:animation">
+        <objectAnimator android:duration="490"><propertyValuesHolder android:propertyName="trimPathEnd">
+            <keyframe android:fraction="0" android:value="0" /><keyframe android:fraction="0.55" android:value="0" />
+            <keyframe android:fraction="1" android:value="1" android:interpolator="@android:interpolator/fast_out_slow_in" />
+        </propertyValuesHolder><propertyValuesHolder android:propertyName="strokeAlpha">
+            <keyframe android:fraction="0" android:value="0" /><keyframe android:fraction="0.55" android:value="0" />
+            <keyframe android:fraction="0.56" android:value="1" /><keyframe android:fraction="1" android:value="1" />
+        </propertyValuesHolder></objectAnimator>
+    </aapt:attr></target>
+</animated-vector>

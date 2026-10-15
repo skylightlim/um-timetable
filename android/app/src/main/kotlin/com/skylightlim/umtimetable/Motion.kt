@@ -121,11 +121,13 @@ object Motion {
             if (v is ViewGroup) for (i in v.childCount - 1 downTo 0) {
                 val child = v.getChildAt(i)
                 clickableAt(child, x, y)?.let { return it }
-                // A scrolling panel takes every touch on it, so nothing under it is pressed. Without this, a
-                // tap on a sheet's empty space sank the scrim behind it, uncovering light strips at the edges.
-                if (child is ScrollView && hit(child, x, y)) return null
+                // A scrolling panel, or anything else that takes touches (a dialog's card), takes every touch
+                // on it, so nothing under it is pressed. Without this, pressing a sheet's or a card's empty
+                // space sank the scrim behind it, uncovering light strips at the edges.
+                if ((child is ScrollView || child.isClickable) && hit(child, x, y)) return null
             }
-            return v.takeIf { it.isClickable && it.isEnabled && it.hasOnClickListeners() }
+            // A switch's options don't sink: its gliding pill is their feedback, and a sunk label left the pill behind.
+            return v.takeIf { it.isClickable && it.isEnabled && it.hasOnClickListeners() && it.parent !is SegmentPill }
         }
     }
 
@@ -339,6 +341,37 @@ object Motion {
         v.scaleX = from
         v.scaleY = from
         v.animate().scaleX(1f).scaleY(1f).spring(BOUNCY).start()
+    }
+
+    /**
+     * A little jump on the spot after [delay] ms: it crouches, leaps [height] px, lands with a squash, then
+     * a smaller hop, about 0.7 s in all. Its parent must not clip it (clipChildren false up to where
+     * there's room). Squashes from its bottom edge, so it looks to land on something.
+     */
+    fun hop(v: View, delay: Long, height: Float) {
+        if (!enabled) return
+        v.post {
+            hopAnimator(v, height).apply { startDelay = delay }.start()
+        }
+    }
+
+    /** [hop]'s animation, not started (a still preview can set its fraction). Needs [v] laid out. */
+    fun hopAnimator(v: View, height: Float): ObjectAnimator {
+        // A keyframe's interpolator shapes the stretch that ends at it: rising slows, falling speeds up.
+        val up = android.view.animation.DecelerateInterpolator(1.6f)
+        val down = android.view.animation.AccelerateInterpolator(1.6f)
+        fun key(t: Float, value: Float, ease: TimeInterpolator? = null) = android.animation.Keyframe.ofFloat(t, value).apply { ease?.let { interpolator = it } }
+        fun keys(property: android.util.Property<View, Float>, vararg k: android.animation.Keyframe) = android.animation.PropertyValuesHolder.ofKeyframe(property, *k)
+        val y = keys(View.TRANSLATION_Y, key(0f, 0f), key(0.1f, 0f), key(0.36f, -height, up), key(0.58f, 0f, down), key(0.7f, -height * 0.32f, up), key(0.82f, 0f, down), key(1f, 0f))
+        // Crouch, stretch on the way up, squash on landing, and less on the second.
+        val sy = keys(View.SCALE_Y, key(0f, 1f), key(0.1f, 0.78f), key(0.22f, 1.12f), key(0.36f, 1f), key(0.58f, 1f), key(0.63f, 0.8f), key(0.7f, 1.04f), key(0.82f, 1f), key(0.86f, 0.92f), key(1f, 1f))
+        val sx = keys(View.SCALE_X, key(0f, 1f), key(0.1f, 1.16f), key(0.22f, 0.92f), key(0.36f, 1f), key(0.58f, 1f), key(0.63f, 1.15f), key(0.7f, 0.98f), key(0.82f, 1f), key(0.86f, 1.05f), key(1f, 1f))
+        v.pivotX = v.width / 2f
+        v.pivotY = v.height.toFloat()
+        return ObjectAnimator.ofPropertyValuesHolder(v, y, sy, sx).apply {
+            duration = 720
+            interpolator = null
+        }
     }
 
     /** The drawn chevron of a fold: pointing down when shut, up when open. */

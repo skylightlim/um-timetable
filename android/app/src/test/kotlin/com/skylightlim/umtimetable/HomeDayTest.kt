@@ -50,4 +50,12 @@ class HomeDayTest {
         assertEquals(1, homeDay(empty, Now(6, 600f)))
         assertEquals(listOf(2, 3, 4, 5, 6), strip(empty, Now(6, 600f)))
     }
+
+    @Test fun swipesStopAtTheWeekCell() {
+        assertEquals(WEEK_CELL, stripCell(5, 1)) // Friday, swiped left: the week, not Monday
+        assertEquals(1, stripCell(WEEK_CELL, 1)) // the week, swiped left: round to Monday
+        assertEquals(5, stripCell(WEEK_CELL, -1))
+        assertEquals(WEEK_CELL, stripCell(1, -1))
+        assertEquals(3, stripCell(2, 1))
+    }
 }

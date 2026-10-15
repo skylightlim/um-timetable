@@ -2,8 +2,13 @@ package com.skylightlim.umtimetable
 
 import android.annotation.SuppressLint
 import android.app.Dialog
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Point
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.view.Gravity
@@ -11,15 +16,18 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
+import android.view.ViewAnimationUtils
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.ScrollView
 import android.window.OnBackInvokedDispatcher
 import com.skylightlim.umtimetable.Motion.spring
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.max
 
 /**
@@ -27,7 +35,7 @@ import kotlin.math.max
  * (from anywhere on it once its content is scrolled to the top). Dragged a quarter of its height or
  * flicked down, tapped outside, or Back, and it slides away, faster than it came.
  */
-class BottomSheet(context: Context, private val content: View, darkSheet: Boolean) {
+class BottomSheet(context: Context, private var content: View, darkSheet: Boolean) {
     // Full screen and see-through (not a floating dialog), so the scrim covers the status bar too.
     private val dialog = Dialog(context, android.R.style.Theme_Translucent_NoTitleBar)
     private val scrim = View(context).apply { setBackgroundColor(0x8C000000.toInt()) }
@@ -39,6 +47,8 @@ class BottomSheet(context: Context, private val content: View, darkSheet: Boolea
     private val frame = Frame(context)
     private var closing = false
     private val contentBottom = content.paddingBottom
+    /** The navigation bar's height, which the content's bottom padding adds to. */
+    private var barsBottom = 0
 
     init {
         scrim.setOnClickListener { close() }
@@ -47,6 +57,7 @@ class BottomSheet(context: Context, private val content: View, darkSheet: Boolea
         // Drawn edge to edge: the sheet's colour runs under the navigation bar, and it stops below the status bar.
         frame.setOnApplyWindowInsetsListener { _, insets ->
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            barsBottom = bars.bottom
             content.setPadding(content.paddingLeft, content.paddingTop, content.paddingRight, contentBottom + bars.bottom)
             (body.layoutParams as FrameLayout.LayoutParams).topMargin = bars.top
             WindowInsets.CONSUMED
@@ -57,12 +68,64 @@ class BottomSheet(context: Context, private val content: View, darkSheet: Boolea
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             setWindowAnimations(0)
             setDecorFitsSystemWindows(false)
-            // Light status icons over the scrim; navigation icons to suit the sheet under them.
-            insetsController?.setSystemBarsAppearance(
-                if (darkSheet) 0 else WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
-                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
-            )
         }
+        barIcons(darkSheet)
+    }
+
+    /** Light status icons over the scrim; navigation icons to suit the sheet under them. */
+    private fun barIcons(darkSheet: Boolean) = dialog.window?.insetsController?.setSystemBarsAppearance(
+        if (darkSheet) 0 else WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+    )
+
+    /** Open, and not on its way out. */
+    val showing get() = dialog.isShowing && !closing
+
+    /** Where [v], a view on the sheet, has its centre, in the sheet's own coordinates. */
+    fun centreOf(v: View): Point {
+        val at = IntArray(2).also(v::getLocationInWindow)
+        val origin = IntArray(2).also(body::getLocationInWindow)
+        return Point(at[0] - origin[0] + v.width / 2, at[1] - origin[1] + v.height / 2)
+    }
+
+    /**
+     * Puts [next] in place of the content, at the same scroll, with navigation icons to suit [darkSheet].
+     * From [at] (a point on the sheet, see [centreOf]) it spreads in a circle over a picture of the old
+     * content, as a new theme spreads over the page; without [at] it's just swapped.
+     */
+    fun replace(next: View, at: Point?, darkSheet: Boolean) {
+        if (closing) return
+        val picture = if (at != null && Motion.enabled && body.width > 0 && body.height > 0)
+            // Drawn at its scroll: a view drawn by hand doesn't apply its own scroll offset.
+            Bitmap.createBitmap(body.width, body.height, Bitmap.Config.ARGB_8888).also { b ->
+                Canvas(b).apply { translate(-body.scrollX.toFloat(), -body.scrollY.toFloat()) }.let(body::draw)
+            } else null
+        next.setPadding(next.paddingLeft, next.paddingTop, next.paddingRight, contentBottom + barsBottom)
+        // The scroll view keeps its scrollY across the swap; it's only clamped to the new content's height.
+        body.removeAllViews()
+        body.addView(next)
+        content = next
+        barIcons(darkSheet)
+        if (picture == null || at == null) return
+        val cover = ImageView(content.context).apply { setImageBitmap(picture); translationY = body.translationY }
+        frame.addView(cover, frame.indexOfChild(body), FrameLayout.LayoutParams(body.width, body.height, Gravity.BOTTOM))
+        val radius = hypot(max(at.x, body.width - at.x).toFloat(), max(at.y, body.height - at.y).toFloat())
+        ViewAnimationUtils.createCircularReveal(body, at.x, at.y, 0f, radius).apply {
+            interpolator = Motion.SMOOTH
+            duration = Motion.SMOOTH.duration + 150
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    frame.removeView(cover)
+                    picture.recycle()
+                }
+            })
+        }.start()
+    }
+
+    /** Gone at once, without sliding away: the screen under it is being replaced (Sign out). */
+    fun dismiss() {
+        closing = true
+        dialog.dismiss()
     }
 
     fun show() {

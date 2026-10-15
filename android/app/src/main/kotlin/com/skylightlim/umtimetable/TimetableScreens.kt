@@ -19,6 +19,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import com.skylightlim.umtimetable.Motion.spring
+import java.time.LocalDate
 import java.util.Calendar
 import kotlin.math.ceil
 
@@ -35,6 +37,42 @@ interface Host {
     fun openFile(file: org.json.JSONObject, folder: String)
     /** Shows a Spectrum course's page (its id) in the Courses tab. */
     fun showCourse(id: Int)
+    /** Weeks from the strip's own week ([daysFromToday]) to the one shown: swiping on Week moves it. */
+    val weekShift: Int get() = 0
+    /**
+     * Opens the plan editor ([PlanSheet]) out of the week grid's cell [from] (screen coordinates) for
+     * [plan] ([isNew] if it isn't saved yet); it can run to [maxEnd] at most; an hour is [hourPx] tall.
+     */
+    fun openPlan(from: RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float) = Unit
+}
+
+/** Days from today to [day] (1 Monday … 5 Friday) of the week shown, [Host.weekShift] weeks on from the strip's own. */
+fun Host.daysTo(day: Int): Int = daysFromToday(timetable, now(), day) + 7 * weekShift
+
+/** The date of [day] (1 Monday … 5 Friday) in the week shown. */
+fun Host.dateOf(day: Int): LocalDate = LocalDate.now().plusDays(daysTo(day).toLong())
+
+/** A week of UM's calendar with no classes: "Mid-semester break", "Revision week", "Exams"; null for a teaching week. */
+fun weekOff(date: LocalDate): String? = when (AcademicCalendar.week(date)?.kind) {
+    AcademicCalendar.Kind.BREAK -> "Mid-semester break"
+    AcademicCalendar.Kind.REVISION -> "Revision week"
+    AcademicCalendar.Kind.EXAMS -> "Exams"
+    else -> null
+}
+
+/**
+ * Why a day or week has no classes: a public holiday in Kuala Lumpur ([holiday]), or UM's break,
+ * revision or exam week ([week]). A card in the accent's tint, above the day's classes or the week grid.
+ */
+fun offCard(ui: Ui, holiday: Holidays.Holiday?, week: String?): View = ui.column().apply {
+    val p = ui.p
+    background = ui.shape(Palette.mix(p.accent, p.surface, 0.16f), 18f)
+    setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(16))
+    addView(ui.label(if (holiday != null) "Public holiday" else "UM calendar", p.accentText, 11f))
+    addView(ui.text(holiday?.label ?: week.orEmpty(), 26f, p.text, ui.f.sign), ui.wide(top = 4f))
+    val sub = if (holiday != null) listOfNotNull("In Kuala Lumpur", week, "the date may still move".takeIf { holiday.tentative })
+    else listOf("No classes this week")
+    addView(ui.text(sub.joinToString(" · "), 13f, p.muted), ui.wide(top = 2f))
 }
 
 /**
@@ -59,6 +97,15 @@ fun daysFromToday(tt: Timetable, now: Now, day: Int): Int {
     val ahead = homeAhead(tt, now)
     return ahead + day - (now.dow + ahead) % 7
 }
+
+/** The day strip's last cell, after Monday to Friday (1–5): the Week grid. */
+const val WEEK_CELL = 6
+
+/**
+ * The strip cell a swipe of [dir] (+1 left, -1 right) moves to from [cell]: Monday to Friday, then the
+ * Week grid, round again to Monday (and back from Monday to Week).
+ */
+fun stripCell(cell: Int, dir: Int): Int = Math.floorMod(cell - 1 + dir, WEEK_CELL) + 1
 
 fun dateIn(days: Int): Calendar = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, days) }
 
@@ -147,10 +194,16 @@ object DayScreen {
         val p = ui.p
         val now = h.now()
         val list = h.timetable.day(day)
-        val isToday = daysFromToday(h.timetable, now, day) == 0
+        val isToday = h.daysTo(day) == 0
+        // A public holiday, or a week of UM's calendar without classes: said first, and the classes faded.
+        val holiday = Holidays.on(h.dateOf(day))
+        val week = weekOff(h.dateOf(day))
+        val off = holiday != null || week != null
         // The day's name and date are in the top bar.
         val page = ui.column().apply { setPadding(0, ui.dp(2), 0, 0) }
-        if (day == homeDay(h.timetable, now)) page.addView(status(h, now), ui.wide(bottom = 18f))
+        if (off) page.addView(offCard(ui, holiday, week), ui.wide(bottom = 14f))
+        // The Now block is for the week the strip starts on, not another one swiped to, nor a day off.
+        if (!off && h.weekShift == 0 && day == homeDay(h.timetable, now)) page.addView(status(h, now), ui.wide(bottom = 18f))
         if (list.isEmpty()) page.addView(ui.text("No classes", 15f, p.muted), ui.wide(top = 12f))
 
         val agenda = ui.column(gap = 8f)
@@ -158,6 +211,7 @@ object DayScreen {
             val prev = list.getOrNull(i - 1)
             if (prev != null && s.start > prev.end) agenda.addView(gap(ui, prev, s, isToday, now))
             val state = when {
+                off -> "past"
                 !isToday -> ""
                 now.min >= s.end -> "past"
                 now.min >= s.start -> "live"
@@ -266,17 +320,31 @@ object DayScreen {
 }
 
 object WeekScreen {
-    fun build(h: Host): View {
+    /** The parts of a Week page that change with the week, so going to another week changes only them ([shift]). */
+    class Parts(val offSlot: FrameLayout, val gridBox: FrameLayout, val coursesSlot: FrameLayout?) {
+        /** The Courses list's redraw after a shift, waiting for the slide to end. */
+        var pending: Runnable? = null
+    }
+
+    /** The week grid and the courses; [plans] instead of the saved ones (a still drawing's made-up plans). */
+    fun build(h: Host, plans: List<Plan>? = null): View {
         val ui = h.ui
         val p = ui.p
         val tt = h.timetable
         // The week's dates are in the top bar and its week of the semester on the Week chip.
         val page = ui.column().apply { setPadding(0, ui.dp(2), 0, 0) }
+        // A break, revision or exam week says so above the grid (whose classes are then faded).
+        val offSlot = FrameLayout(ui.context)
+        offCard(h)?.let { offSlot.addView(it) }
+        page.addView(offSlot, ui.wide())
         val card = ui.column().apply {
             background = ui.shape(p.surface, 18f, p.line)
             setPadding(ui.dp(2), ui.dp(10), ui.dp(6), ui.dp(8))
         }
-        card.addView(WeekGrid(ui, tt, h.now()) { s -> h.openSheet(s.course, s) })
+        // The grid in a box of its own: going to another week, the grids slide through it as a carousel.
+        val gridBox = FrameLayout(ui.context)
+        gridBox.addView(grid(h, plans))
+        card.addView(gridBox, ui.wide())
         val key = ui.row(gap = 16f).apply { setPadding(ui.dp(30), ui.dp(4), 0, 0) }
         fun keyItem(swatch: View, label: String) = ui.row(gap = 6f).apply {
             addView(swatch)
@@ -286,37 +354,115 @@ object WeekScreen {
         key.addView(keyItem(View(ui.context).apply { background = ui.shape(Color.TRANSPARENT, 3f, p.text, 1.5f); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(10)) }, "Tutorial"))
         key.addView(keyItem(View(ui.context).apply { setBackgroundColor(p.accent); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(3)) }, "Now"))
         card.addView(key)
+        // Plans: what a long press on a free time adds.
+        card.addView(ui.row(gap = 6f).apply {
+            setPadding(ui.dp(30), ui.dp(8), 0, ui.dp(2))
+            addView(View(ui.context).apply { background = ui.shape(Palette.mix(p.text, p.surface, 0.12f), 3f, p.muted, 1.2f, dash = 2.5f); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(10)) })
+            addView(ui.text("Plan · long-press a free time to add one", 12f, p.muted))
+        })
         page.addView(card)
         if (tt.sessions.isEmpty()) {
             page.addView(ui.text("No timetable yet · sign in to Spectrum in Courses", 13.5f, p.muted), ui.wide(top = 12f))
+            page.tag = Parts(offSlot, gridBox, null)
             return page
         }
-        page.addView(courses(h), ui.wide(top = 30f))
+        val coursesSlot = FrameLayout(ui.context).apply { addView(courses(h)) }
+        page.addView(coursesSlot, ui.wide(top = 30f))
+        page.tag = Parts(offSlot, gridBox, coursesSlot)
         return page
     }
 
+    private fun offCard(h: Host): View? = weekOff(h.dateOf(1))?.let { FrameLayout(h.ui.context).apply { addView(offCard(h.ui, null, it)); setPadding(0, 0, 0, h.ui.dp(12)) } }
+
+    private fun grid(h: Host, plans: List<Plan>?) =
+        WeekGrid(h.ui, h.timetable, h.now(), h.daysTo(1), plans ?: Plans.inWeek(h.ui.context, h.dateOf(1)), h::openPlan) { s -> h.openSheet(s.course, s) }
+
+    /** The week's grid now, for the swipe to drag. */
+    fun grid(page: View): View? = (page.tag as? Parts)?.gridBox?.let { it.getChildAt(it.childCount - 1) }
+
     /**
-     * Each course with its hours a week, laid out and ordered as the Courses tab (by code): code and
+     * [page] going to the week shown now ([Host.weekShift] has just moved, [dir] +1 for a later week):
+     * only what changes changes. The grid's new week slides in from that side as the old one carries on
+     * out from where the finger left it, the two together like a carousel; the break card follows; the
+     * Courses list is redrawn once the slide is over (it's below the grid). False if [page] isn't Week.
+     */
+    fun shift(page: View, h: Host, dir: Int): Boolean {
+        val parts = page.tag as? Parts ?: return false
+        val box = parts.gridBox
+        val old = box.getChildAt(box.childCount - 1)
+        val grid = grid(h, null)
+        box.addView(grid)
+        val step = box.width + h.ui.dp(16f).toFloat()
+        if (Motion.enabled && old != null && box.width > 0) {
+            val from = old.translationX
+            grid.translationX = from + dir * step
+            old.animate().translationX(-dir * step).alpha(0.3f).spring(Motion.SETTLE).withEndAction { box.removeView(old) }.start()
+            grid.animate().translationX(0f).spring(Motion.SETTLE).start()
+        } else if (old != null) {
+            box.removeView(old)
+        }
+        // The break card: there for a week without classes.
+        parts.offSlot.removeAllViews()
+        offCard(h)?.let { card ->
+            parts.offSlot.addView(card)
+            Motion.fade(card, 0f, 1f, 200)
+        }
+        val slot = parts.coursesSlot ?: return true
+        parts.pending?.let(slot::removeCallbacks)
+        val redraw = Runnable {
+            parts.pending = null
+            slot.removeAllViews()
+            slot.addView(courses(h))
+        }
+        parts.pending = redraw
+        slot.postDelayed(redraw, if (Motion.enabled) Motion.SETTLE.duration else 0)
+        return true
+    }
+
+    /**
+     * Each course with its hours this week, laid out and ordered as the Courses tab (by code): code and
      * occurrence, the name, the hours by kind of class, and the week's hours on the right; lines between
-     * courses only; then the totals. A course opens its class sheet.
+     * courses only; then the totals. A course opens its class sheet. Classes that don't happen this week
+     * (on a public holiday, or all of them in a break, revision or exam week) are taken off the hours:
+     * a kind of class with none left is struck through, and a course with none left is struck through
+     * whole, at 0 h.
      */
     private fun courses(h: Host): View {
         val ui = h.ui
         val p = ui.p
         val tt = h.timetable
+        val monday = h.dateOf(1)
+        val offWeek = weekOff(monday) != null
+        fun cancelled(s: Session) = offWeek || Holidays.on(monday.plusDays((s.day - 1).toLong())) != null
+        val anyCancelled = tt.sessions.any(::cancelled)
         val list = ui.column()
         list.addView(ui.text("COURSES", 28f, p.text, ui.f.sign).apply { letterSpacing = 0.02f }, ui.wide(bottom = 4f))
         val order = listOf("Lecture", "Tutorial")
-        fun byType(sessions: List<Session>) = sessions.groupBy { it.type }.toList()
+        fun types(sessions: List<Session>) = sessions.groupBy { it.type }.toList()
             .sortedWith(compareBy({ order.indexOf(it.first).let { i -> if (i < 0) order.size else i } }, { it.first }))
-            .map { (type, ss) -> "$type ${hoursText(ss.sumOf { it.end - it.start })}" }
+        fun byType(sessions: List<Session>) = types(sessions).map { (type, ss) -> "$type ${hoursText(ss.sumOf { it.end - it.start })}" }
+        /** "Lecture 2 h · Tutorial 1 h", with each kind's hours this week; a kind with nothing left struck through at its usual hours. */
+        fun parts(sessions: List<Session>): CharSequence {
+            val out = android.text.SpannableStringBuilder()
+            for ((type, ss) in types(sessions)) {
+                if (out.isNotEmpty()) out.append(" · ")
+                val left = ss.filterNot(::cancelled)
+                val from = out.length
+                out.append("$type ${hoursText((if (left.isEmpty()) ss else left).sumOf { it.end - it.start })}")
+                if (left.isEmpty()) out.setSpan(android.text.style.StrikethroughSpan(), from, out.length, 0)
+            }
+            return out
+        }
+        fun strike(t: android.widget.TextView) = t.apply { paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG }
         tt.courses.sortedWith(compareBy({ it.code.ifEmpty { "~" } }, { it.name })).forEachIndexed { n, course ->
             if (n > 0) list.addView(View(ui.context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
             val sessions = tt.sessions.filter { it.course == course }
-            val total = sessions.sumOf { it.end - it.start }
-            val sub = (byType(sessions) + listOfNotNull("online".takeIf { sessions.any { it.room == "Online" } })).joinToString(" · ")
+            val left = sessions.filterNot(::cancelled)
+            val none = sessions.isNotEmpty() && left.isEmpty()
+            val total = left.sumOf { it.end - it.start }
+            val sub = android.text.SpannableStringBuilder(parts(sessions)).apply { if (sessions.any { it.room == "Online" }) append(" · online") }
             val codeLine = ui.row().apply {
-                addView(ui.text(course.code, 12f, p.courseText(course.color), ui.f.monoBold))
+                addView(ui.text(course.code, 12f, p.courseText(course.color), ui.f.monoBold).also { if (none) strike(it) })
                 addView(ui.text(" · Occ ${course.occ}", 12f, p.faint, ui.f.mono))
                 setPadding(0, 0, 0, ui.dp(2))
             }
@@ -324,27 +470,30 @@ object WeekScreen {
                 minimumHeight = ui.dp(60)
                 setPadding(0, ui.dp(10), 0, ui.dp(10))
                 background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
-                contentDescription = "${course.code}, occurrence ${course.occ}, ${course.name}: $sub, ${hoursText(total)} a week"
+                contentDescription = "${course.code}, occurrence ${course.occ}, ${course.name}: ${if (none) "no classes this week" else "$sub, ${hoursText(total)}"}"
                 setOnClickListener { h.openSheet(course, null) }
-                addView(View(ui.context).apply { background = ui.shape(course.color, 99f) }, LinearLayout.LayoutParams(ui.dp(12), ui.dp(12)))
+                addView(View(ui.context).apply { background = ui.shape(course.color, 99f); if (none) alpha = 0.4f }, LinearLayout.LayoutParams(ui.dp(12), ui.dp(12)))
                 addView(ui.column().apply {
                     addView(codeLine)
-                    addView(ui.text(course.name, 15f, p.text, ui.f.bodySemi))
-                    addView(ui.text(sub, 12.5f, p.muted), ui.wide(top = 2f))
+                    addView(ui.text(course.name, 15f, if (none) p.muted else p.text, ui.f.bodySemi).also { if (none) strike(it) })
+                    addView(ui.text(sub, 12.5f, p.muted).also { if (none) strike(it) }, ui.wide(top = 2f))
                 }, ui.grow())
-                addView(ui.text(hoursText(total), 22f, p.text, ui.f.sign))
+                addView(ui.text(hoursText(total), 22f, if (none) p.muted else p.text, ui.f.sign))
             })
         }
         // The week in total, under a heavier line.
         list.addView(View(ui.context).apply { setBackgroundColor(p.text) }, ui.wide(top = 4f).apply { height = ui.dp(1.5f) })
-        val all = tt.sessions.sumOf { it.end - it.start }
+        val held = tt.sessions.filterNot(::cancelled)
+        val all = held.sumOf { it.end - it.start }
+        val count = "${held.size} ${if (held.size == 1) "class" else "classes"} ${if (anyCancelled) "this week" else "a week"}"
+        val totals = listOf(count) + byType(held)
         list.addView(ui.row(gap = 12f).apply {
             minimumHeight = ui.dp(60)
             setPadding(ui.dp(24), ui.dp(10), 0, ui.dp(10))
-            contentDescription = "Total: ${tt.sessions.size} classes, ${hoursText(all)} a week"
+            contentDescription = "Total: $count, ${hoursText(all)}"
             addView(ui.column().apply {
                 addView(ui.text("Total", 15f, p.text, ui.f.bodyBold))
-                addView(ui.text("${tt.sessions.size} ${if (tt.sessions.size == 1) "class" else "classes"} a week · ${byType(tt.sessions).joinToString(" · ")}", 12.5f, p.muted), ui.wide(top = 2f))
+                addView(ui.text(totals.joinToString(" · "), 12.5f, p.muted), ui.wide(top = 2f))
             }, ui.grow())
             addView(ui.text(hoursText(all), 26f, p.text, ui.f.sign))
         })
@@ -354,7 +503,16 @@ object WeekScreen {
 
 /** The Mon–Fri grid, drawn in one view: hour lines, today's column, class blocks and the now line. */
 @SuppressLint("ViewConstructor")
-class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: Now, private val onTap: (Session) -> Unit) : View(ui.context) {
+class WeekGrid(
+    private val ui: Ui,
+    private val tt: Timetable,
+    private val now: Now,
+    monday: Int,
+    /** The user's plans in this week (see [Plan]): drawn in their free times, opened by a tap. */
+    private val plans: List<Plan>,
+    private val onPlan: (from: RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float) -> Unit,
+    private val onTap: (Session) -> Unit,
+) : View(ui.context) {
     private val p = ui.p
     private val hour = ui.dp(48f).toFloat()
     private val head = ui.dp(22f).toFloat()
@@ -363,8 +521,14 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
     private val padY = ui.dp(8f).toFloat()
     private val startMin = 8 * 60
     private val blocks = mutableListOf<Pair<RectF, Session>>()
-    /** Today's column, when the week shown is this week (see [daysFromToday]). */
-    private val today = now.dow.takeIf { it in 1..5 && daysFromToday(tt, now, it) == 0 }
+    private val planBlocks = mutableListOf<Pair<RectF, Plan>>()
+    /** Each column's date, Monday first. */
+    private val dates = (0..4).map { LocalDate.now().plusDays((monday + it).toLong()) }
+    /** Today's column, when the week shown (its Monday [monday] days from today) is this week. */
+    private val today = now.dow.takeIf { it in 1..5 && monday + it - 1 == 0 }
+    /** Each day's public holiday in Kuala Lumpur, Monday first; and whether the week is one of UM's without classes. */
+    private val holidays = dates.map { Holidays.on(it) }
+    private val weekOff = weekOff(LocalDate.now().plusDays(monday.toLong())) != null
 
     // The grid's boxes are as tall as their hours and a fifth of the width, so its text follows the system
     // font size only up to 1.15×: past that, names broke into syllables ("Pro- / gram- / ming"). A class's
@@ -378,6 +542,16 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
     private val namePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodySemi; textSize = sp(10f) }
     private val roomPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.sign; textSize = sp(15f) }
     private val nowPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.monoBold; textSize = sp(9.5f); color = p.accentInk; textAlign = Paint.Align.CENTER }
+    private val holidayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodyBold; textSize = sp(10.5f); color = p.accentInk; textAlign = Paint.Align.CENTER; letterSpacing = 0.1f }
+    private val hatch = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = p.accent; alpha = 70; strokeWidth = ui.dp(1f).toFloat() }
+    private val planEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = ui.dp(1.5f).toFloat()
+        pathEffect = android.graphics.DashPathEffect(floatArrayOf(ui.dp(4f).toFloat(), ui.dp(3f).toFloat()), 0f)
+    }
+    /** A plan just saved pops into its place ([landing]). */
+    private var landId = landing.also { landing = null }
+    private var landScale = 1f
 
     init {
         contentDescription = "Week timetable: " + tt.sessions.joinToString("; ") { "${DAY_NAMES[it.day]} ${clockText(it.start)} ${it.course.code} ${it.type} ${it.room}" }
@@ -389,6 +563,7 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
 
     override fun onDraw(canvas: Canvas) {
         blocks.clear()
+        planBlocks.clear()
         val colW = (width - axis - gapX * 5) / 5
         val top = head + padY
         val bottom = top + hour * 11
@@ -403,12 +578,14 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
         for (d in 1..5) {
             val left = axis + gapX + (d - 1) * (colW + gapX)
             val isToday = d == today
-            dayPaint.color = if (isToday) p.accentText else p.muted
+            val holiday = holidays[d - 1]
+            dayPaint.color = if (isToday || holiday != null) p.accentText else p.muted
             canvas.drawText(DAY_SHORT[d], left + colW / 2, head - ui.dp(8f), dayPaint)
             if (isToday) {
                 fill.color = Palette.mix(p.accent, p.surface, 0.07f)
                 canvas.drawRoundRect(RectF(left, top, left + colW, bottom), ui.dp(6f).toFloat(), ui.dp(6f).toFloat(), fill)
             }
+            if (holiday != null) drawHoliday(canvas, holiday, RectF(left, top, left + colW, bottom))
             fill.color = p.line
             for (h in 0..11) canvas.drawRect(left, top + h * hour, left + colW, top + h * hour + 1, fill)
             // A faint guide across the other days, under their classes, so "now" lines up across the week.
@@ -418,9 +595,15 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
                 canvas.drawRect(left, nowY - ui.dp(0.5f), left + colW, nowY + ui.dp(0.5f), fill)
                 fill.alpha = 255
             }
-            for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), isToday && now.min >= s.end)
+            // (Not the one being moved with the selection box: it's in the box.)
+            for (plan in plans.filter { it.date == dates[d - 1] && it.id != picking?.id }) drawPlan(canvas, plan, RectF(left + ui.dp(1f), top + (plan.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (plan.end - startMin) / 60f * hour - 1))
+            // Faded: today's classes that are over, and those on a holiday or in a week without classes.
+            val cancelled = holiday != null || weekOff
+            for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), cancelled || (isToday && now.min >= s.end))
+            // The holiday's name goes over its (faded) classes, so it can always be read.
+            if (holiday != null) drawHolidayName(canvas, holiday, RectF(left, top, left + colW, bottom))
         }
-        if (nowY == null || today == null) return
+        if (nowY == null || today == null) return drawBox(canvas)
         // Today's line goes over the classes (a class in progress is when it matters most), in the app's
         // yellow, on a halo in the card's colour so it reads on any course colour.
         val left = axis + gapX + (today - 1) * (colW + gapX)
@@ -435,6 +618,54 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
         fill.color = p.accent
         canvas.drawRoundRect(pill, pillH / 2, pillH / 2, fill)
         canvas.drawText(clockText(now.min.toInt()), pill.centerX(), nowY + nowPaint.textSize * 0.35f, nowPaint)
+        drawBox(canvas)
+    }
+
+    /**
+     * A name laid out in [w] px on at most [lines] lines, kept for the next grids: a week's classes are
+     * the same every week, so a swipe to another week lays out nothing new. (Laying them out was most of
+     * a grid's first draw.) Drawn with its own paint, coloured just before.
+     */
+    private fun layout(text: String, w: Int, lines: Int, hyphens: Boolean): StaticLayout {
+        val key = "$text|$w|$lines|$hyphens|${namePaint.textSize}|${namePaint.typeface.hashCode()}"
+        LAYOUTS.get(key)?.let { return it }
+        val paint = TextPaint(namePaint)
+        return StaticLayout.Builder.obtain(text, 0, text.length, paint, w)
+            .setMaxLines(lines).setEllipsize(TextUtils.TruncateAt.END).setIncludePad(false)
+            .setHyphenationFrequency(if (hyphens) Layout.HYPHENATION_FREQUENCY_NORMAL else Layout.HYPHENATION_FREQUENCY_NONE)
+            .build().also { LAYOUTS.put(key, it) }
+    }
+
+    /** A holiday's column: tinted and hatched in the accent, under its (faded) classes. */
+    private fun drawHoliday(canvas: Canvas, @Suppress("UNUSED_PARAMETER") holiday: Holidays.Holiday, col: RectF) {
+        val radius = ui.dp(6f).toFloat()
+        fill.color = Palette.mix(p.accent, p.surface, 0.12f)
+        canvas.drawRoundRect(col, radius, radius, fill)
+        canvas.save()
+        canvas.clipRect(col)
+        val step = ui.dp(10f).toFloat()
+        var x = col.left - col.height()
+        while (x < col.right) {
+            canvas.drawLine(x, col.bottom, x + col.height(), col.top, hatch)
+            x += step
+        }
+        canvas.restore()
+    }
+
+    /** The holiday's name up the middle of its column, on a solid accent pill (ink on the accent, as the Now block). */
+    private fun drawHolidayName(canvas: Canvas, holiday: Holidays.Holiday, col: RectF) {
+        val name = TextUtils.ellipsize(holiday.label.uppercase(), holidayPaint, col.height() - ui.dp(40f), TextUtils.TruncateAt.END).toString()
+        val w = holidayPaint.measureText(name) + ui.dp(18f)
+        val h = holidayPaint.textSize + ui.dp(12f)
+        canvas.save()
+        canvas.rotate(-90f, col.centerX(), col.centerY())
+        val pill = RectF(col.centerX() - w / 2, col.centerY() - h / 2, col.centerX() + w / 2, col.centerY() + h / 2)
+        fill.color = p.surface // a ring in the card's colour lifts it off the classes under it
+        canvas.drawRoundRect(RectF(pill).apply { inset(-ui.dp(2f).toFloat(), -ui.dp(2f).toFloat()) }, h, h, fill)
+        fill.color = p.accent
+        canvas.drawRoundRect(pill, h / 2, h / 2, fill)
+        canvas.drawText(name, col.centerX(), col.centerY() + holidayPaint.textSize * 0.36f, holidayPaint)
+        canvas.restore()
     }
 
     private fun drawBlock(canvas: Canvas, s: Session, r: RectF, past: Boolean) {
@@ -464,11 +695,9 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
         val nameTop = r.top + pad + codePaint.textSize + ui.dp(3f)
         val lines = ((r.bottom - pad - roomPaint.textSize - ui.dp(2f) - nameTop) / namePaint.fontSpacing).toInt()
         if (lines >= 1) {
-            namePaint.color = textColor; namePaint.alpha = alpha
-            fun layout(text: String) = StaticLayout.Builder.obtain(text, 0, text.length, namePaint, w)
-                .setMaxLines(lines).setEllipsize(TextUtils.TruncateAt.END).setIncludePad(false).setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NORMAL).build()
-            val full = layout(s.course.name)
-            val name = if (full.getEllipsisCount(full.lineCount - 1) > 0 && s.course.short != s.course.name) layout(s.course.short) else full
+            val full = layout(s.course.name, w, lines, true)
+            val name = if (full.getEllipsisCount(full.lineCount - 1) > 0 && s.course.short != s.course.name) layout(s.course.short, w, lines, true) else full
+            name.paint.color = textColor; name.paint.alpha = alpha
             canvas.save()
             canvas.translate(r.left + pad, nameTop)
             name.draw(canvas)
@@ -481,14 +710,327 @@ class WeekGrid(private val ui: Ui, private val tt: Timetable, private val now: N
         canvas.restore()
     }
 
+    /** A plan: its colour's tint with a dashed edge in the colour, what it is and when. Faded once it's over. */
+    private fun drawPlan(canvas: Canvas, plan: Plan, r: RectF) {
+        planBlocks += r to plan
+        val radius = ui.dp(7f).toFloat()
+        val alpha = if (plan.endsAt <= System.currentTimeMillis()) 115 else 255
+        canvas.save()
+        if (plan.id == landId) canvas.scale(landScale, landScale, r.centerX(), r.centerY())
+        fill.color = Palette.mix(plan.color, p.surface, 0.24f); fill.alpha = alpha
+        canvas.drawRoundRect(r, radius, radius, fill)
+        fill.alpha = 255
+        planEdge.color = plan.color; planEdge.alpha = alpha
+        canvas.drawRoundRect(RectF(r.left + 0.75f, r.top + 0.75f, r.right - 0.75f, r.bottom - 0.75f), radius, radius, planEdge)
+        val pad = ui.dp(4f).toFloat()
+        val w = (r.width() - pad * 2).coerceAtLeast(1f)
+        canvas.clipRect(r)
+        codePaint.color = p.courseText(plan.color); codePaint.alpha = alpha
+        canvas.drawText(clockText(plan.start), r.left + pad, r.top + pad + codePaint.textSize, codePaint)
+        val nameTop = r.top + pad + codePaint.textSize + ui.dp(3f)
+        val lines = ((r.bottom - pad - nameTop) / namePaint.fontSpacing).toInt()
+        if (lines >= 1) {
+            val layout = layout(plan.title, w.toInt(), lines, false)
+            layout.paint.color = p.text; layout.paint.alpha = alpha
+            canvas.translate(r.left + pad, nameTop)
+            layout.draw(canvas)
+        }
+        canvas.restore()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (landId == null || !Motion.enabled) return
+        landScale = 0.55f
+        android.animation.ValueAnimator.ofFloat(0.55f, 1f).apply {
+            interpolator = Motion.BOUNCY
+            duration = Motion.BOUNCY.duration
+            addUpdateListener { landScale = it.animatedValue as Float; invalidate() }
+            start()
+        }
+    }
+
+    // --- touch: a tap opens a class or a plan; a long press brings up a selection box to place one ----
+
+    private var downX = 0f
+    private var downY = 0f
+    private var pressedLong = false
+    private val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+    private val longPress = Runnable { pressedLong = true; pickUp(downX, downY) }
+    private var lastTapAt = 0L
+    private var lastTapX = 0f
+    private var lastTapY = 0f
+
+    /** The plan being placed with the selection box: a new one, or a saved one being moved. */
+    private var picking: Plan? = null
+    /** The box follows the finger; or, after "change the time" on the card, it waits to be dragged ([waiting]). */
+    private var dragging = false
+    private var waiting = false
+    /** Where the box is: a day (1–5) and a start; whether that's free, and where the plan would end there. */
+    private var pickDay = 0
+    private var pickStart = -1
+    private var pickEnd = 0
+    private var pickFree = false
+    private var lastFree: Pair<Int, Int>? = null
+    private val box = RectF()
+    private val boxFrom = RectF()
+    private val boxTo = RectF()
+    private var boxMove: android.animation.ValueAnimator? = null
+    private var boxScale = 1f
+    private val boxEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = ui.dp(2.5f).toFloat() }
+    private val boxDash = android.graphics.DashPathEffect(floatArrayOf(ui.dp(5f).toFloat(), ui.dp(4f).toFloat()), 0f)
+    private val hintPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodyBold; textSize = sp(10.5f); color = p.accentInk; textAlign = Paint.Align.CENTER }
+
+    private val colW get() = (width - axis - gapX * 5) / 5
+    private fun colLeft(d: Int) = axis + gapX + (d - 1) * (colW + gapX)
+    private val gridTop get() = head + padY
+    private fun yOf(min: Int) = gridTop + (min - startMin) / 60f * hour
+    private fun cell(d: Int, start: Int, end: Int) = RectF(colLeft(d) + ui.dp(1f), yOf(start) + 1, colLeft(d) + colW - ui.dp(1f), yOf(end) - 1)
+
+    /** The day column (1–5) under [x], or null between columns or on the hour axis. */
+    private fun columnAt(x: Float): Int? {
+        val k = ((x - axis - gapX) / (colW + gapX)).toInt()
+        return (k + 1).takeIf { k in 0..4 && x >= colLeft(k + 1) && x <= colLeft(k + 1) + colW }
+    }
+
+    /** The half hour under ([x], [y]), kept inside the grid: the nearest day, 08:00 to 18:30. */
+    private fun halfHourAt(x: Float, y: Float): Pair<Int, Int> {
+        val d = (((x - axis - gapX) / (colW + gapX)).toInt() + 1).coerceIn(1, 5)
+        val start = (startMin + ((y - gridTop) / hour * 2).toInt().coerceIn(0, 21) * 30)
+        return d to start
+    }
+
+    /** What's taken on day [d]: its classes and plans (but [except], the plan being moved). */
+    private fun busy(d: Int, except: String?) = tt.day(d).map { it.start to it.end } +
+        plans.filter { it.date == dates[d - 1] && it.id != except }.map { it.start to it.end }
+
+    /** Starting at [start] on day [d]: whether it's free, how far it can run (19:00 at most), and where a plan of [length] would end. */
+    private fun room(d: Int, start: Int, length: Int, except: String?): Triple<Boolean, Int, Int> {
+        val taken = busy(d, except)
+        val free = taken.none { (a, b) -> start in a until b }
+        val maxEnd = minOf(19 * 60, taken.map { it.first }.filter { it > start }.minOrNull() ?: Int.MAX_VALUE)
+        return Triple(free, maxEnd, minOf(start + length, maxEnd))
+    }
+
+    /** A long press: the box comes up under the finger, for the plan pressed or a new one, and follows it. */
+    private fun pickUp(x: Float, y: Float) {
+        val plan = planBlocks.firstOrNull { it.first.contains(x, y) }?.second ?: run {
+            val palette = Plans.palette(Scheme.load(context), p.accent)
+            Plan.new(dates[0], startMin, startMin + 60, palette[(plans.size + halfHourAt(x, y).first) % palette.size])
+        }
+        startPicking(plan, wait = false)
+        val (d, start) = if (plans.any { it.id == plan.id }) plan.date.dayOfWeek.value to plan.start else halfHourAt(x, y)
+        moveBox(d, start, feel = false)
+        Haptics.threshold(this, true)
+    }
+
+    /** For a still drawing: the box at day [d], [start] for [plan], as it waits after "change the time". */
+    internal fun previewBox(plan: Plan, d: Int, start: Int) {
+        picking = plan
+        waiting = true
+        boxScale = 1f
+        pickStart = -1
+        val enabled = Motion.enabled
+        moveBox(d, start, feel = false)
+        if (enabled) { boxMove?.cancel(); box.set(boxTo) }
+        holding = false
+    }
+
+    /** After "change the time" on [plan]'s card: the box waits where the plan is, to be dragged to another time. */
+    fun startRepick(plan: Plan) {
+        startPicking(plan, wait = true)
+        val d = plan.date.dayOfWeek.value.takeIf { plan.date in dates } ?: 1
+        moveBox(d, if (plan.date in dates) plan.start else startMin, feel = false)
+        Haptics.tick(this)
+    }
+
+    private fun startPicking(plan: Plan, wait: Boolean) {
+        picking = plan
+        waiting = wait
+        dragging = !wait
+        holding = true
+        pickStart = -1
+        lastFree = null
+        if (!wait) parent?.requestDisallowInterceptTouchEvent(true)
+        // It pops up, a little too big, then settles.
+        boxScale = 0.6f
+        if (!Motion.enabled) { boxScale = 1f; return }
+        android.animation.ValueAnimator.ofFloat(0.6f, 1f).apply {
+            interpolator = Motion.BOUNCY
+            duration = Motion.BOUNCY.duration
+            addUpdateListener { boxScale = it.animatedValue as Float; invalidate() }
+            start()
+        }
+    }
+
+    /** The box to half hour [start] of day [d], gliding there, with a tick (a softer one where it's taken). */
+    private fun moveBox(d: Int, start: Int, feel: Boolean = true) {
+        val plan = picking ?: return
+        if (d == pickDay && start == pickStart) return
+        val (free, _, end) = room(d, start, plan.end - plan.start, plan.id)
+        pickDay = d
+        pickStart = start
+        pickFree = free
+        pickEnd = if (free) end else minOf(start + (plan.end - plan.start), 19 * 60)
+        if (free) lastFree = d to start
+        if (feel) { if (free) Haptics.tick(this) else Haptics.threshold(this, false) }
+        boxFrom.set(box)
+        boxTo.set(cell(d, start, pickEnd))
+        boxMove?.cancel()
+        if (box.isEmpty || !Motion.enabled) { box.set(boxTo); invalidate(); return }
+        boxMove = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            interpolator = Motion.FOLD
+            duration = Motion.FOLD.duration
+            addUpdateListener {
+                val t = it.animatedValue as Float
+                box.set(boxFrom.left + (boxTo.left - boxFrom.left) * t, boxFrom.top + (boxTo.top - boxFrom.top) * t,
+                    boxFrom.right + (boxTo.right - boxFrom.right) * t, boxFrom.bottom + (boxTo.bottom - boxFrom.bottom) * t)
+                invalidate()
+            }
+            start()
+        }
+    }
+
+    /** Let go: on a free time the card opens out of the box; elsewhere the waiting box springs back, a held one drops. */
+    private fun drop() {
+        val plan = picking ?: return
+        if (pickFree) {
+            val (_, maxEnd, _) = room(pickDay, pickStart, plan.end - plan.start, plan.id)
+            val placed = plan.copy(date = dates[pickDay - 1], start = pickStart, end = pickEnd)
+            val from = cell(pickDay, pickStart, pickEnd)
+            endPicking()
+            Haptics.threshold(this, true)
+            open(from, placed, plans.none { it.id == plan.id }, maxEnd)
+            return
+        }
+        val back = lastFree
+        if (waiting && back != null) return moveBox(back.first, back.second)
+        endPicking()
+    }
+
+    private fun endPicking() {
+        picking = null
+        dragging = false
+        waiting = false
+        holding = false
+        boxMove?.cancel()
+        box.setEmpty()
+        invalidate()
+    }
+
+    /** A double tap on a free time: its card at once (an hour, or what's free). */
+    private fun openNewAt(x: Float, y: Float) {
+        val (d, start) = halfHourAt(x, y)
+        val (free, maxEnd, end) = room(d, start, 60, null)
+        if (!free) return
+        val palette = Plans.palette(Scheme.load(context), p.accent)
+        Haptics.threshold(this, true)
+        open(cell(d, start, end), Plan.new(dates[d - 1], start, end, palette[(plans.size + d) % palette.size]), true, maxEnd)
+    }
+
+    /** Opens [plan] out of its cell [r] (in this view), which becomes screen coordinates for the flight. */
+    private fun open(r: RectF, plan: Plan, isNew: Boolean, maxEnd: Int? = null) {
+        val at = IntArray(2).also(::getLocationOnScreen)
+        val free = maxEnd ?: room(plan.date.dayOfWeek.value, plan.start, plan.end - plan.start, plan.id).second
+        onPlan(RectF(r).apply { offset(at[0].toFloat(), at[1].toFloat()) }, plan, isNew, free, hour)
+    }
+
+    /** The selection box: lifted on a shadow, in the plan's colour where it's free, grey and dashed where it's taken. */
+    private fun drawBox(canvas: Canvas) {
+        val plan = picking ?: return
+        if (box.isEmpty) return
+        val radius = ui.dp(8f).toFloat()
+        canvas.save()
+        canvas.scale(boxScale, boxScale, box.centerX(), box.centerY())
+        fill.color = Color.BLACK; fill.alpha = 40
+        canvas.drawRoundRect(RectF(box).apply { offset(0f, ui.dp(3f).toFloat()) }, radius, radius, fill)
+        fill.alpha = 255
+        fill.color = if (pickFree) Palette.mix(plan.color, p.surface, 0.55f) else p.surface2
+        canvas.drawRoundRect(box, radius, radius, fill)
+        boxEdge.color = if (pickFree) plan.color else p.muted
+        boxEdge.pathEffect = if (pickFree) null else boxDash
+        canvas.drawRoundRect(RectF(box).apply { inset(ui.dp(1.25f).toFloat(), ui.dp(1.25f).toFloat()) }, radius, radius, boxEdge)
+        codePaint.color = p.text; codePaint.alpha = 255
+        // The start, and under it the end (a narrow column cut "15:00–17:00" short): or "Taken".
+        val x = box.left + ui.dp(4f)
+        val y = box.top + ui.dp(4f) + codePaint.textSize
+        canvas.drawText(if (pickFree) clockText(pickStart) else "Taken", x, y, codePaint)
+        if (pickFree && box.height() > codePaint.fontSpacing * 2 + ui.dp(8f)) canvas.drawText("–${clockText(pickEnd)}", x, y + codePaint.fontSpacing, codePaint)
+        canvas.restore()
+        if (!waiting || dragging) return
+        // Waiting to be dragged: a pill above it says so.
+        val text = "Drag to a free time"
+        val w = hintPaint.measureText(text) + ui.dp(16f)
+        val h = hintPaint.textSize + ui.dp(10f)
+        val cx = box.centerX().coerceIn(w / 2, width - w / 2)
+        val bottom = (box.top - ui.dp(6f)).coerceAtLeast(h)
+        fill.color = p.accent
+        canvas.drawRoundRect(RectF(cx - w / 2, bottom - h, cx + w / 2, bottom), h / 2, h / 2, fill)
+        canvas.drawText(text, cx, bottom - h / 2 + hintPaint.textSize * 0.36f, hintPaint)
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        if (e.action == MotionEvent.ACTION_DOWN) return blocks.any { it.first.contains(e.x, e.y) }
-        if (e.action == MotionEvent.ACTION_UP) blocks.firstOrNull { it.first.contains(e.x, e.y) }?.let { onTap(it.second); performClick() }
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = e.x
+                downY = e.y
+                pressedLong = false
+                // A box waiting after "change the time": the next touch takes it straight away.
+                if (waiting && picking != null) {
+                    dragging = true
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    halfHourAt(e.x, e.y).let { (d, start) -> moveBox(d, start) }
+                    return true
+                }
+                if (columnAt(e.x) == null) return false
+                postDelayed(longPress, android.view.ViewConfiguration.getLongPressTimeout().toLong())
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (dragging) halfHourAt(e.x, e.y).let { (d, start) -> moveBox(d, start) }
+                else if (kotlin.math.hypot(e.x - downX, e.y - downY) > slop) removeCallbacks(longPress)
+            }
+            MotionEvent.ACTION_UP -> {
+                removeCallbacks(longPress)
+                if (dragging) { dragging = false; drop(); return true }
+                if (pressedLong) return true
+                planBlocks.firstOrNull { it.first.contains(e.x, e.y) }?.let { (r, plan) -> open(r, plan, false); performClick(); return true }
+                blocks.firstOrNull { it.first.contains(e.x, e.y) }?.let { onTap(it.second); performClick(); return true }
+                // A free time: a second tap soon after, close by, opens a plan there.
+                val t = e.eventTime
+                if (t - lastTapAt < android.view.ViewConfiguration.getDoubleTapTimeout() && kotlin.math.hypot(e.x - lastTapX, e.y - lastTapY) < slop * 4) {
+                    lastTapAt = 0L
+                    openNewAt(e.x, e.y)
+                } else {
+                    lastTapAt = t
+                    lastTapX = e.x
+                    lastTapY = e.y
+                }
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                removeCallbacks(longPress)
+                if (dragging && !waiting) endPicking() else dragging = false
+            }
+        }
         return true
     }
 
     override fun performClick() = super.performClick()
+
+    override fun onDetachedFromWindow() {
+        removeCallbacks(longPress)
+        if (picking != null) holding = false
+        super.onDetachedFromWindow()
+    }
+
+    companion object {
+        /** The id of a plan just saved, for the next grid drawn to pop it into place. */
+        var landing: String? = null
+        /** A selection box is up: the page shouldn't be redrawn under it (the minute's redraw waits). */
+        var holding = false
+        private val LAYOUTS = android.util.LruCache<String, StaticLayout>(96)
+    }
 }
 
 /** The class details sheet that slides up from the bottom, laid out as in redesign 1f. */

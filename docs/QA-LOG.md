@@ -18,6 +18,471 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (Week: smooth swipes between weeks, as a carousel; double-tap Week for this week)
+
+**Reported:** frames dropped when swiping to another week; the animation should be smoother and
+coherent. Also asked for: on another week, a double tap on the Week chip brings back the current week.
+
+**Found** (debug build, warmed up, on the phone; new `--ei bench` lines): a week swipe drew the whole
+screen again: the Week page built from nothing (8.0 ms, mostly the Courses list's views), laid out
+(2.7 ms) and drawn (5.9 ms, the grid 4.2 ms of it, laying out every class name), plus the top bar and the
+strip rebuilt: over 17 ms before the new week could move, two or three frames at 120 Hz. And the motion
+broke in the middle: the page followed the finger, jumped back to the middle on letting go, and the new
+week came in from a third of the way across.
+
+**Change:**
+- A swipe changes only what changes (`WeekScreen.shift`, `MainActivity.shiftWeek`, `shiftStrip`): a
+  new grid for the new week, the break card if it changes, the title (rolling over as before) and the
+  strip's dates and Week label (each rolling over from the side the week came from). The Courses list
+  is redrawn after the slide (it's below the grid). Measured the same way: 0.9 ms shift, 0.2 ms layout,
+  3.5 ms draw (of the whole page in software; on screen only the new grid draws).
+- A carousel: on Week only the grid follows the finger (`SwipeScrollView.swipeTarget`), inside its
+  card. Let go past the threshold and the old grid carries on out from where the finger left it while
+  the new week's grid comes in beside it, 16dp apart, both on the same spring, so they move as one.
+  Not far enough, and the grid springs back. The tab tap back to this week and the double tap slide
+  the same way.
+- Class names in the grid are laid out once and kept (`WeekGrid.layout`, 96 kept): every week has the
+  same classes, so later grids lay out nothing new. The grid's draw went from 4.2 to 2.8 ms.
+- Double tap the Week chip on another week: back to this week, sliding over from that side. A single
+  tap still opens Week.
+
+**Checked:** unit tests pass; the timings above from the phone. Drawn off-screen: the Week page as before
+(Deepavali's week, the break). The swipe itself: on the phone.
+
+## 15 October 2026 (holiday classes: no slash)
+
+**Asked for:** remove the slash on classes cancelled by a holiday; it looked bad.
+
+**Change** (`WeekGrid.drawBlock`): classes on a holiday or in a week without classes are faded only,
+as a class that's over is. The holiday's pill, the hatching and the Courses list's struck-through hours
+stay.
+
+**Checked:** drawn off-screen on the phone: Week 4 weeks on (Deepavali's Monday) and 7 weeks on (the
+break): faded, no slashes.
+
+## 15 October 2026 (plans: a selection box to drag, double tap, change the time, "be honest")
+
+**Asked for:** the long press should bring up a coloured selection box that the user drags around the
+week, with vibration, to an empty cell; letting go there shows the plan card. A double tap on an
+empty cell shows the card. For a time that has passed, ask what they did ("be honest"). Pressing the
+time on the card brings the selection box back to choose again.
+
+**Change** (`WeekGrid`: `pickUp`, `moveBox`, `drop`, `startRepick`, `drawBox`, `openNewAt`;
+`PlanSheet`):
+- Long press anywhere in the week: a box pops up under the finger (from 60% with a bounce), lifted on
+  a shadow, an hour tall (less if a class comes sooner). It follows the finger half hour by half hour,
+  gliding there, with a tick for each free time and a softer one where it's taken (it turns grey and
+  dashed and says "Taken"). The page doesn't scroll or change week while it's up.
+- Let go on a free time: the card pops out of the box (as before). Let go where it's taken: the box
+  drops. A long press on a saved plan picks it up to move it (its old block hides meanwhile).
+- Double tap a free time: the card at once.
+- The card's time is a button ("Change time"): the card goes back down into its cell and the box waits
+  there with "Drag to a free time"; the next touch drags it, what was written and chosen comes along,
+  and letting go on a free time opens the card there. Let go where it's taken, and it springs back to
+  the last free time.
+- A time that has passed: "Looking back · Wednesday 14 Oct", and "What did you do? Be honest."
+- The minute's redraw of Week waits while a box is up (it would drop it).
+- Debug: `--es view week --ez sample true --ei boxDay D --ei boxAt MIN` draws the box waiting there.
+
+**Checked:** unit tests pass. Drawn off-screen on the phone: the box free (two hours in the plan's
+colour, "15:00 / –17:00", the hint pill above it) and taken (on a class, in dark: grey,
+dashed, "Taken"), and the card for a past time. The drag, its vibrations, the double tap and the
+card's way back down: on the phone.
+
+## 15 October 2026 (holidays: readable, and their classes slashed and taken off the hours)
+
+**Asked for:** show holidays properly, with enough contrast to read; slash the classes on a holiday (a
+lecture only, or the whole course if all its classes) and recalculate the hours; in the mid-semester
+break slash every course and show 0 h and 0 classes.
+
+**Change** (`WeekGrid.drawHolidayName`, `drawBlock(cancelled)`, `WeekScreen.courses`):
+- The holiday's name runs up its column on a solid accent pill with the ink colour on it (as on the Now
+  block), ringed in the card's colour and drawn over the column's classes, so the classes never cover
+  it. It was the accent's text colour straight on the hatching, half under the classes.
+- Classes on a holiday or in a week without classes (break, revision, exams) are faded and slashed
+  corner to corner in their text colour.
+- Courses under the grid count this week only: a kind of class with nothing left this week ("Lecture
+  2 h") is struck through; a course with nothing left is struck through whole (code, name, hours line),
+  its dot faded, at 0 h; otherwise its hours are what's left. The total says "N classes this week" and
+  the hours left by kind. In a break week every course is struck through at 0 h and the total is "0
+  classes this week", 0 h.
+
+**Checked:** unit tests pass. Drawn off-screen on the phone: Week 4 weeks on (Deepavali's replacement
+Monday: its classes slashed; one course struck through whole at 0 h, two others' lectures struck, the
+total recalculated) and 7 weeks on in dark (the break: everything slashed and struck, 0 h).
+
+## 15 October 2026 (the strip's Week chip: "Revision" fits)
+
+**Asked for:** make "Revision" fit its box on the strip, smaller if need be.
+
+**Change:** the Week chip's label is one line that shrinks to fit the chip (`fitText`, from 22sp). On
+this phone "Revision" comes out at about 17sp; "W3", "Break" and "Exams" stay 22sp or nearly.
+
+**Checked:** it builds; unit tests pass. The strip isn't drawn by the off-screen renderer: see it on
+the phone in revision week (from 18 January), or swipe Week 14 weeks on.
+
+## 15 October 2026 (pressing a card no longer uncovers the scrim's edges)
+
+**Reported:** pressing the plan card, the dark see-through layer behind it showed white gaps.
+
+**Found:** press feedback (`Motion.Presser`) looks for the clickable view under the finger. The card takes
+touches (it's clickable, so a tap on it isn't a tap outside) but has no tap action of its own, so the
+search went past it to the scrim, which closes the card when tapped, and sank that: the shrunken scrim
+uncovered the screen's edges.
+
+**Change:** the search stops at anything under the finger that takes touches, not only at scrolling
+panels, as Android does when it delivers the touch. So pressing a card's empty space presses nothing.
+
+**Checked:** it builds; unit tests pass. Press the plan card on the phone.
+
+## 15 October 2026 (plans: long-press a free time on Week)
+
+**Asked for** (thingstodo, Features): on the week page, long-press an empty cell to set what to do in
+that time, choose its colour and set a reminder, past cells too; the cell's pop-out must be fun and
+playful, as if it pops out and flies toward the user.
+
+**Change** (new `Plan`, `Plans`, `PlanReminders` in Plans.kt and `PlanSheet`; `WeekGrid`):
+- A long press on a free half hour of the week grid (any week, past ones too) starts a plan there: an
+  hour, or less if a class or another plan comes sooner (to 19:00 at most). It vibrates as the press
+  takes. A tap on a plan opens it again (so does a long press).
+- The pop-out: the cell lifts and swells 30% where it is, tilting up off the page and turning a little
+  (130 ms), then flies to the middle of the screen, growing and turning to face the user, and lands with
+  the app's settling spring while the screen dims; then the card's contents fade in and rise in turn.
+  Saved, the card shrinks back down into the cell (as long as the plan now is) and the plan pops into
+  place in the grid with a bounce; cancelled, it goes back empty; deleted, it shrinks away in a spin.
+- The card: a band in the plan's colour with its day and time; "What will you do?" (the keyboard comes
+  up for a new plan, its Done saves); How long (30 min to 3 h, only what fits); Colour (the theme's
+  course colours and its accent; the dot picked hops and the band changes colour); Reminder (Off, at
+  the start, 10 min, 30 min or 1 h before; for a time that has passed there's none, and if the app's
+  notifications are off it says so). Delete for a saved plan, Cancel, Save.
+- In the grid: the plan's colour as a light tint with a dashed edge, its start time and what it is;
+  faded once it's over. Under the key: "Plan · long-press a free time to add one".
+- Saved in the app's files (`plans.json`), for that date only. Reminders go out on a new "Plans"
+  notification channel, from one exact alarm for the next one due, re-armed after a reboot or update.
+  Sign out deletes the plans and cancels the alarm.
+- Debug: `--es view week --ez sample true` (made-up plans) and `--es view plan [--ez new false]`.
+
+**Checked:** unit tests pass, with new `PlansTest` (a plan saved and read back, with and without a
+reminder). Drawn off-screen on the phone: the week with made-up plans (past ones faded, a 30-minute one
+showing its time) and the editor card, new in light and saved in dark (with Delete). Not seen yet: the
+long press, the flight and the reminder going off. Try them on the phone. TalkBack can't add a plan
+yet (the grid has no action for a free time).
+
+## 15 October 2026 (holidays on Week and Day)
+
+**Asked for** (thingstodo, Features): can holidays come from Spectrum, so the week calendar shows a
+week or day is on holiday?
+
+**Found:** no. Spectrum's calendar (core_calendar_get_calendar_events with site events, and the
+monthly view for October to December) holds only course events (attendance sessions and
+assignment deadlines) and no site events at all. The raw replies were deleted from the phone and the
+computer afterwards. The user chose built-in Kuala Lumpur public holidays instead.
+
+**Change** (new `Holidays`; `weekOff`, `offCard`, `WeekGrid.drawHoliday`, `MainActivity.weekLine`):
+- `Holidays`: Kuala Lumpur's public holidays from September 2026 to December 2027, from the Prime
+  Minister's Department schedules (HKA-2026.pdf, HKA_2027.pdf, the W.P. Kuala Lumpur column), with
+  the Monday after a Sunday holiday as a replacement day (Holidays Act 1951, s. 3). Not 8 June 2027,
+  which is disputed (Awal Muharram on Sunday, the Agong's birthday already on Monday). Dates the
+  schedule marks as subject to change are flagged.
+- Week: a holiday's column is tinted and hatched in the accent, with its name running up the middle;
+  its day name is in the accent and its classes faded. The line under the title names the week's
+  holidays ("Deepavali Mon"). A break, revision or exam week from UM's calendar has a card above the
+  grid ("Mid-semester break · No classes this week"), the line says so too, and every class is
+  faded.
+- Day: a holiday has a card at the top ("Public holiday · Deepavali (replacement) · In Kuala Lumpur",
+  "the date may still move" if so), as does a day in a week without classes; its classes are faded
+  and there's no Now block.
+- Debug: `--ei weekShift N` draws Day and Week N weeks on.
+
+**Checked:** unit tests pass, with new `HolidaysTest`: this semester's dates, KL's own and not
+Selangor's, replacements only after Sundays, and weekdays matching the schedule's. Drawn off-screen on
+the phone: Week 4 weeks on (9 November, Deepavali's replacement Monday), Week 7 weeks on in dark (the
+mid-semester break), and that Monday's Day page.
+
+## 15 October 2026 (Week: swipe to other weeks)
+
+**Asked for** (thingstodo, Features): on the week page, swipe to another week, next or previous, to use
+the note feature there. The user chose this over the earlier "Week swipes like a day" on the Week page.
+
+**Change** (`Host.weekShift`, `Host.daysTo`, `MainActivity.shiftWeek`):
+- On Week, swiping left shows the next week and right the previous one, sliding in from that side.
+  The title (its dates), the line under it (deadlines "this week", "next week", "last week": all of
+  them for a week that's over) and the strip follow: the day chips' dates and the Week chip (W4,
+  Break, Exams…).
+- Day still swipes into Week from Friday or Monday, and the strip's days open that day of the week
+  shown, with its date. A day of another week has no Now block, and the week grid has no today
+  column or now line unless it's this week.
+- Back to the strip's own week: tap the tab (it says Week) while on another week, or Back, or go to
+  another tab. Tapping Day on Day returns to the next class's day in this week, as before.
+
+**Checked:** it builds; unit tests pass. The swipes themselves can't be drawn off-screen: try them on
+the phone.
+
+## 15 October 2026 (app icon: the new cow and horse holding up the shield like the crest's tigers)
+
+**Asked for** (thingstodo, FOR app icon): the redesigned cow and horse holding the shield the way the
+tigers do on Malaysia's (or Singapore's) arms: standing up over the shield to hold it up, their legs
+kicking it.
+
+**Change** (`android/icon/crest.py`; `ic_fg.xml`, `ic_mono.xml` regenerated):
+- The new pair as gold silhouettes on UM blue: blue gaps round each piece, and blue pupils, angry
+  brows, spots, six-pack lines and mouths (the cow's shouting with its tongue, the horse's grin with
+  gold buck teeth). The icon uses no saber.
+- As on the crest they stand taller than the shield, which fits between them with its top at their
+  eyes. Each has a front hoof on a top corner (the leg reaching from behind its head) and a hind leg
+  kicking the shield's lower side (from behind its body), standing on the other. Those two legs are
+  aimed from the shoulder and hip at their points on the shield (`limb`), so the hooves land there.
+- First tries put the shield high or wide: the legs became poles, or the bodies hid the shield's sides
+  and the heads its corners.
+- The farthest point is 34.5 units from the centre (the round mask shows 36). The status-bar shield is
+  unchanged (regenerated byte-identical).
+
+**Checked:** crest.py's previews (circle, squircle, launcher size), and on the phone `--es view icon`
+draws the adaptive icon with the system mask.
+
+## 15 October 2026 (the cow and the horse redesigned: six-packs and lightsabers)
+
+**Asked for** (thingstodo, FOR SYNC animation): redesign the cow and the horse with Duolingo's bird as
+the style reference, give them six-packs, and have them duel with lightsabers instead of swords; funny
+and hilarious is fine.
+
+**Change** (`DuelView`: the shapes, `saberArm`, `sixPack`, `eyes`, the spark):
+- Round, chunky cartoon shapes like Duo's: the cow one big round body; the horse a round crown with a
+  long face, chin tucked in, on a thick neck. Both have huge round eyes with glinting pupils turned to
+  the other, and angry brows.
+- Funny: the cow shouts as it fights, mouth open with its tongue out; the horse grins with two buck
+  teeth and has a crest of hair standing up between its ears and a mane down its neck.
+- Six-packs: chest arcs and a rounded block in thirds and halves on each belly. The saber arm has a
+  bicep.
+- Lightsabers: a hilt with two bands and an emitter in the hoof, the blade in two layers of glow. On a
+  light page the core is white, outlined; on a dark page (and the sign-in poster's blue) the bright ink
+  is the core. The clash is a flash and five rays.
+- Still monochrome, same 120 × 60 box, same poses and swing: the pull mark, the loader and the sign-in
+  fight all use it, and the blades still cross where the spark flies. Nothing pokes above the box (the
+  horse's ears and crest sit lower than at first), so the pull mark doesn't cut them off.
+- Prototyped as SVG first (light, dark, poster; at the phone's real size), and the Kotlin shapes were
+  generated from the prototype rather than copied by hand.
+
+**Checked:** it builds; unit tests pass. Drawn off-screen on the phone: the pull frames light and dark
+(`--es view duel`) and the sign-in fight's frames (`--es view scene`), matching the prototype. The pull
+and the loader moving: on the phone.
+
+## 15 October 2026 (theme dots: the big one no longer cut off at the top of its hop)
+
+**Reported:** at the top of its hop, the largest dot was cut off.
+
+**Found:** the swatch let its dots draw outside their row (`clipChildren` off) but still clipped them
+to its own padding (`clipToPadding`, on by default), 14dp from its top: the big dot, 18dp, leapt 9dp
+and stretched, and its top went past that line.
+
+**Change:** the swatch no longer clips to its padding, so the dots hop up into it. A debug option draws
+the sheet with the chosen theme's dots posed partway through the hop (`--ef hopAt 0.36`; `Motion.hop`
+now builds its animation in `hopAnimator`, which a still drawing can set to any point).
+
+**Checked:** drawn off-screen on the phone at 0.22 (the stretch) and 0.36 (the top): cut flat before
+the change, whole after it.
+
+## 15 October 2026 (switches: the pill moves alone, no grey lagging behind it)
+
+**Reported:** when a switch slides, something like a shadow or a grey translucent element lags behind;
+the whole element should move.
+
+**Found:** two things trailed the pill. The tapped option had a touch ripple (13% black, 20% white in
+dark), drawn over the pill as it arrived and fading after it; and the press sank the option's label on
+its own, so the label shrank and bounced inside the pill. For Appearance there was also the new look
+spreading at the tap: the picture of the old sheet still showed the old pill where it started while
+the new one glided in the spreading circle.
+
+**Change:**
+- The switch's options have no ripple and don't sink (`Motion.Presser` skips them); the gliding pill
+  is the feedback.
+- Appearance: the pill glides and lands in the old colours first (380 ms), then the new look spreads
+  from it, the redrawn pill carrying on from exactly where it was (`SegmentPill.position`, settling
+  without a second bounce). Tapping again before it spreads replaces the change waiting.
+
+**Checked:** it builds; unit tests pass. The slide itself: try Vibration and Appearance on the phone.
+
+## 15 October 2026 (Sign out: the phone cries while it's held)
+
+**Asked for:** while Sign out is held, vibrate as if the app is crying, not just once at the start.
+
+**Change** (`Haptics.cry` and `hush`; `HoldButton`): pressing the button starts one vibration lasting
+the rest of the hold (1.1 s from the start). It's sobbing: bursts of three hics (a low tick, then
+ticks), each burst stronger (from 30% up) and quicker than the last, with shorter pauses between, and
+a rising wail filling the last stretch. Built from the motor's primitives at the user's vibration
+strength, timed with their real durations; a phone without them gets the same bursts as pulses.
+Letting go stops it at once; signing out stops it and gives the threshold click. Off means silent.
+
+**Checked:** it builds; unit tests pass. Not felt yet: hold Sign out on the phone. `dumpsys
+vibrator_manager` will show what was played.
+
+## 15 October 2026 (web screens: a top bar like the main screen's)
+
+**Asked for:** on the Spectrum and MAYA pages the top bar looked ugly and unrefined. Design it with the
+same care as the main page, with animation, and animate the Cancel or Done button so it's noticed.
+
+**Change** (`WebBar` in WebScreen.kt; all four web screens: Spectrum pages, the Spectrum sign-in, MAYA,
+TimeEdit):
+- In the app's own look and theme (Auto/Light/Dark and the Gold/Blue/Red scheme), not the system's grey
+  buttons: the site in small accent capitals (SPECTRUM, SISWAMAIL, MAYA, TIMEEDIT) over the title in
+  Big Shoulders (30sp; 26sp on one line for Spectrum pages, which take the page's own title), the
+  status line in Instrument Sans, the system bars and page background in the theme's colours.
+- The way out is a pill: **Done** in the accent with a tick (Spectrum pages), **Close** / **Cancel**
+  in the text colour with a cross (a grey one all but vanished on the light page). 40dp tall in a 48dp
+  row.
+- MAYA's "Read this page" and TimeEdit's "Get timetable" are full-width accent buttons, faded while
+  they can't be used. When they become usable they brighten with a small pop.
+- A hairline under the bar, with a short accent bar sweeping along it while a page loads (in place of
+  the system progress bar). With "Remove animations" it's a still bar.
+- Motion: the bar's parts rise in as a page of the app does, the pill pops in after the title, and once
+  the first page has loaded the pill wiggles once so it's seen. Spectrum's title ("Opening the
+  page…", then the page's own) and the status lines roll over when they change. Buttons sink when
+  pressed, as in the app.
+- Titles: "Import your timetable" (MAYA) and "Get your timetable" (TimeEdit), since the small line
+  above now names the site.
+
+**Checked:** it builds; unit tests pass. The four bars drawn off-screen on the phone (`--es view webbar
+--es bar spectrum|login|maya|timeedit`, new), light and dark: a long Spectrum title ends in "…", and
+TimeEdit's button shows faded while it waits. The motion and the pages under the bar: open Spectrum
+and MAYA on the phone.
+
+## 15 October 2026 (sign-in poster: the fight, new steps, everything moving in)
+
+**Asked for:** rethink the sign-in page's 1, 2, 3; check the spacing and make the numbers larger; a
+5-second fight between the cow and the horse in the empty space at the top (or a better idea); move the
+sign-in button up a little; animate everything so it feels alive and playful; audit it with the frontend
+skill.
+
+**Change** (`SignInScreen`; `DuelView` poses and stage; new `DuelScene`):
+- **The fight** fills the room above the statement, across the whole screen width (`DuelView(stage =
+  true)`). It lasts 5 s: they run in from the screen's edges with little hops, square up (rearing back,
+  crouching), clash with a spark, flurry with two more, crouch and leap to clash in the air, lock
+  blades while the cow pushes the horse back (the lock judders, sparks flicker), hop apart and bow.
+  Then they stand en garde, breathing out of step. A tap on them plays it again. The art is the
+  existing monochrome cow and horse in the poster's white on blue, so a redesign of the pair (the
+  todo's "FOR SYNC animation") carries over. `DuelView` now draws each fighter from a pose (across,
+  up, lean, sword, squash); its pull and loader motion are unchanged (made from `progress` as before).
+- **Steps** say what happens after the button, in order: 1 SiswaMail "Microsoft's page", 2 Timetable
+  "From TimeEdit", 3 Spectrum "Due, marks, news". The numbers are Big Shoulders 44sp (were Instrument
+  Sans 20sp). Each sub-line fits one line on this phone.
+- **Spacing:** brand, 10dp, the bar; 8dp, the fight; 8dp, the statement, now three set lines at one
+  size (48sp, or as large as "Your whole semester" fits); 22dp, the steps; 24dp, the button; 12dp, the
+  note. 40dp under the note instead of 24dp, so the button sits 16dp higher.
+- **Coming in:** the brand rises, the bar draws across from its red end, the fight starts, the
+  statement's lines rise one after another, the step lines grow down, the numbers pop from their
+  baseline and their words rise, then the button and the note. The button's arrow nudges right twice
+  every 3.2 s. Nothing moves with "Remove animations".
+- **Short phones:** if the fight would get less than a fifth of the screen, the statement shrinks (to
+  half at most); if the pair would be under 40dp tall, the fight isn't drawn. Step titles shrink rather
+  than break inside a word. `FitText` now fits to 98% of the room, as text fitted to the exact width
+  wrapped its last letter.
+
+**Audit (frontend-design):** one signature (the fight); yellow still only on the bar and the button;
+the numbering is a real order; the type is the app's own; the motion is one entrance and then quiet
+(breathing, the arrow). Text on the blue: 11.6:1 and 7.4:1.
+
+**Checked:** it builds; unit tests pass. Drawn off-screen on the phone: the fight as a frame every
+200 ms (`--es view scene`, new): the clashes meet blade to blade where the sparks fly, and the jump's
+spark is at the top of the leap. The poster at the phone's size, and at 360 × 576dp at font size 1.0
+and 1.3. At 1.3 the fight hides and the statement shrinks; nothing is cut off. The entrance and the
+fight's timing: watch them on the phone after a sign out.
+
+## 15 October 2026 (the tab bar says Week on the week grid)
+
+**Asked for:** on the week panel, the tab bar's Day should change to Week too.
+
+**Change** (`MainActivity.renderTabs`, `rollLabel`; new `avd_tab_week`): on the week grid the first tab
+reads "Week" with the grid icon (the unused `ic_tab_week`, now animated). Going to the week, the label
+rolls over (the old one slips up and out, the new one rises in) and the icon draws itself in: the frame
+round, then the header line across, then the two column lines down. Back to a day, the same with "Day"
+and its list. TalkBack says Week or Day. After a theme change the tab is just set, without the roll.
+
+**Checked:** it builds; unit tests pass. The new icon's frames drawn off-screen on the phone
+(`--es view tabicons`, now with the week icon): it ends as `ic_tab_week`, and lines that haven't
+started stay hidden (no stray round caps). The roll in the tab bar: try it on the phone.
+
+## 15 October 2026 (Week swipes like a day)
+
+**Asked for:** treat the Week cell like the day cells: swipe to it like a normal day, don't skip it.
+
+**Change** (`stripCell`, `MainActivity.goCell`): swipes on Day and on Week step along the strip's six
+cells: Monday to Friday, then Week, then round to Monday (and from Monday back to Week). Swiping left on
+Friday now shows the week grid instead of Monday. The week slides in from the side, its title follows
+and the strip's pill glides, as between days, with the swipe's own vibration only. Taps between the
+strip's cells also slide now (Week from a day comes in from the right, a day from Week from the
+left); from another tab Week still rises as before.
+
+**Checked:** it builds; unit tests pass, with a new one for the cell order (`HomeDayTest`). The swipes
+themselves: try them on the phone.
+
+## 15 October 2026 (Sign out: hold the button)
+
+**Asked for:** on the Sign out question, the user should long press the Sign out button, and it should
+be animated.
+
+**Change** (`HoldButton` in ConfirmDialog.kt; `ConfirmDialog.card/show(hold = true)`):
+- The button says "Hold to sign out" and takes the wider half of the card (Cancel the narrower). It
+  stays on one line, shrinking if it must (`FitText` is now open for it).
+- Pressed: a vibration, then a darker band sweeps across the yellow from the left, evenly over 1.1 s,
+  while the button sinks slightly. At the end it pops, gives the threshold vibration and signs out.
+- Let go or slide off early: the band drains back and the button springs up. A quick tap (under
+  0.3 s) also shakes it sideways with a soft tick: the label says to hold.
+- The time is kept by a timer, not the animation, so with "Remove animations" holding still works
+  (nothing moves). TalkBack's double tap signs out at once ("Sign out. Hold to confirm").
+
+**Checked:** it builds; unit tests pass. The card drawn off-screen on the phone: light at the phone's
+width, and dark at 360dp with font size 1.3. The label fits on one line in both. The hold itself:
+try it on the phone.
+
+## 15 October 2026 (the chosen theme's dots hop)
+
+**Asked for:** when the theme colour is changed, all the dots in the chosen theme should jump or bounce.
+
+**Change** (`Motion.hop`, `SettingsSheet`): picking a theme redraws the still-open sheet in its colours
+(spreading from the swatch), and the new swatch's five dots jump one after another, left to right, 70 ms
+apart. Each one crouches, leaps (9dp for the big accent dot, 8dp for the course dots), lands with a
+squash from its bottom edge, then makes a smaller second hop: about 0.7 s each, all done in about a
+second. The swatch doesn't clip them; they stay inside its padding. Nothing hops with "Remove
+animations" on.
+
+**Checked:** it builds; unit tests pass. The sheet drawn off-screen on the phone (debug renderer, light
+Gold and dark Blue) still shows the switches' pills and the swatches as before. The hop itself can't be
+drawn off-screen: try it on the phone.
+
+## 15 October 2026 (switches glide to the new option)
+
+**Asked for:** changing Appearance or Vibration, the highlight just appeared on the new option; it
+should move there.
+
+**Change** (`Ui.segmented`, `SegmentPill`): the accent pill is drawn by the switch's row behind its
+options, at an option's index that's fractional while it moves. A tap glides it to the option on the
+app's bouncy spring; the new label turns to the ink colour as the pill arrives and the old one back to
+grey (quickly, as the day strip's labels do). With a new look the Settings sheet is redrawn in the new
+colours (previous entry): its Appearance switch starts at the old option and glides on, and the new
+colours spread from the option tapped. News' For me / All switch is the same control.
+
+**Checked:** it builds; unit tests pass. The sheet drawn off-screen on the phone (light Gold, dark Blue): both switches show their pill on the chosen option. The glide itself: try it on the phone.
+
+## 15 October 2026 (Settings stays open)
+
+**Asked for:** after a setting is changed or a button pressed, the Settings sheet shouldn't hide by
+itself; only when the user hides it.
+
+**Change:**
+- No row or control closes the sheet any more. It goes only by its close button, a drag down, a tap
+  outside or Back.
+- A new look or theme still spreads over the page from the title. The sheet, still open, is redrawn in
+  the new colours, spreading in a circle from what was tapped (the switch, the swatch) over a picture
+  of the old sheet (`BottomSheet.replace`). Its navigation-bar icons follow. If the colours don't change
+  (Auto to Light on a light phone), the sheet is left as it is.
+- What a row opens (TimeEdit, MAYA, Android's notification settings, the sign-in) comes up over the
+  sheet. Back in the app, the sheet is redrawn so it shows how it went: the timetable's class count,
+  notifications On, the account name (`MainActivity.onResume`).
+- Check for updates and Sign out show their card over the sheet. Sign out restarts the screen, so the
+  sheet is dismissed with it (`onDestroy`) rather than left as a leaked window.
+
+**Checked:** it builds; unit tests pass. Not tried by hand yet: on the phone, change the look and the theme with the sheet open, and open TimeEdit from it and come back.
+
 ## 15 October 2026 (status-bar icon: the shield)
 
 **Asked for:** the notification icon as the app icon's shield, without 马.

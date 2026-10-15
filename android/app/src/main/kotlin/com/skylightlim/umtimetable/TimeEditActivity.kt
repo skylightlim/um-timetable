@@ -22,7 +22,7 @@ class TimeEditActivity : WebScreen() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setUp(
-            "Timetable from TimeEdit", "Close",
+            "TimeEdit", "Get your timetable", "Close",
             "Signing in to TimeEdit with your SiswaMail…",
             "Get timetable",
         )

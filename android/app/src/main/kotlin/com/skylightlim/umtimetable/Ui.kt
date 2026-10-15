@@ -167,7 +167,7 @@ class Fonts(context: Context) {
 // Give it a wrap-content width (or a fixed one). Measured at a width that came from its own text, as a
 // column's full-width child is in the column's second pass, it fits [widest] into that and shrinks.
 @android.annotation.SuppressLint("ViewConstructor")
-class FitText(context: Context, private val maxPx: Float, private val widest: String? = null, private val words: Boolean = false) : TextView(context) {
+open class FitText(context: Context, private val maxPx: Float, private val widest: String? = null, private val words: Boolean = false) : TextView(context) {
     override fun onMeasure(widthSpec: Int, heightSpec: Int) {
         if (View.MeasureSpec.getMode(widthSpec) != View.MeasureSpec.UNSPECIFIED) {
             val room = View.MeasureSpec.getSize(widthSpec) - totalPaddingLeft - totalPaddingRight
@@ -177,10 +177,56 @@ class FitText(context: Context, private val maxPx: Float, private val widest: St
                 widest != null -> maxOf(paint.measureText(widest), paint.measureText(all))
                 else -> paint.measureText(all)
             }
-            val size = if (needed > 0f) minOf(maxPx, textSize * room / needed) else maxPx
+            // 2% short of the room when it shrinks: fitted to the exact width, the last letter wrapped ("Spectru / m").
+            val size = if (needed > 0f) minOf(maxPx, textSize * room * 0.98f / needed) else maxPx
             if (kotlin.math.abs(size - textSize) > 0.5f) setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
         }
         super.onMeasure(widthSpec, heightSpec)
+    }
+}
+
+/**
+ * The row of a [Ui.segmented] switch, drawing its accent [pill] behind the options. The pill sits [at] an
+ * option's index, fractional while it glides between two; past either end (a spring's overshoot) it
+ * keeps going at the last two options' spacing. Drawn from the options' own layout, so it needs no
+ * measuring of its own and shows in an off-screen drawing too.
+ */
+@android.annotation.SuppressLint("ViewConstructor")
+class SegmentPill(context: Context, private val pill: Drawable, private var at: Float) : LinearLayout(context) {
+    private var gliding: android.animation.ValueAnimator? = null
+
+    init { setWillNotDraw(false) }
+
+    /** Where the pill is now, as an option's index (fractional while it moves). */
+    val position get() = at
+
+    fun glide(to: Int, spring: Motion.Spring = Motion.BOUNCY) {
+        gliding?.cancel()
+        if (!Motion.enabled) { at = to.toFloat(); invalidate(); return }
+        gliding = android.animation.ValueAnimator.ofFloat(at, to.toFloat()).apply {
+            interpolator = spring
+            duration = spring.duration
+            addUpdateListener { at = it.animatedValue as Float; invalidate() }
+            start()
+        }
+    }
+
+    override fun dispatchDraw(canvas: android.graphics.Canvas) {
+        if (childCount > 0) {
+            val i = kotlin.math.floor(at).toInt().coerceIn(0, maxOf(0, childCount - 2))
+            val a = getChildAt(i)
+            val b = getChildAt(minOf(i + 1, childCount - 1))
+            val t = at - i
+            fun lerp(x: Int, y: Int) = (x + (y - x) * t).toInt()
+            pill.setBounds(lerp(a.left, b.left), a.top, lerp(a.right, b.right), a.bottom)
+            pill.draw(canvas)
+        }
+        super.dispatchDraw(canvas)
+    }
+
+    override fun onDetachedFromWindow() {
+        gliding?.cancel()
+        super.onDetachedFromWindow()
     }
 }
 
@@ -296,39 +342,52 @@ class Ui(val context: Context, val p: Palette, val f: Fonts) {
     }
 
     /**
-     * A segmented switch: options in a row, the chosen one filled in the accent colour. [fill] shares
-     * the row's width equally. A tap restyles it in place, calls [onChoose], then vibrates (after, so
-     * choosing a vibration strength plays the new one).
+     * A segmented switch: options in a row, the chosen one on an accent pill. [fill] shares the row's
+     * width equally. A tap glides the pill to the option on a spring, its label and the one it leaves
+     * changing colour with it, calls [onChoose] with the option and its view, then vibrates (after, so
+     * choosing a vibration strength plays the new one). The pill is the only feedback: the options have
+     * no ripple and don't sink (a grey ripple on the option lagged behind the pill as it arrived). With
+     * [from] (a pill position), the pill starts there and settles on [chosen]: a switch drawn again in the
+     * middle of a move (a new look redraws Settings) carries it on.
      */
-    fun segmented(options: List<String>, chosen: Int, fill: Boolean = false, onChoose: (Int) -> Unit): LinearLayout {
+    fun segmented(options: List<String>, chosen: Int, fill: Boolean = false, from: Float? = null, onChoose: (Int, View) -> Unit): LinearLayout {
         var current = chosen
         val views = mutableListOf<TextView>()
-        fun style() = views.forEachIndexed { i, v ->
-            val on = i == current
-            v.setTextColor(if (on) p.accentInk else p.muted)
-            v.background = if (on) shape(p.accent, 10f) else pressable(shape(Color.TRANSPARENT, 10f), 10f)
-            v.contentDescription = "${options[i]}${if (on) ", chosen" else ""}"
+        val pill = SegmentPill(context, shape(p.accent, 10f), from ?: chosen.toFloat())
+        fun describe() = views.forEachIndexed { i, v -> v.contentDescription = "${options[i]}${if (i == current) ", chosen" else ""}" }
+        fun glide(to: Int, leaving: Int) {
+            // The label the pill leaves turns quickly: its ink colour on the bare track is barely readable.
+            Motion.tint(views[leaving], p.accentInk, p.muted, 90)
+            Motion.tint(views[to], p.muted, p.accentInk)
+            pill.glide(to)
         }
-        return row(gap = 2f).apply {
+        return pill.apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+            dividerDrawable = GradientDrawable().apply { setSize(dp(2f), 1) }
             background = shape(p.surface2, 12f)
             setPadding(dp(3), dp(3), dp(3), dp(3))
             for ((i, label) in options.withIndex()) {
-                val v = text(label, 13f, p.muted, f.bodySemi).apply {
+                val v = text(label, 13f, if (i == chosen) p.accentInk else p.muted, f.bodySemi).apply {
                     gravity = Gravity.CENTER
                     minHeight = dp(if (fill) 40 else 36)
                     setPadding(dp(12), 0, dp(12), 0)
                     setOnClickListener {
                         if (i == current) return@setOnClickListener
+                        val was = current
                         current = i
-                        style()
-                        onChoose(i)
+                        describe()
+                        glide(i, was)
+                        onChoose(i, this)
                         Haptics.tick(this)
                     }
                 }
                 views += v
                 addView(v, if (fill) LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) else LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             }
-            style()
+            describe()
+            if (from != null) pill.glide(chosen, Motion.QUICK)
         }
     }
 
