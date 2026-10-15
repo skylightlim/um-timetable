@@ -77,7 +77,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
                     else -> pageTitle(host.ui, page, SpectrumScreens.summary(host, mapOf("Courses" to "files").getOrElse(page) { page.lowercase() }))
                 }, host.ui.grow())
             }
-            "signout" -> ConfirmDialog.card(host.ui, MainActivity.SIGN_OUT_TITLE, MainActivity.SIGN_OUT_BODY, "Sign out", {}, {})
+            "signout" -> ConfirmDialog.card(host.ui, MainActivity.SIGN_OUT_TITLE, MainActivity.SIGN_OUT_BODY, "Sign out", {}, {}, hold = true)
             "sheet" -> {
                 val tt = Timetable.load(context)
                 val course = tt.courses.first { it.code == intent.getStringExtra("code") }

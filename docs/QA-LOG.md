@@ -18,6 +18,25 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (Sign out: hold the button)
+
+**Asked for:** on the Sign out question, the user should long press the Sign out button, and it should
+be animated.
+
+**Change** (`HoldButton` in ConfirmDialog.kt; `ConfirmDialog.card/show(hold = true)`):
+- The button says "Hold to sign out" and takes the wider half of the card (Cancel the narrower). It
+  stays on one line, shrinking if it must (`FitText` is now open for it).
+- Pressed: a vibration, then a darker band sweeps across the yellow from the left, evenly over 1.1 s,
+  while the button sinks slightly. At the end it pops, gives the threshold vibration and signs out.
+- Let go or slide off early: the band drains back and the button springs up. A quick tap (under
+  0.3 s) also shakes it sideways with a soft tick: the label says to hold.
+- The time is kept by a timer, not the animation, so with "Remove animations" holding still works
+  (nothing moves). TalkBack's double tap signs out at once ("Sign out. Hold to confirm").
+
+**Checked:** it builds; unit tests pass. The card drawn off-screen on the phone: light at the phone's
+width, and dark at 360dp with font size 1.3. The label fits on one line in both. The hold itself:
+try it on the phone.
+
 ## 15 October 2026 (the chosen theme's dots hop)
 
 **Asked for:** when the theme colour is changed, all the dots in the chosen theme should jump or bounce.

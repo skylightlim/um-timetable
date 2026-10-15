@@ -167,7 +167,7 @@ class Fonts(context: Context) {
 // Give it a wrap-content width (or a fixed one). Measured at a width that came from its own text, as a
 // column's full-width child is in the column's second pass, it fits [widest] into that and shrinks.
 @android.annotation.SuppressLint("ViewConstructor")
-class FitText(context: Context, private val maxPx: Float, private val widest: String? = null, private val words: Boolean = false) : TextView(context) {
+open class FitText(context: Context, private val maxPx: Float, private val widest: String? = null, private val words: Boolean = false) : TextView(context) {
     override fun onMeasure(widthSpec: Int, heightSpec: Int) {
         if (View.MeasureSpec.getMode(widthSpec) != View.MeasureSpec.UNSPECIFIED) {
             val room = View.MeasureSpec.getSize(widthSpec) - totalPaddingLeft - totalPaddingRight
