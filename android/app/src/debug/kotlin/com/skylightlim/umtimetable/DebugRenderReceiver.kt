@@ -198,7 +198,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
      */
     private fun tabIcons(context: Context) {
         val pending = goAsync()
-        val ids = listOf(R.drawable.avd_tab_day, R.drawable.avd_tab_grades, R.drawable.avd_tab_due, R.drawable.avd_tab_news, R.drawable.avd_tab_courses)
+        val ids = listOf(R.drawable.avd_tab_day, R.drawable.avd_tab_week, R.drawable.avd_tab_grades, R.drawable.avd_tab_due, R.drawable.avd_tab_news, R.drawable.avd_tab_courses)
         val times = (0..9).map { it * 80L }
         val cell = 120
         val sheet = Bitmap.createBitmap(cell * times.size, cell * ids.size, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFFEEF1F4.toInt()) }

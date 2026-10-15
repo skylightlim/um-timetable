@@ -18,6 +18,20 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (the tab bar says Week on the week grid)
+
+**Asked for:** on the week panel, the tab bar's Day should change to Week too.
+
+**Change** (`MainActivity.renderTabs`, `rollLabel`; new `avd_tab_week`): on the week grid the first tab
+reads "Week" with the grid icon (the unused `ic_tab_week`, now animated). Going to the week, the label
+rolls over (the old one slips up and out, the new one rises in) and the icon draws itself in: the frame
+round, then the header line across, then the two column lines down. Back to a day, the same with "Day"
+and its list. TalkBack says Week or Day. After a theme change the tab is just set, without the roll.
+
+**Checked:** it builds; unit tests pass. The new icon's frames drawn off-screen on the phone
+(`--es view tabicons`, now with the week icon): it ends as `ic_tab_week`, and lines that haven't
+started stay hidden (no stray round caps). The roll in the tab bar: try it on the phone.
+
 ## 15 October 2026 (Week swipes like a day)
 
 **Asked for:** treat the Week cell like the day cells: swipe to it like a normal day, don't skip it.

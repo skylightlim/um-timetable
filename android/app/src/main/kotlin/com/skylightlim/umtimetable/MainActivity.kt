@@ -32,6 +32,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
+import com.skylightlim.umtimetable.Motion.spring
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
@@ -94,6 +95,8 @@ class MainActivity : Activity(), SpectrumHost {
     /** Where the strip's pill is (0–4 Monday–Friday, 5 Week) and which tab is lit, so a change animates. */
     private var stripIndex = -1
     private var tabShown: String? = null
+    /** Whether the Day tab says Week (on the week grid); null after the tabs are built, so it's set without animating. */
+    private var dayTabWeek: Boolean? = null
     private val badgeCounts = mutableMapOf<String, Int>()
     private var pendingSlide = 0
     /** The next day arrives from the side it was swiped in from, rather than from close by (a tap). */
@@ -288,6 +291,7 @@ class MainActivity : Activity(), SpectrumHost {
         tabs.removeAllViews()
         tabViews.clear()
         badges.clear()
+        dayTabWeek = null
         val p = ui.p
         for ((i, t) in TABS.withIndex()) {
             val (id, label, iconRes) = t
@@ -601,6 +605,17 @@ class MainActivity : Activity(), SpectrumHost {
         val unread = SpectrumStore.array(this, "news").objects().count { it.optBoolean("forMe", true) && it.getInt("id").toString() !in seenNews }
         val newMarks = SpectrumStore.array(this, "grades").objects().count { !it.isNull("raw") && !SpectrumSync.isAttendance(it) && SpectrumSync.gradeKey(it) !in seenGrades }
         val counts = mapOf("news" to unread, "grades" to newMarks, "due" to SpectrumScreens.openAttendance(this))
+        // On the week grid the Day tab is Week, with the grid's icon: the label rolls over and the icon draws itself in.
+        val week = view == "week"
+        if (week != dayTabWeek) tabViews["day"]?.let { (tab, icon, text) ->
+            val animate = dayTabWeek != null && Motion.enabled
+            dayTabWeek = week
+            val label = if (week) "Week" else "Day"
+            icon.setImageResource(if (week) R.drawable.avd_tab_week else R.drawable.avd_tab_day)
+            tab.contentDescription = label
+            rollLabel(text, label, animate)
+            if (animate) (icon.drawable as? android.graphics.drawable.AnimatedVectorDrawable)?.start()
+        }
         var lit = 0
         for ((id, views) in tabViews) {
             val (_, icon, text) = views
@@ -624,6 +639,24 @@ class MainActivity : Activity(), SpectrumHost {
         if (tabShown != null && tabShown != shown && Motion.enabled) (tabViews[shown]?.second?.drawable as? android.graphics.drawable.AnimatedVectorDrawable)?.start()
         tabShown = shown
         tabGlider.moveTo(lit, p.surface)
+    }
+
+    /** A tab's label changing in place: the old one slips up and out, the new one rises in under it. */
+    private fun rollLabel(text: TextView, to: String, animate: Boolean) {
+        text.animate().cancel()
+        if (!animate) {
+            text.text = to
+            text.translationY = 0f
+            text.alpha = 1f
+            return
+        }
+        val d = ui.dp(6f).toFloat()
+        text.animate().translationY(-d).alpha(0f).setDuration(90).setInterpolator(Motion.EXIT).withEndAction {
+            text.text = to
+            text.translationY = d
+            text.animate().translationY(0f).spring(Motion.SETTLE).start()
+            Motion.fade(text, 0f, 1f, 140)
+        }.start()
     }
 
     private fun markNewsSeenSoon() {
