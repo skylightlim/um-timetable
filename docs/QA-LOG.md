@@ -18,6 +18,37 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (Week: smooth swipes between weeks, as a carousel; double-tap Week for this week)
+
+**Reported:** frames dropped when swiping to another week; the animation should be smoother and
+coherent. Also asked for: on another week, a double tap on the Week chip brings back the current week.
+
+**Found** (debug build, warmed up, on the phone; new `--ei bench` lines): a week swipe drew the whole
+screen again: the Week page built from nothing (8.0 ms, mostly the Courses list's views), laid out
+(2.7 ms) and drawn (5.9 ms, the grid 4.2 ms of it, laying out every class name), plus the top bar and the
+strip rebuilt: over 17 ms before the new week could move, two or three frames at 120 Hz. And the motion
+broke in the middle: the page followed the finger, jumped back to the middle on letting go, and the new
+week came in from a third of the way across.
+
+**Change:**
+- A swipe changes only what changes (`WeekScreen.shift`, `MainActivity.shiftWeek`, `shiftStrip`): a
+  new grid for the new week, the break card if it changes, the title (rolling over as before) and the
+  strip's dates and Week label (each rolling over from the side the week came from). The Courses list
+  is redrawn after the slide (it's below the grid). Measured the same way: 0.9 ms shift, 0.2 ms layout,
+  3.5 ms draw (of the whole page in software; on screen only the new grid draws).
+- A carousel: on Week only the grid follows the finger (`SwipeScrollView.swipeTarget`), inside its
+  card. Let go past the threshold and the old grid carries on out from where the finger left it while
+  the new week's grid comes in beside it, 16dp apart, both on the same spring, so they move as one.
+  Not far enough, and the grid springs back. The tab tap back to this week and the double tap slide
+  the same way.
+- Class names in the grid are laid out once and kept (`WeekGrid.layout`, 96 kept): every week has the
+  same classes, so later grids lay out nothing new. The grid's draw went from 4.2 to 2.8 ms.
+- Double tap the Week chip on another week: back to this week, sliding over from that side. A single
+  tap still opens Week.
+
+**Checked:** unit tests pass; the timings above from the phone. Drawn off-screen: the Week page as before
+(Deepavali's week, the break). The swipe itself: on the phone.
+
 ## 15 October 2026 (holiday classes: no slash)
 
 **Asked for:** remove the slash on classes cancelled by a holiday; it looked bad.

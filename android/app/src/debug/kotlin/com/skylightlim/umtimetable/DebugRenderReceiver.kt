@@ -368,6 +368,53 @@ class DebugRenderReceiver : BroadcastReceiver() {
         time("x10 Regex compile") { repeat(10) { Regex("(?i)<img") } }
         time("x10 plain()") { for (a in news) SpectrumSync.plain(a.optString("html")) }
         time("widget render") { WidgetRenderer.build(context, Timetable.load(context), Now.current(), 320f, 420f) }
+        // A week swipe: the Week page built for another week, laid out and drawn; then the grid's draw alone.
+        run {
+            val host = Host(c, ui)
+            var build = 0L; var measure = 0L; var draw = 0L
+            val canvas = Canvas(Bitmap.createBitmap(width, 4000, Bitmap.Config.ARGB_8888))
+            var grid: WeekGrid? = null
+            repeat(n + 1) { i ->
+                host.weekShift = i % 8
+                val t0 = System.nanoTime()
+                val page = WeekScreen.build(host)
+                val t1 = System.nanoTime()
+                val frame = FrameLayout(c).apply { addView(page) }
+                frame.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                frame.layout(0, 0, frame.measuredWidth, frame.measuredHeight)
+                val t2 = System.nanoTime()
+                frame.draw(canvas)
+                val t3 = System.nanoTime()
+                if (i > 0) { build += t1 - t0; measure += t2 - t1; draw += t3 - t2 }
+                fun find(v: View): WeekGrid? = v as? WeekGrid ?: (v as? android.view.ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { find(g.getChildAt(it)) } }
+                grid = find(frame)
+            }
+            Log.i("UMTimetable", "bench week page built: build %.2f ms, measure+layout %.2f ms, draw %.2f ms".format(build / 1e6 / n, measure / 1e6 / n, draw / 1e6 / n))
+            grid?.let { g -> time("week grid draw") { g.draw(canvas) } }
+            // What a swipe does now: the same page shifted in place (a new grid in the carousel), laid out and drawn.
+            host.weekShift = 0
+            val page = WeekScreen.build(host)
+            val frame = FrameLayout(c).apply { addView(page) }
+            fun lay() {
+                frame.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                frame.layout(0, 0, frame.measuredWidth, frame.measuredHeight)
+            }
+            lay()
+            var shift = 0L; var layout = 0L; var paint = 0L
+            repeat(n + 1) { i ->
+                host.weekShift = i % 8 + 1
+                val t0 = System.nanoTime()
+                WeekScreen.shift(page, host, 1)
+                val t1 = System.nanoTime()
+                lay()
+                val t2 = System.nanoTime()
+                frame.draw(canvas)
+                val t3 = System.nanoTime()
+                (WeekScreen.grid(page)?.parent as? android.view.ViewGroup)?.let { box -> while (box.childCount > 1) box.removeViewAt(0) }
+                if (i > 0) { shift += t1 - t0; layout += t2 - t1; paint += t3 - t2 }
+            }
+            Log.i("UMTimetable", "bench week swipe now: shift %.2f ms, measure+layout %.2f ms, draw %.2f ms".format(shift / 1e6 / n, layout / 1e6 / n, paint / 1e6 / n))
+        }
         for (view in listOf("day", "week", "grades", "due", "news", "files")) time("page $view") {
             val host = Host(c, ui)
             val page = when (view) {

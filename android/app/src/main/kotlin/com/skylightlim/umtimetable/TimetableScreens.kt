@@ -19,6 +19,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import com.skylightlim.umtimetable.Motion.spring
 import java.time.LocalDate
 import java.util.Calendar
 import kotlin.math.ceil
@@ -319,6 +320,12 @@ object DayScreen {
 }
 
 object WeekScreen {
+    /** The parts of a Week page that change with the week, so going to another week changes only them ([shift]). */
+    class Parts(val offSlot: FrameLayout, val gridBox: FrameLayout, val coursesSlot: FrameLayout?) {
+        /** The Courses list's redraw after a shift, waiting for the slide to end. */
+        var pending: Runnable? = null
+    }
+
     /** The week grid and the courses; [plans] instead of the saved ones (a still drawing's made-up plans). */
     fun build(h: Host, plans: List<Plan>? = null): View {
         val ui = h.ui
@@ -327,12 +334,17 @@ object WeekScreen {
         // The week's dates are in the top bar and its week of the semester on the Week chip.
         val page = ui.column().apply { setPadding(0, ui.dp(2), 0, 0) }
         // A break, revision or exam week says so above the grid (whose classes are then faded).
-        weekOff(h.dateOf(1))?.let { page.addView(offCard(ui, null, it), ui.wide(bottom = 12f)) }
+        val offSlot = FrameLayout(ui.context)
+        offCard(h)?.let { offSlot.addView(it) }
+        page.addView(offSlot, ui.wide())
         val card = ui.column().apply {
             background = ui.shape(p.surface, 18f, p.line)
             setPadding(ui.dp(2), ui.dp(10), ui.dp(6), ui.dp(8))
         }
-        card.addView(WeekGrid(ui, tt, h.now(), h.daysTo(1), plans ?: Plans.inWeek(ui.context, h.dateOf(1)), h::openPlan) { s -> h.openSheet(s.course, s) })
+        // The grid in a box of its own: going to another week, the grids slide through it as a carousel.
+        val gridBox = FrameLayout(ui.context)
+        gridBox.addView(grid(h, plans))
+        card.addView(gridBox, ui.wide())
         val key = ui.row(gap = 16f).apply { setPadding(ui.dp(30), ui.dp(4), 0, 0) }
         fun keyItem(swatch: View, label: String) = ui.row(gap = 6f).apply {
             addView(swatch)
@@ -351,10 +363,60 @@ object WeekScreen {
         page.addView(card)
         if (tt.sessions.isEmpty()) {
             page.addView(ui.text("No timetable yet · sign in to Spectrum in Courses", 13.5f, p.muted), ui.wide(top = 12f))
+            page.tag = Parts(offSlot, gridBox, null)
             return page
         }
-        page.addView(courses(h), ui.wide(top = 30f))
+        val coursesSlot = FrameLayout(ui.context).apply { addView(courses(h)) }
+        page.addView(coursesSlot, ui.wide(top = 30f))
+        page.tag = Parts(offSlot, gridBox, coursesSlot)
         return page
+    }
+
+    private fun offCard(h: Host): View? = weekOff(h.dateOf(1))?.let { FrameLayout(h.ui.context).apply { addView(offCard(h.ui, null, it)); setPadding(0, 0, 0, h.ui.dp(12)) } }
+
+    private fun grid(h: Host, plans: List<Plan>?) =
+        WeekGrid(h.ui, h.timetable, h.now(), h.daysTo(1), plans ?: Plans.inWeek(h.ui.context, h.dateOf(1)), h::openPlan) { s -> h.openSheet(s.course, s) }
+
+    /** The week's grid now, for the swipe to drag. */
+    fun grid(page: View): View? = (page.tag as? Parts)?.gridBox?.let { it.getChildAt(it.childCount - 1) }
+
+    /**
+     * [page] going to the week shown now ([Host.weekShift] has just moved, [dir] +1 for a later week):
+     * only what changes changes. The grid's new week slides in from that side as the old one carries on
+     * out from where the finger left it, the two together like a carousel; the break card follows; the
+     * Courses list is redrawn once the slide is over (it's below the grid). False if [page] isn't Week.
+     */
+    fun shift(page: View, h: Host, dir: Int): Boolean {
+        val parts = page.tag as? Parts ?: return false
+        val box = parts.gridBox
+        val old = box.getChildAt(box.childCount - 1)
+        val grid = grid(h, null)
+        box.addView(grid)
+        val step = box.width + h.ui.dp(16f).toFloat()
+        if (Motion.enabled && old != null && box.width > 0) {
+            val from = old.translationX
+            grid.translationX = from + dir * step
+            old.animate().translationX(-dir * step).alpha(0.3f).spring(Motion.SETTLE).withEndAction { box.removeView(old) }.start()
+            grid.animate().translationX(0f).spring(Motion.SETTLE).start()
+        } else if (old != null) {
+            box.removeView(old)
+        }
+        // The break card: there for a week without classes.
+        parts.offSlot.removeAllViews()
+        offCard(h)?.let { card ->
+            parts.offSlot.addView(card)
+            Motion.fade(card, 0f, 1f, 200)
+        }
+        val slot = parts.coursesSlot ?: return true
+        parts.pending?.let(slot::removeCallbacks)
+        val redraw = Runnable {
+            parts.pending = null
+            slot.removeAllViews()
+            slot.addView(courses(h))
+        }
+        parts.pending = redraw
+        slot.postDelayed(redraw, if (Motion.enabled) Motion.SETTLE.duration else 0)
+        return true
     }
 
     /**
@@ -559,7 +621,22 @@ class WeekGrid(
         drawBox(canvas)
     }
 
-    /** A holiday's column: tinted and hatched in the accent, under its (faded, slashed) classes. */
+    /**
+     * A name laid out in [w] px on at most [lines] lines, kept for the next grids: a week's classes are
+     * the same every week, so a swipe to another week lays out nothing new. (Laying them out was most of
+     * a grid's first draw.) Drawn with its own paint, coloured just before.
+     */
+    private fun layout(text: String, w: Int, lines: Int, hyphens: Boolean): StaticLayout {
+        val key = "$text|$w|$lines|$hyphens|${namePaint.textSize}|${namePaint.typeface.hashCode()}"
+        LAYOUTS.get(key)?.let { return it }
+        val paint = TextPaint(namePaint)
+        return StaticLayout.Builder.obtain(text, 0, text.length, paint, w)
+            .setMaxLines(lines).setEllipsize(TextUtils.TruncateAt.END).setIncludePad(false)
+            .setHyphenationFrequency(if (hyphens) Layout.HYPHENATION_FREQUENCY_NORMAL else Layout.HYPHENATION_FREQUENCY_NONE)
+            .build().also { LAYOUTS.put(key, it) }
+    }
+
+    /** A holiday's column: tinted and hatched in the accent, under its (faded) classes. */
     private fun drawHoliday(canvas: Canvas, @Suppress("UNUSED_PARAMETER") holiday: Holidays.Holiday, col: RectF) {
         val radius = ui.dp(6f).toFloat()
         fill.color = Palette.mix(p.accent, p.surface, 0.12f)
@@ -618,11 +695,9 @@ class WeekGrid(
         val nameTop = r.top + pad + codePaint.textSize + ui.dp(3f)
         val lines = ((r.bottom - pad - roomPaint.textSize - ui.dp(2f) - nameTop) / namePaint.fontSpacing).toInt()
         if (lines >= 1) {
-            namePaint.color = textColor; namePaint.alpha = alpha
-            fun layout(text: String) = StaticLayout.Builder.obtain(text, 0, text.length, namePaint, w)
-                .setMaxLines(lines).setEllipsize(TextUtils.TruncateAt.END).setIncludePad(false).setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NORMAL).build()
-            val full = layout(s.course.name)
-            val name = if (full.getEllipsisCount(full.lineCount - 1) > 0 && s.course.short != s.course.name) layout(s.course.short) else full
+            val full = layout(s.course.name, w, lines, true)
+            val name = if (full.getEllipsisCount(full.lineCount - 1) > 0 && s.course.short != s.course.name) layout(s.course.short, w, lines, true) else full
+            name.paint.color = textColor; name.paint.alpha = alpha
             canvas.save()
             canvas.translate(r.left + pad, nameTop)
             name.draw(canvas)
@@ -655,9 +730,8 @@ class WeekGrid(
         val nameTop = r.top + pad + codePaint.textSize + ui.dp(3f)
         val lines = ((r.bottom - pad - nameTop) / namePaint.fontSpacing).toInt()
         if (lines >= 1) {
-            namePaint.color = p.text; namePaint.alpha = alpha
-            val layout = StaticLayout.Builder.obtain(plan.title, 0, plan.title.length, namePaint, w.toInt())
-                .setMaxLines(lines).setEllipsize(TextUtils.TruncateAt.END).setIncludePad(false).build()
+            val layout = layout(plan.title, w.toInt(), lines, false)
+            layout.paint.color = p.text; layout.paint.alpha = alpha
             canvas.translate(r.left + pad, nameTop)
             layout.draw(canvas)
         }
@@ -955,6 +1029,7 @@ class WeekGrid(
         var landing: String? = null
         /** A selection box is up: the page shouldn't be redrawn under it (the minute's redraw waits). */
         var holding = false
+        private val LAYOUTS = android.util.LruCache<String, StaticLayout>(96)
     }
 }
 
