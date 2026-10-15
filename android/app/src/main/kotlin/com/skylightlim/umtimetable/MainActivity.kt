@@ -328,22 +328,17 @@ class MainActivity : Activity(), SpectrumHost {
                 addView(iconBox, LinearLayout.LayoutParams(ui.dp(44), ui.dp(24)))
                 addView(text, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(3) })
                 setOnClickListener {
-                    // Tapping Courses while inside a course goes back to the course list;
-                    // tapping Day while on Day goes back to the day of the next class.
+                    // Tapping Courses while inside a course goes back to the course list. The first tab
+                    // toggles: on Day ("Day") it opens Week, on Week ("Week") it opens Day, each sliding
+                    // in as along the strip.
                     if (id == view && id == "files" && openCourse != null) {
                         Haptics.back(this)
                         openCourse = null
                         render()
-                    } else if (id == view && id == "day" && (pickedDay || weekShift != 0)) {
-                        Haptics.back(this)
-                        pickedDay = false
-                        weekShift = 0
-                        sel = homeDay(timetable, now())
-                        render()
-                    } else if (id == "day" && view == "week" && weekShift != 0) {
-                        // Week on another week: the tab (now "Week") brings back the strip's own week first.
-                        Haptics.back(this)
-                        shiftWeek(-weekShift)
+                    } else if (id == "day" && view == "day") {
+                        goCell(WEEK_CELL)
+                    } else if (id == "day" && view == "week") {
+                        goCell(sel)
                     } else {
                         setView(id)
                     }

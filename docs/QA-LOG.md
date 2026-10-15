@@ -18,6 +18,18 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 16 October 2026 (the tab bar's first tab toggles Day and Week)
+
+**Asked for:** tapping the first tab while on Day (it says Day) should open Week, as tapping it on Week
+(it says Week) opens Day.
+
+**Change** (`MainActivity.buildTabs`): on Day the tab opens Week, on Week it opens the day last shown,
+each sliding in from its side as along the strip (the label rolls over, as before). This replaces what
+the tab did when tapped again: Day back to the next class's day, Week back to this week. This week is
+still a double tap on the Week chip away, or Back; another tab and back also starts from this week.
+
+**Checked:** it builds; unit tests pass. The taps: on the phone.
+
 ## 16 October 2026 (Week: the grid swipes weeks, the rest of the page swipes to the days)
 
 **Asked for:** on Week, a swipe on the week calendar goes to another week; a swipe anywhere else goes
