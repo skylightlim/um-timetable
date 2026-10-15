@@ -18,6 +18,23 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 15 October 2026 (1.4.0-beta.1 published)
+
+**Asked for:** push all the changes, with a version name to suit how much changed.
+
+**Published:** 1.4.0-beta.1, versionCode 5: a minor version, for the new features (plans, holidays,
+other weeks, the redrawn cow and horse and icon, the sign-in page and the web screens' bar). Before
+publishing, tonight's QA notes lost the user's own schedule (which courses fall on a day, the week's
+hours, how many Spectrum events), and the tree was checked against the backups' lecturer names (full
+names and surnames) and occurrences: none. GitHub's `main` got one release commit with `main`'s tree,
+"UM Timetable 1.4.0-beta.1" (fdf7e7b), on top of 1.3.0-beta.1's, as a fast-forward from the local
+`public` branch. Pre-release `v5`, titled "1.4.0-beta.1", carries `UM-Timetable-1.4.0-beta.1.apk`,
+built from a clean checkout of that commit: versionCode 5, signed with the release key (SHA-256
+bf:c0:58…b2:94:20). The notes are ten plain lines, for the update card.
+
+**Checked:** the APK's version and certificate (aapt2, apksigner); the releases list as the in-app
+updater reads it: v5 is the highest tag with an APK.
+
 ## 15 October 2026 (Week: smooth swipes between weeks, as a carousel; double-tap Week for this week)
 
 **Reported:** frames dropped when swiping to another week; the animation should be smoother and
