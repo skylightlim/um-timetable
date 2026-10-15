@@ -91,7 +91,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
             "webbar" -> when (intent.getStringExtra("bar") ?: "maya") {
                 "spectrum" -> WebBar(host.ui, "Spectrum", "Assignment 2: Group report (Week 6)", "Done", null, null, compact = true) {}
                 "login" -> WebBar(host.ui, "SiswaMail", "Sign in to Spectrum", "Cancel", "Sign in with your SiswaMail. Your login stays on this phone; the app only talks to Spectrum.", null, compact = false) {}
-                "timeedit" -> WebBar(host.ui, "TimeEdit", "Get your timetable", "Close", "Reading your 7 courses on TimeEdit…", "Get timetable", compact = false) {}.also { it.action.isEnabled = false }
+                "timeedit" -> WebBar(host.ui, "TimeEdit", "Get your timetable", "Close", "Reading your 5 courses on TimeEdit…", "Get timetable", compact = false) {}.also { it.action.isEnabled = false }
                 else -> WebBar(host.ui, "MAYA", "Import your timetable", "Close", "Sign in to MAYA, and the app opens your timetable and reads it. Your password goes only to MAYA or Microsoft; this app never sees it.", "Read this page", compact = false) {}
             }.view.apply { setBackgroundColor(host.ui.p.ground) }
             "signout" -> ConfirmDialog.card(host.ui, MainActivity.SIGN_OUT_TITLE, MainActivity.SIGN_OUT_BODY, "Sign out", {}, {}, hold = true)

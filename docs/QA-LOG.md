@@ -84,8 +84,8 @@ time on the card brings the selection box back to choose again.
 - The minute's redraw of Week waits while a box is up (it would drop it).
 - Debug: `--es view week --ez sample true --ei boxDay D --ei boxAt MIN` draws the box waiting there.
 
-**Checked:** unit tests pass. Drawn off-screen on the phone: the box free (Tuesday 15:00, two hours in
-the plan's colour, "15:00 / –17:00", the hint pill above it) and taken (Tuesday 12:00 in dark: grey,
+**Checked:** unit tests pass. Drawn off-screen on the phone: the box free (two hours in the plan's
+colour, "15:00 / –17:00", the hint pill above it) and taken (on a class, in dark: grey,
 dashed, "Taken"), and the card for a past time. The drag, its vibrations, the double tap and the
 card's way back down: on the phone.
 
@@ -108,8 +108,8 @@ break slash every course and show 0 h and 0 classes.
   classes this week", 0 h.
 
 **Checked:** unit tests pass. Drawn off-screen on the phone: Week 4 weeks on (Deepavali's replacement
-Monday: its three classes slashed; GIG1003 struck through at 0 h, WIX1001 and WIX1002's lectures struck,
-14 h in all) and 7 weeks on in dark (the break: everything slashed and struck, 0 h).
+Monday: its classes slashed; one course struck through whole at 0 h, two others' lectures struck, the
+total recalculated) and 7 weeks on in dark (the break: everything slashed and struck, 0 h).
 
 ## 15 October 2026 (the strip's Week chip: "Revision" fits)
 
@@ -174,8 +174,8 @@ yet (the grid has no action for a free time).
 week or day is on holiday?
 
 **Found:** no. Spectrum's calendar (core_calendar_get_calendar_events with site events, and the
-monthly view for October to December) holds only course events: 141 attendance sessions and 3
-assignment deadlines, and no site events at all. The raw replies were deleted from the phone and the
+monthly view for October to December) holds only course events (attendance sessions and
+assignment deadlines) and no site events at all. The raw replies were deleted from the phone and the
 computer afterwards. The user chose built-in Kuala Lumpur public holidays instead.
 
 **Change** (new `Holidays`; `weekOff`, `offCard`, `WeekGrid.drawHoliday`, `MainActivity.weekLine`):
