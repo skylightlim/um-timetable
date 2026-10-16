@@ -78,7 +78,7 @@ class MainActivity : Activity(), SpectrumHost {
     private val contentErrors = mutableMapOf<Int, String>()
     private val loading = mutableSetOf<Int>()
 
-    private lateinit var titleRow: LinearLayout
+    private lateinit var titleRow: Motion.RowFrame
     private lateinit var titleBox: FrameLayout
     /** What the title says now, so a redraw that doesn't change it doesn't animate it. */
     private var titleKey: String? = null
@@ -223,7 +223,11 @@ class MainActivity : Activity(), SpectrumHost {
                 }
             }
         }
-        titleRow = ui.row().apply { addView(titleBox, ui.grow()) }
+        // Swiping across the title moves one tab, as across the tab bar; a long press still opens Settings.
+        titleRow = Motion.RowFrame(this).apply {
+            addView(titleBox, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            onSwipe = ::swipeTab
+        }
         titleKey = null
         // The day strip: a track of slots, the selection pill gliding over it, and the chips on top.
         strip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -257,14 +261,7 @@ class MainActivity : Activity(), SpectrumHost {
             addView(tabs, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
         // Swiping across the tab bar moves one tab, and the page slides in from that side.
-        tabBar.onSwipe = { dir ->
-            val here = TABS.indexOfFirst { it.first == if (view == "week") "day" else view }
-            TABS.getOrNull(here + dir)?.let { next ->
-                pendingSlide = dir
-                slideFar = true
-                setView(next.first)
-            }
-        }
+        tabBar.onSwipe = ::swipeTab
         tabGlider = Motion.Glider(tabBar, tabs, ui.dp(12f).toFloat(), 0)
         tabShown = null
         buildTabs()
@@ -290,11 +287,22 @@ class MainActivity : Activity(), SpectrumHost {
         presser = Motion.Presser(root)
         root.setOnApplyWindowInsetsListener { _, insets ->
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-            top.setPadding(ui.dp(16) + bars.left, ui.dp(22) + bars.top, ui.dp(16) + bars.right, ui.dp(10))
+            // 6dp under the status bar (was 22): the title's own font already leaves 10dp over its capitals.
+            top.setPadding(ui.dp(16) + bars.left, ui.dp(6) + bars.top, ui.dp(16) + bars.right, ui.dp(10))
             tabs.setPadding(ui.dp(16) + bars.left, ui.dp(8), ui.dp(16) + bars.right, ui.dp(8) + bars.bottom)
             WindowInsets.CONSUMED
         }
         setContentView(root)
+    }
+
+    /** A swipe across the tab bar or the title: the next tab ([dir] 1) or the one before (-1), sliding in from that side. */
+    private fun swipeTab(dir: Int) {
+        val here = TABS.indexOfFirst { it.first == if (view == "week") "day" else view }
+        TABS.getOrNull(here + dir)?.let { next ->
+            pendingSlide = dir
+            slideFar = true
+            setView(next.first)
+        }
     }
 
     private fun buildTabs() {
@@ -328,22 +336,17 @@ class MainActivity : Activity(), SpectrumHost {
                 addView(iconBox, LinearLayout.LayoutParams(ui.dp(44), ui.dp(24)))
                 addView(text, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(3) })
                 setOnClickListener {
-                    // Tapping Courses while inside a course goes back to the course list;
-                    // tapping Day while on Day goes back to the day of the next class.
+                    // Tapping Courses while inside a course goes back to the course list. The first tab
+                    // toggles: on Day ("Day") it opens Week, on Week ("Week") it opens Day, each sliding
+                    // in as along the strip.
                     if (id == view && id == "files" && openCourse != null) {
                         Haptics.back(this)
                         openCourse = null
                         render()
-                    } else if (id == view && id == "day" && (pickedDay || weekShift != 0)) {
-                        Haptics.back(this)
-                        pickedDay = false
-                        weekShift = 0
-                        sel = homeDay(timetable, now())
-                        render()
-                    } else if (id == "day" && view == "week" && weekShift != 0) {
-                        // Week on another week: the tab (now "Week") brings back the strip's own week first.
-                        Haptics.back(this)
-                        shiftWeek(-weekShift)
+                    } else if (id == "day" && view == "day") {
+                        goCell(WEEK_CELL)
+                    } else if (id == "day" && view == "week") {
+                        goCell(sel)
                     } else {
                         setView(id)
                     }
@@ -384,13 +387,14 @@ class MainActivity : Activity(), SpectrumHost {
         (page as? ViewGroup)?.clipChildren = false
         content.addView(page)
         // Swipes step along the strip's cells, the Week grid among them (after Friday, before Monday).
-        // Swipes on Day step along the strip's cells, the Week grid among them (after Friday, before Monday);
-        // on Week they move to the next or the previous week.
-        // On Week only its grid follows a swipe, the carousel's card; elsewhere the whole page does.
+        // Swipes on Day step along the strip's cells, the Week grid among them (after Friday, before Monday).
+        // On Week, a swipe on the grid goes to the next or the previous week (only the grid moves, a
+        // carousel); a swipe anywhere else steps to Monday or Friday, as from the Week cell.
         scroll.swipeTarget = if (view == "week") { { content.getChildAt(content.childCount - 1)?.let(WeekScreen::grid) } } else null
+        scroll.onSwipeTarget = if (view == "week") { dir -> slideFar = true; shiftWeek(dir, scroll.releaseVelocity) } else null
         scroll.onSwipe = when (view) {
             "day" -> { dir -> slideFar = true; goCell(stripCell(sel, dir), dir) }
-            "week" -> { dir -> slideFar = true; shiftWeek(dir) }
+            "week" -> { dir -> slideFar = true; goCell(stripCell(WEEK_CELL, dir), dir) }
             else -> null
         }
         // Spectrum's tabs sync when pulled down.
@@ -399,7 +403,8 @@ class MainActivity : Activity(), SpectrumHost {
         scroll.onPullUp = if (view == "files" && openCourse == null) ::openSettings else null
         if (pendingSlide != 0) {
             // Another day: from the side it was swiped in from, or from close by after a tap.
-            Motion.slideIn(page, pendingSlide * if (slideFar) scroll.width * 0.35f else ui.dp(40f).toFloat())
+            // A swipe's page carries on at the finger's speed; a tap's comes from close by, from rest.
+            Motion.slideIn(page, pendingSlide * if (slideFar) scroll.width * 0.35f else ui.dp(40f).toFloat(), if (slideFar) scroll.releaseVelocity else 0f)
             pendingSlide = 0
         } else if (enter) {
             Motion.enter(page, ui.dp(16f).toFloat())
@@ -754,13 +759,13 @@ class MainActivity : Activity(), SpectrumHost {
      * grid slides over to the new week as a carousel ([WeekScreen.shift]), and the title and the strip's
      * dates roll over from the same side. (Drawing the whole page again dropped frames as it began.)
      */
-    private fun shiftWeek(by: Int) {
+    private fun shiftWeek(by: Int, pxPerSecond: Float = 0f) {
         if (by == 0) return
         val dir = Integer.signum(by)
         weekShift += by
         pickedDay = true // the day the strip lands on stays put when Day is opened from this week
         val page = content.getChildAt(content.childCount - 1)
-        if (view == "week" && page != null && WeekScreen.shift(page, this, dir)) {
+        if (view == "week" && page != null && WeekScreen.shift(page, this, dir, pxPerSecond)) {
             pendingSlide = dir
             showTitle(now())
             pendingSlide = 0
@@ -880,7 +885,17 @@ class MainActivity : Activity(), SpectrumHost {
 
     /** A plan's editor, out of its cell in the week grid; once it's saved or deleted, the week shows it. */
     override fun openPlan(from: android.graphics.RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float) =
-        PlanSheet.show(ui, from, plan, isNew, maxEnd, hourPx, onRepick = { draft -> weekGrid()?.startRepick(draft) }) { render(keepScroll = true) }
+        PlanSheet.show(ui, from, plan, isNew, maxEnd, hourPx, onRepick = ::repick) { render(keepScroll = true) }
+
+    /** "Change time" on a plan's card: the selection box waits on Week, in the plan's week (opened if need be, from Day). */
+    private fun repick(draft: Plan) {
+        if (view == "week" && Plan.weekOf(draft.date) == Plan.weekOf(dateOf(1))) return weekGrid()?.startRepick(draft) ?: Unit
+        val stripMonday = LocalDate.now().plusDays(daysFromToday(timetable, now(), 1).toLong())
+        weekShift = java.time.temporal.ChronoUnit.WEEKS.between(stripMonday, Plan.weekOf(draft.date)).toInt()
+        if (view == "week") render(keepScroll = true) else goCell(WEEK_CELL)
+        // Once the grid is laid out: the box is placed from its size.
+        content.post { weekGrid()?.startRepick(draft) }
+    }
 
     /** The week grid on the page now (the minute's redraw may have replaced the one a card came from; mid-slide, the newer of two). */
     private fun weekGrid(): WeekGrid? = content.getChildAt(content.childCount - 1)?.let(WeekScreen::grid) as? WeekGrid

@@ -16,6 +16,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
+import android.view.WindowInsetsAnimation
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.EditorInfo
@@ -31,7 +32,7 @@ import java.util.Locale
 /**
  * The plan editor, out of the week grid. Letting go of the selection box on a free time (or a double
  * tap there, or a tap on a plan) pops that cell out of the grid: it lifts and swells where it is, tilting up off the page, then flies to the
- * middle of the screen, growing and turning to face the user, into a card: what the plan is, how long,
+ * middle of the screen (of what's left over a new plan's keyboard, which comes up with it), growing and turning to face the user, into a card: what the plan is, how long,
  * its colour and a reminder. Saved, the card shrinks back down into the cell, where the plan pops into
  * place; cancelled, it goes back empty; deleted, it vanishes in a spin. A tap on its time sends it back
  * down too, and the grid's selection box waits there to be dragged to another time. A time that has
@@ -201,6 +202,20 @@ object PlanSheet {
         val field = editor.field
         val dialog = Dialog(c, android.R.style.Theme_Translucent_NoTitleBar)
         val scrim = View(c).apply { setBackgroundColor(0x99000000.toInt()) }
+        // The card's place, lifted over the keyboard as the keyboard rises, frame by frame. The card flies
+        // inside it, so a flight and the keyboard add up: the card goes straight to where it rests over the
+        // keyboard, and never lands first and then gets pushed up.
+        val holder = FrameLayout(c)
+        var nav = 0 // the navigation bar under the card's place
+        var ime = 0 // the keyboard, as it is or as it will be when it has finished moving
+        var imeMoving = false
+        var riding = true // until the card heads back down to the grid
+
+        /** How far the card sits above its place with a keyboard [keyboard] px tall: centred in what's left, its top in view. */
+        fun liftFor(keyboard: Int): Float {
+            val room = holder.height - maxOf(0, keyboard - nav)
+            return maxOf(0f, (room - card.height) / 2f) - card.top
+        }
 
         val frame = object : FrameLayout(c) {
             private val presser = Motion.Presser(this)
@@ -209,17 +224,39 @@ object PlanSheet {
                 return super.dispatchTouchEvent(e)
             }
         }.apply {
+            clipChildren = false // a lifted place no longer covers a low cell the card flies out of
             addView(scrim, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            addView(card, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER).apply {
+            addView(holder, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            holder.addView(card, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER).apply {
                 leftMargin = ui.dp(20)
                 rightMargin = ui.dp(20)
             })
-            // Over the keyboard: the card stays centred in what's left.
+            // Laid out between the system bars only; the keyboard lifts the holder instead.
             setOnApplyWindowInsetsListener { v, insets ->
-                val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.ime())
+                val bars = insets.getInsets(WindowInsets.Type.systemBars())
                 v.setPadding(0, bars.top, 0, bars.bottom)
+                nav = bars.bottom
+                // While the keyboard moves, this is where it will end; onProgress follows it there.
+                ime = insets.getInsets(WindowInsets.Type.ime()).bottom
+                if (!imeMoving) v.post { if (riding && !imeMoving) holder.translationY = liftFor(ime) }
                 WindowInsets.CONSUMED
             }
+            setWindowInsetsAnimationCallback(object : WindowInsetsAnimation.Callback(DISPATCH_MODE_STOP) {
+                override fun onPrepare(a: WindowInsetsAnimation) {
+                    if (a.typeMask and WindowInsets.Type.ime() != 0) imeMoving = true
+                }
+
+                override fun onProgress(insets: WindowInsets, running: List<WindowInsetsAnimation>): WindowInsets {
+                    if (imeMoving && riding) holder.translationY = liftFor(insets.getInsets(WindowInsets.Type.ime()).bottom)
+                    return insets
+                }
+
+                override fun onEnd(a: WindowInsetsAnimation) {
+                    if (a.typeMask and WindowInsets.Type.ime() == 0) return
+                    imeMoving = false
+                    if (riding) holder.translationY = liftFor(ime)
+                }
+            })
         }
         scrim.setOnClickListener { editor.close("cancel") }
         dialog.setContentView(frame)
@@ -233,8 +270,8 @@ object PlanSheet {
 
         /** Where the card is (its centre on screen), so the flight can start from and end at the cell. */
         fun centre(): Pair<Float, Float> {
-            // From its layout in the frame, so the flight's own moves and scaling don't count.
-            val at = IntArray(2).also(frame::getLocationOnScreen)
+            // From its layout in its lifted place, so the flight's own moves and scaling don't count.
+            val at = IntArray(2).also(holder::getLocationOnScreen)
             return (at[0] + card.left + card.width / 2f) to (at[1] + card.top + card.height / 2f)
         }
 
@@ -242,6 +279,7 @@ object PlanSheet {
         val close: (String) -> Unit = close@{ how ->
             if (closing) return@close
             closing = true
+            riding = false // the card's place stays put as the keyboard goes, so it lands right on its cell
             (c.getSystemService(InputMethodManager::class.java))?.hideSoftInputFromWindow(field.windowToken, 0)
             when (how) {
                 "save" -> {
@@ -287,13 +325,14 @@ object PlanSheet {
                 code == KeyEvent.KEYCODE_BACK
             }
         }
-        dialog.show()
-        fun ready() {
-            if (!isNew) return
-            field.requestFocus()
-            c.getSystemService(InputMethodManager::class.java)?.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT)
+        // A new plan's keyboard comes up as the card pops out (the window shows it as it takes focus), and
+        // the card rides up on it; before, it came up only after the card had landed, and pushed it up.
+        if (isNew) {
+            @Suppress("DEPRECATION") dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
         }
-        if (!Motion.enabled) return ready()
+        dialog.show()
+        if (isNew) field.requestFocus()
+        if (!Motion.enabled) return
         // Out of the grid: the cell as it is there, its contents hidden until the card lands.
         content.alpha = 0f
         scrim.alpha = 0f
@@ -316,7 +355,7 @@ object PlanSheet {
                 .setInterpolator(DecelerateInterpolator(1.5f)).setDuration(130).withEndAction {
                     // ...then flies to the middle, turning to face the user, and lands with a bounce.
                     card.animate().translationX(0f).translationY(0f).scaleX(1f).scaleY(1f).rotationX(0f).rotation(0f)
-                        .translationZ(ui.dp(24f).toFloat()).spring(Motion.SETTLE).withEndAction { ready() }.start()
+                        .translationZ(ui.dp(24f).toFloat()).spring(Motion.SETTLE).start()
                     Motion.fade(content, 0f, 1f, 220)
                     Motion.enter(body, ui.dp(14f).toFloat())
                 }.start()

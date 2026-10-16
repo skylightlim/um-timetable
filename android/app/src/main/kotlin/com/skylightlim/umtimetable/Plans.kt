@@ -36,6 +36,9 @@ data class Plan(
     companion object {
         fun new(date: LocalDate, start: Int, end: Int, color: Int) = Plan(UUID.randomUUID().toString(), date, start, end, "", color)
 
+        /** The Monday of [date]'s week. */
+        fun weekOf(date: LocalDate): LocalDate = date.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+
         fun from(o: JSONObject) = Plan(
             o.getString("id"), LocalDate.parse(o.getString("date")), o.getInt("start"), o.getInt("end"),
             o.optString("text"), o.getInt("color"), if (o.isNull("remind")) null else o.optInt("remind"),

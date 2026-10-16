@@ -18,6 +18,136 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 16 October 2026 (the plan card comes up with the keyboard)
+
+**Asked for:** when the plan card pops out of the calendar, it should pop up to its final height together
+with the keyboard, not land in the middle first and then get pushed up by the keyboard.
+
+**Found:** a new plan's keyboard was only asked for once the card had landed, and the card's frame was
+padded by the keyboard's height, so the card jumped up to the middle of what was left.
+
+**Change** (`PlanSheet.show`):
+- A new plan's keyboard is asked for as the card pops out (the dialog shows it as its window takes
+  focus), so both come up together.
+- The card flies inside a holder that follows the keyboard frame by frame
+  (`WindowInsetsAnimation.Callback`), lifting it to the middle of what the keyboard leaves. The flight
+  and the keyboard's rise add up, so the card heads straight to where it ends. A plan tapped open has
+  no keyboard at first; tapping its text field later raises the card with the keyboard the same way.
+- A card taller than the room the keyboard leaves keeps its top (the time and the text field) in view.
+- Going back down to the grid, the holder stays where it is while the keyboard goes, so the card still
+  lands right on its cell.
+
+**Checked:** it builds; unit tests pass. The motion: by hand on the phone (a still can't show it).
+
+## 16 October 2026 (swipe the title for another tab)
+
+**Asked for:** a swipe across the title should go to another tab.
+
+**Change** (`MainActivity`: `titleRow` is a `Motion.RowFrame`, `swipeTab`): the title row swipes like the
+tab bar, one tab per swipe: to the left for the next tab, to the right for the one before, the page
+sliding in from that side. Day and Week count as the first tab, as on the tab bar. A long press on the
+title still opens Settings: a swipe takes the touch away from it, so it can't open them too.
+
+**Checked:** it builds; unit tests pass. The swipe: by hand on the phone.
+
+## 16 October 2026 (less room above the title)
+
+**Asked for:** move the whole page up a little: there's a lot of space above the main title.
+
+**Change** (`MainActivity.buildShell`): the top bar starts 6dp under the status bar instead of 22dp, so
+every tab's title, and the page under it, sits 16dp higher. The title's font (Big Shoulders, ascent
+0.98 em, capitals 0.8 em) already leaves about 10dp over its capitals at 56sp, so the capitals now start
+about 16dp under the status bar, where they were 32dp.
+
+**Checked:** it builds; unit tests pass. The release is on the phone (16 Oct 13:06); the look: by hand.
+
+## 16 October 2026 (springs carry on at the finger's speed; no-overshoot springs end smoothly)
+
+**Asked for** (continuing "use iOS-like animation"): springs that don't look laggy.
+
+**Found:** besides the overshoot (tuned in the previous entry), two things. Every spring started from
+rest, so a drag let go stalled for a moment before moving on. And the springs that don't overshoot
+(SMOOTH, QUICK: the theme spreading, folds, Show more) stopped at about 97%: their duration came from the
+underdamped formula, and the last frame jumped the remaining 3%.
+
+**Change** (`Motion.Spring`, `toward`; `SwipeScrollView`, `WeekScreen.shift`, `Motion.slideIn`,
+`BottomSheet`):
+- A spring can start at a speed (distances a second), as on iOS. What a finger lets go of carries on
+  at the finger's speed: the week carousel, a Day page swiped in, a swipe that springs back, the page
+  pulled down to sync (or up for Settings) going to where it rests, and the sheet dragged and let go.
+  The finger's speed is now tracked for every touch on the page, not only swipes.
+- The critically damped springs run until they're within half a percent (SMOOTH 422 → 592 ms, QUICK
+  253 → 355 ms; the motion is the same, without the jump at the end).
+
+**Checked:** unit tests pass, with new `SpringTest`: every spring from 0 to rest at 1 and settled at
+its end, one given 3 distances a second leaves at that speed, BOUNCY peaks at 1–4% past. On the phone:
+not yet, it was disconnected.
+
+## 16 October 2026 (plans on Day too)
+
+**Asked for:** every plan the user adds should also show on the Day tab.
+
+**Change** (`DayScreen.planSlot`; `gap` takes times; `MainActivity.repick`): Day lists the date's
+plans among its classes in time order, as cards like the classes': start and end on the left, "PLAN"
+(or "PLAN · DONE" once it's over, then faded) with its reminder ("REMINDER 10 MIN"), and what it is, on
+its colour's tint with a dashed edge as in the week grid. The "Free" lines now run between classes and
+plans alike. A tap opens the plan's card out of this one; saved, it pops back into place. "Change time"
+from Day opens Week at the plan's week, the selection box waiting there.
+- Debug: `--es view day --ez sample true` draws the made-up plans.
+
+**Checked:** it builds; unit tests pass. Not drawn or tried yet: the phone was disconnected.
+
+## 16 October 2026 (springs tuned like iOS's)
+
+**Asked for:** the springs that overshoot a little and snap back look laggy; make them like iOS.
+
+**Change** (`Motion`): more damping, so nothing swings back. BOUNCY 0.55 → 0.78 damping, 0.42 → 0.38 s
+(overshoot 13% → about 2%); SETTLE 0.8 → 0.92, 0.5 → 0.42 s (no visible overshoot, settles sooner);
+FOLD 0.75 → 0.85. Not done yet: starting a spring at the finger's speed when a drag is let go.
+
+**Checked:** it builds; unit tests pass. The feel: on the phone.
+
+## 16 October 2026 (the tab bar's first tab toggles Day and Week)
+
+**Asked for:** tapping the first tab while on Day (it says Day) should open Week, as tapping it on Week
+(it says Week) opens Day.
+
+**Change** (`MainActivity.buildTabs`): on Day the tab opens Week, on Week it opens the day last shown,
+each sliding in from its side as along the strip (the label rolls over, as before). This replaces what
+the tab did when tapped again: Day back to the next class's day, Week back to this week. This week is
+still a double tap on the Week chip away, or Back; another tab and back also starts from this week.
+
+**Checked:** it builds; unit tests pass. The taps: on the phone.
+
+## 16 October 2026 (Week: the grid swipes weeks, the rest of the page swipes to the days)
+
+**Asked for:** on Week, a swipe on the week calendar goes to another week; a swipe anywhere else goes
+back to Monday or Friday.
+
+**Change** (`SwipeScrollView.onSwipeTarget`, `MainActivity.render`): a swipe that starts on the grid's
+box moves only the grid and changes the week (the carousel, as before). A swipe anywhere else on the
+page (the break card, the key, the Courses list) moves the whole page and steps along the strip as from
+the Week cell: left to Monday, right to Friday, sliding in from that side.
+
+**Checked:** it builds; unit tests pass. The swipes: on the phone.
+
+## 15 October 2026 (1.4.0-beta.1 published)
+
+**Asked for:** push all the changes, with a version name to suit how much changed.
+
+**Published:** 1.4.0-beta.1, versionCode 5: a minor version, for the new features (plans, holidays,
+other weeks, the redrawn cow and horse and icon, the sign-in page and the web screens' bar). Before
+publishing, tonight's QA notes lost the user's own schedule (which courses fall on a day, the week's
+hours, how many Spectrum events), and the tree was checked against the backups' lecturer names (full
+names and surnames) and occurrences: none. GitHub's `main` got one release commit with `main`'s tree,
+"UM Timetable 1.4.0-beta.1" (fdf7e7b), on top of 1.3.0-beta.1's, as a fast-forward from the local
+`public` branch. Pre-release `v5`, titled "1.4.0-beta.1", carries `UM-Timetable-1.4.0-beta.1.apk`,
+built from a clean checkout of that commit: versionCode 5, signed with the release key (SHA-256
+bf:c0:58…b2:94:20). The notes are ten plain lines, for the update card.
+
+**Checked:** the APK's version and certificate (aapt2, apksigner); the releases list as the in-app
+updater reads it: v5 is the highest tag with an APK.
+
 ## 15 October 2026 (Week: smooth swipes between weeks, as a carousel; double-tap Week for this week)
 
 **Reported:** frames dropped when swiping to another week; the animation should be smoother and

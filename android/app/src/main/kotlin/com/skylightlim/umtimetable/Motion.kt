@@ -36,34 +36,52 @@ import kotlin.math.sqrt
 object Motion {
 
     /**
-     * A spring as an interpolator, from rest at 0 to rest at 1. [damping] below 1 overshoots (0.55 a
-     * visible bounce, 0.8 a hint); 1 doesn't. [response] is the undamped period in seconds: how quick it
-     * feels. [duration] is when it has settled to within half a percent.
+     * A spring as an interpolator, from 0 to rest at 1. [damping] below 1 overshoots (0.55 a visible
+     * bounce, 0.8 a hint); 1 doesn't. [response] is the undamped period in seconds: how quick it feels.
+     * [velocity] is how fast it's already moving at the start, in distances a second (0: from rest), so a
+     * move let go by the finger carries on at the finger's speed, as on iOS ([toward]). [duration] is
+     * when it has settled to within half a percent.
      */
-    class Spring(private val damping: Float, response: Float) : TimeInterpolator {
+    class Spring(private val damping: Float, private val response: Float, private val velocity: Float = 0f) : TimeInterpolator {
         private val w0 = 2 * PI.toFloat() / response
         private val wd = w0 * sqrt(max(0f, 1 - damping * damping))
-        val duration = (ln(200f) / (damping.coerceAtMost(1f) * w0) * 1000).toLong()
+        // Away from rest y = x - 1, starting at -1 with speed [velocity]: e^(-ζωt)(A cos ωd t + B sin ωd t), or
+        // (A + Bt) e^(-ωt) when critically damped.
+        private val a = -1f
+        private val b = if (damping < 1f) (velocity + damping * w0 * a) / wd else velocity + w0 * a
+        // Until it's within half a percent for good: the envelope of y drops below 0.005. (Critically damped,
+        // the old ln(200)/ω stopped about 3% short, and the last frame jumped the rest of the way.)
+        val duration = if (damping < 1f) (ln(200f * sqrt(a * a + b * b)) / (damping * w0) * 1000).toLong()
+        else {
+            var t = 0f
+            while (t < 3f && (abs(a) + abs(b) * t) * exp(-w0 * t) >= 0.005f) t += 0.001f
+            (t * 1000).toLong()
+        }
 
         override fun getInterpolation(input: Float): Float {
             if (input >= 1f) return 1f
             val t = input * duration / 1000f
-            val decay = exp(-damping * w0 * t)
-            return if (damping < 1f) 1 - decay * (cos(wd * t) + damping * w0 / wd * sin(wd * t))
-            else 1 - decay * (1 + w0 * t)
+            return if (damping < 1f) 1 + exp(-damping * w0 * t) * (a * cos(wd * t) + b * sin(wd * t))
+            else 1 + (a + b * t) * exp(-w0 * t)
         }
+
+        /** This spring for a move from [from] to [to] (px) let go at [pxPerSecond], already heading there or away. */
+        fun toward(from: Float, to: Float, pxPerSecond: Float): Spring =
+            if (to == from || pxPerSecond == 0f) this else Spring(damping, response, (pxPerSecond / (to - from)).coerceIn(-8f, 20f))
     }
 
-    /** Selections gliding, presses let go, badges: a visible bounce. */
-    val BOUNCY = Spring(0.55f, 0.42f)
-    /** Pages and the sheet arriving: a hint of overshoot. */
-    val SETTLE = Spring(0.8f, 0.5f)
+    // Tuned like iOS's springs: enough damping that nothing wobbles back after overshooting (the old
+    // 0.55 overshot 13% and swung back; 0.8 crept past and snapped back at the end, which read as lag).
+    /** Selections gliding, presses let go, badges: a little life, about 2% past and settled. */
+    val BOUNCY = Spring(0.78f, 0.38f)
+    /** Pages and the sheet arriving: no visible overshoot, quick to settle. */
+    val SETTLE = Spring(0.92f, 0.42f)
     /** Growing and shrinking in place, the theme spreading: no overshoot. */
     val SMOOTH = Spring(1f, 0.5f)
     /** Something opening or closing in place (a fold, Show more): quick, about 250 ms, no overshoot. */
     val QUICK = Spring(1f, 0.3f)
     /** A fold's chevron turning: quick, a hint of overshoot. */
-    val FOLD = Spring(0.75f, 0.28f)
+    val FOLD = Spring(0.85f, 0.3f)
     /** Leaving is quicker than arriving, and doesn't bounce. */
     val EXIT = PathInterpolator(0.4f, 0f, 1f, 1f)
     private val PRESS = PathInterpolator(0.2f, 0f, 0f, 1f)
@@ -288,11 +306,11 @@ object Motion {
         }
     }
 
-    /** A page sliding in sideways from [dx] (another day). */
-    fun slideIn(page: View, dx: Float) {
+    /** A page sliding in sideways from [dx] (another day), already moving at [pxPerSecond] (a swipe let go). */
+    fun slideIn(page: View, dx: Float, pxPerSecond: Float = 0f) {
         if (!enabled) return
         page.translationX = dx
-        page.animate().translationX(0f).spring(SETTLE).start()
+        page.animate().translationX(0f).spring(SETTLE.toward(dx, 0f, pxPerSecond)).start()
         fade(page, 0.4f, 1f, 200)
     }
 

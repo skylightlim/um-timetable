@@ -33,7 +33,7 @@ import java.io.File
  * --es scheme gold|blue|red draws in that accent scheme instead of the chosen one.
  * --ez open true draws every fold and "Show more" opened.
  * view webbar draws the web screens' top bar (--es bar spectrum|maya|timeedit|login).
- * view week with --ez sample true draws made-up plans on it (--ei boxDay 2 --ei boxAt 900: with the selection box
+ * view week or day with --ez sample true draws made-up plans on it (--ei boxDay 2 --ei boxAt 900: with the selection box
  * waiting on Tuesday 15:00); view plan draws the plan editor's card
  * (--ez new false: a saved plan's, with Delete).
  * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200).
@@ -102,7 +102,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
                     ?.let { i -> tt.sessions.filter { it.course == course }.sortedWith(compareBy({ it.day }, { it.start }))[i] }
                 ClassSheet.build(host, c, course, session) {}
             }
-            else -> DayScreen.build(host, intent.getIntExtra("day", homeDay(Timetable.load(context), now)))
+            else -> DayScreen.build(host, intent.getIntExtra("day", homeDay(Timetable.load(context), now)), if (intent.getBooleanExtra("sample", false)) samplePlans(host) else null)
         }
         // --ez tapMore true: taps the first "Show more" before drawing, to check the toggle itself.
         if (intent.getBooleanExtra("tapMore", false)) {
