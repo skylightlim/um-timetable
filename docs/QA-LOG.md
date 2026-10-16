@@ -18,6 +18,17 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 16 October 2026 (less room above the title)
+
+**Asked for:** move the whole page up a little: there's a lot of space above the main title.
+
+**Change** (`MainActivity.buildShell`): the top bar starts 6dp under the status bar instead of 22dp, so
+every tab's title, and the page under it, sits 16dp higher. The title's font (Big Shoulders, ascent
+0.98 em, capitals 0.8 em) already leaves about 10dp over its capitals at 56sp, so the capitals now start
+about 16dp under the status bar, where they were 32dp.
+
+**Checked:** it builds; unit tests pass. On the phone: the release installed (below); the look, by hand.
+
 ## 16 October 2026 (springs carry on at the finger's speed; no-overshoot springs end smoothly)
 
 **Asked for** (continuing "use iOS-like animation"): springs that don't look laggy.

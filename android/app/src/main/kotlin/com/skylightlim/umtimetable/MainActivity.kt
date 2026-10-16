@@ -290,7 +290,8 @@ class MainActivity : Activity(), SpectrumHost {
         presser = Motion.Presser(root)
         root.setOnApplyWindowInsetsListener { _, insets ->
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-            top.setPadding(ui.dp(16) + bars.left, ui.dp(22) + bars.top, ui.dp(16) + bars.right, ui.dp(10))
+            // 6dp under the status bar (was 22): the title's own font already leaves 10dp over its capitals.
+            top.setPadding(ui.dp(16) + bars.left, ui.dp(6) + bars.top, ui.dp(16) + bars.right, ui.dp(10))
             tabs.setPadding(ui.dp(16) + bars.left, ui.dp(8), ui.dp(16) + bars.right, ui.dp(8) + bars.bottom)
             WindowInsets.CONSUMED
         }
