@@ -83,7 +83,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
             // The top bar as MainActivity lays it out: --es view title --es page Grades|day|week (day and week
             // with their widest titles)
             "title" -> host.ui.row().apply {
-                setPadding(host.ui.dp(0), host.ui.dp(22), 0, host.ui.dp(10))
+                setPadding(host.ui.dp(0), host.ui.dp(6), 0, host.ui.dp(10))
                 val page = intent.getStringExtra("page") ?: "Grades"
                 addView(when (page) {
                     "day" -> dayTitle(host.ui, "Wednesday", "30 Sep", true, dayGlance(Timetable.load(context).day(2)))
