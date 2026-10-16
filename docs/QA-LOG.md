@@ -18,6 +18,21 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 16 October 2026 (no light border round the scrim when the plan card is pressed)
+
+**Asked for:** pressing the plan card still shows a white border around the dark backdrop behind it.
+
+**Found:** a regression from "the plan card comes up with the keyboard": the card moved into a
+full-screen holder, and the press feedback's search only stopped at the card's own level, so it went on
+past the holder to the scrim, which sank 1.5% and uncovered the page's light edges. Tapping the scrim
+itself (outside a card, to close it) did the same in every dialog.
+
+**Change** (`Motion.Presser`): once the touch lands on anything that takes it (a card, a scrolling panel),
+the search ends at every level, not only the one it was found at. And a view covering most of the
+screen (a scrim) never sinks.
+
+**Checked:** it builds; unit tests pass. The press: by hand on the phone.
+
 ## 16 October 2026 (1.5.0-beta.1 published)
 
 **Asked for:** fix the new items on the todo list, then push to GitHub.
