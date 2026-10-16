@@ -113,11 +113,11 @@ object PlanSheet {
 
         fun label(text: String) = body.addView(ui.label(text, p.muted, 10.5f), ui.wide(top = 18f, bottom = 8f))
 
-        // How long: only the lengths that fit before the next class or plan (or 19:00).
-        val lengths = Plan.LENGTHS.filter { plan.start + it.first <= maxEnd }.ifEmpty { listOf((maxEnd - plan.start) to "${maxEnd - plan.start} min") }
+        // How long: every half hour that fits before the next class or plan (or 19:00), on a tape.
+        val lengths = Plan.lengths(maxEnd - plan.start).ifEmpty { listOf((maxEnd - plan.start) to "${maxEnd - plan.start} min") }
         label("How long")
         val chosenLength = lengths.indexOfFirst { plan.start + it.first == end }.takeIf { it >= 0 } ?: lengths.lastIndex.also { end = plan.start + lengths.last().first; showTime() }
-        body.addView(ui.segmented(lengths.map { it.second }, chosenLength, fill = true) { i, _ ->
+        body.addView(ui.tape(lengths.map { it.second }, chosenLength) { i ->
             end = plan.start + lengths[i].first
             editor.end = end
             showTime()
@@ -163,8 +163,10 @@ object PlanSheet {
             body.addView(ui.text("This time has passed: no reminder.", 13.5f, p.muted))
             remind = null
         } else {
-            val reminders = Plan.REMINDERS
-            body.addView(ui.segmented(reminders.map { it.second }, reminders.indexOfFirst { it.first == remind }.coerceAtLeast(0), fill = true) { i, _ -> remind = reminders[i].first; editor.remind = remind })
+            // Only the ones still to come (and the one set): a reminder already past would never go off.
+            val now = System.currentTimeMillis()
+            val reminders = Plan.REMINDERS.filter { (m, _) -> m == null || m == remind || plan.startsAt - m * 60_000L > now }
+            body.addView(ui.tape(reminders.map { it.second }, reminders.indexOfFirst { it.first == remind }.coerceAtLeast(0)) { i -> remind = reminders[i].first; editor.remind = remind })
             if (!Notify.allowed(c)) body.addView(ui.text("Notifications are off for the app: turn them on in Settings for reminders.", 12.5f, p.muted), ui.wide(top = 8f))
         }
 

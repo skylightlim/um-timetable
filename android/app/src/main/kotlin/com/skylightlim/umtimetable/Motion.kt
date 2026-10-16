@@ -105,12 +105,15 @@ object Motion {
         private var downX = 0f
         private var downY = 0f
         private val slop = ViewConfiguration.get(root.context).scaledTouchSlop
+        /** The touch landed on something that takes it (a card, a scrolling panel): nothing under it is pressed. */
+        private var taken = false
 
         fun onTouch(e: MotionEvent) {
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = e.rawX
                     downY = e.rawY
+                    taken = false
                     pressed = clickableAt(root, e.rawX.toInt(), e.rawY.toInt())?.also(::sink)
                 }
                 MotionEvent.ACTION_MOVE -> if (hypot(e.rawX - downX, e.rawY - downY) > slop) release()
@@ -141,11 +144,18 @@ object Motion {
                 clickableAt(child, x, y)?.let { return it }
                 // A scrolling panel, or anything else that takes touches (a dialog's card), takes every touch
                 // on it, so nothing under it is pressed. Without this, pressing a sheet's or a card's empty
-                // space sank the scrim behind it, uncovering light strips at the edges.
-                if ((child is ScrollView || child.isClickable) && hit(child, x, y)) return null
+                // space sank the scrim behind it, uncovering light strips at the edges. Found at any depth:
+                // the plan card sits in a full-screen holder (lifted over the keyboard), and stopping only
+                // that level let the search go on past the holder to the scrim.
+                if (taken) return null
+                if ((child is ScrollView || child.isClickable) && hit(child, x, y)) { taken = true; return null }
             }
             // A switch's options don't sink: its gliding pill is their feedback, and a sunk label left the pill behind.
-            return v.takeIf { it.isClickable && it.isEnabled && it.hasOnClickListeners() && it.parent !is SegmentPill }
+            // Nor does a backdrop (most of the screen: a scrim tapped to close): sunk, it too uncovered light strips.
+            return v.takeIf {
+                it.isClickable && it.isEnabled && it.hasOnClickListeners() && it.parent !is SegmentPill &&
+                    it.width.toLong() * it.height < root.width.toLong() * root.height * 0.8f
+            }
         }
     }
 
