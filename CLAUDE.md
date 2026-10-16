@@ -51,7 +51,7 @@ They often have the app open, or are on a video call shown in picture-in-picture
   while `compile` runs. Every build type is signed with the release key, so debug and release install
   over each other and keep the data.
 - Debug tools exist only in debug builds. To use them, install debug, check, then put the release back.
-  - `DebugRenderReceiver` draws a page to `cache/render/<view>.png` with nothing on screen. Views: day,
+  - `DebugRenderReceiver` draws a page to `cache/render/<view>.png` (`<view>-dark.png` with `--ez dark true`) with nothing on screen. Views: day,
     week, grades, due, news, files, sheet, settings, signout, signin, webbar, plan, tabicons, duel,
     duelloop, scene, icon (the launcher icon with the phone's mask). Options are in its KDoc. A still
     can't show motion: frame sheets (scene, duel, duelloop, tabicons) and poses (`--ef hopAt`,
