@@ -59,7 +59,7 @@ every tab's title, and the page under it, sits 16dp higher. The title's font (Bi
 0.98 em, capitals 0.8 em) already leaves about 10dp over its capitals at 56sp, so the capitals now start
 about 16dp under the status bar, where they were 32dp.
 
-**Checked:** it builds; unit tests pass. On the phone: the release installed (below); the look, by hand.
+**Checked:** it builds; unit tests pass. The release is on the phone (16 Oct 13:06); the look: by hand.
 
 ## 16 October 2026 (springs carry on at the finger's speed; no-overshoot springs end smoothly)
 
