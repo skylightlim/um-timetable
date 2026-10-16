@@ -17,7 +17,10 @@ class PlansTest {
     }
 
     @Test fun lengthsAndReminders() {
-        assertEquals(listOf(30, 60, 90, 120, 180), Plan.LENGTHS.map { it.first })
-        assertEquals(listOf(null, 0, 10, 30, 60), Plan.REMINDERS.map { it.first })
+        // Every half hour that fits, for the plan card's tape.
+        assertEquals(listOf(30 to "30 min", 60 to "1 h", 90 to "1.5 h", 120 to "2 h", 150 to "2.5 h"), Plan.lengths(170))
+        assertEquals(22, Plan.lengths(11 * 60).size) // 08:00 to 19:00
+        assertEquals(emptyList<Pair<Int, String>>(), Plan.lengths(20))
+        assertEquals(listOf(null, 0, 5, 10, 15, 30, 60, 120, 1440), Plan.REMINDERS.map { it.first })
     }
 }

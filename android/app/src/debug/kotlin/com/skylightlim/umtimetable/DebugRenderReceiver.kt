@@ -35,7 +35,8 @@ import java.io.File
  * view webbar draws the web screens' top bar (--es bar spectrum|maya|timeedit|login).
  * view week or day with --ez sample true draws made-up plans on it (--ei boxDay 2 --ei boxAt 900: with the selection box
  * waiting on Tuesday 15:00); view plan draws the plan editor's card
- * (--ez new false: a saved plan's, with Delete).
+ * (--ez new false: a saved plan's, with Delete; --ei ahead 3: dated 3 days from today, so its reminders show;
+ * --ei maxEnd 1140: room until 19:00, so How long's tape runs on).
  * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200).
  * view signout draws the Sign out question's card. view settings draws the Settings sheet (--ez signedIn true|false
  * for either Account row); view signin the first-run sign-in poster, at screen height (or --ei height px).
@@ -68,8 +69,11 @@ class DebugRenderReceiver : BroadcastReceiver() {
         }
         val page = when (view) {
             "week" -> WeekScreen.build(host, if (intent.getBooleanExtra("sample", false)) samplePlans(host) else null)
-            // The plan editor's card: --ez new false for a saved plan's (with Delete)
-            "plan" -> PlanSheet.build(host.ui, samplePlans(host)[1].let { if (intent.getBooleanExtra("new", true)) it.copy(text = "") else it }, intent.getBooleanExtra("new", true), 16 * 60 + 30).card
+            // The plan editor's card: --ez new false for a saved plan's (with Delete), --ei ahead, --ei maxEnd
+            "plan" -> PlanSheet.build(host.ui, samplePlans(host)[1].let {
+                val dated = if (intent.hasExtra("ahead")) it.copy(date = java.time.LocalDate.now().plusDays(intent.getIntExtra("ahead", 0).toLong())) else it
+                if (intent.getBooleanExtra("new", true)) dated.copy(text = "") else dated
+            }, intent.getBooleanExtra("new", true), intent.getIntExtra("maxEnd", 16 * 60 + 30)).card
             "due" -> if (intent.getBooleanExtra("sample", false)) sampleDue(context, host) else SpectrumScreens.due(host)
             "news" -> SpectrumScreens.news(host)
             "files" -> SpectrumScreens.courses(host)

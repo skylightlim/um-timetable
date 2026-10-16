@@ -44,11 +44,15 @@ data class Plan(
             o.optString("text"), o.getInt("color"), if (o.isNull("remind")) null else o.optInt("remind"),
         )
 
-        /** The reminder choices: minutes before the start (null: none). */
-        val REMINDERS = listOf<Pair<Int?, String>>(null to "Off", 0 to "At start", 10 to "10 min", 30 to "30 min", 60 to "1 h")
+        /** The reminder choices: minutes before the start (null: none). The plan card shows them on a tape. */
+        val REMINDERS = listOf<Pair<Int?, String>>(
+            null to "Off", 0 to "At start", 5 to "5 min", 10 to "10 min", 15 to "15 min", 30 to "30 min",
+            60 to "1 h", 120 to "2 h", 1440 to "1 day",
+        )
 
-        /** The lengths a plan can have, in minutes. */
-        val LENGTHS = listOf(30 to "30 min", 60 to "1 h", 90 to "1.5 h", 120 to "2 h", 180 to "3 h")
+        /** The lengths a plan can have, in minutes, up to [most]: every half hour ("30 min", "1 h", "1.5 h"…). */
+        fun lengths(most: Int): List<Pair<Int, String>> =
+            (30..most step 30).map { it to if (it < 60) "$it min" else if (it % 60 == 0) "${it / 60} h" else "${it / 60}.5 h" }
     }
 }
 

@@ -18,6 +18,35 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 16 October 2026 (the plan card's How long and Reminder are tapes)
+
+**Asked for:** on the plan card, How long and Reminder shouldn't only be tapped: the selection should
+drag too, and dragged to the far left or right, more options should come in, like a scrolling tape.
+
+**Change** (`Ui.tape`, `Tape` in Ui.kt; `SegmentPill.put`; `Plan.lengths`, `Plan.REMINDERS`; `PlanSheet`):
+- Both switches are tapes: up to four options share the width as before; with more, four and a half show
+  and the rest scroll sideways. A tap chooses, as before, and scrolls the choice into view with half of
+  the next option beyond it.
+- The pill drags: it follows the finger, choosing the option it's nearest (a tick at each, the band's
+  time changing as it goes). Held within three quarters of an option of either end, the tape runs on
+  under it, faster nearer the edge (up to seven options a second), the pill staying whole in view. Let
+  go, it springs onto its option at the finger's speed. A drag that starts off the pill scrolls the tape.
+- An option partly out of view fades by how much of it is hidden, so it's plain the tape goes on (centred
+  in the part showing, its label otherwise looked whole). Options at the tape's ends don't fade.
+- How long: every half hour that fits before the next class or plan (or 19:00), so up to 11 h; was five
+  fixed lengths up to 3 h. Reminder: Off, At start, 5, 10, 15 and 30 min, 1 h, 2 h, 1 day; was Off, At
+  start, 10 min, 30 min, 1 h. Only reminders still to come are offered (and the one set): one already
+  past would never go off, or would, late, saying "In 1 day".
+- Each label has one colour change at a time: dragging back and forth over two options could leave a
+  slower change finishing last, in the wrong colour.
+- Debug: `--es view plan --ei ahead 3 --ei maxEnd 1140` draws a card dated 3 days ahead with room to 19:00.
+
+**Checked:** unit tests pass (`PlansTest`: the half-hour lengths, 22 of them from 08:00, none under 30 min;
+the reminders). Drawn on the phone in light and dark (`--ei ahead 3 --ei maxEnd 1140`, and a new plan
+with room to 16:30): the long tape opens with 2 h in the middle, the cut options at both ends faded; the
+short one at its end (2.5 h), "30 min" faded; Reminder starts at Off, "15 min" faded at the right. The
+drag, the running tape and the ticks: by hand on the phone (a still can't show them).
+
 ## 16 October 2026 (no light border round the scrim when the plan card is pressed)
 
 **Asked for:** pressing the plan card still shows a white border around the dark backdrop behind it.
