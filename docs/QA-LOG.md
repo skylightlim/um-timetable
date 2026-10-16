@@ -18,6 +18,23 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 16 October 2026 (1.5.0-beta.1 published)
+
+**Asked for:** fix the new items on the todo list, then push to GitHub.
+
+**Published:** 1.5.0-beta.1, versionCode 6: a minor version, for plans on Day and the new swipes, with
+the springs, the top bar and the plan card's keyboard. Before publishing, the tree was checked against
+the backups' lecturer names (full names and surnames) and occurrences (only generic title words such as
+"Assoc" and "Binti" match), and the new QA entries were read for the user's schedule: none. GitHub's
+`main` got one release commit with `main`'s tree, "UM Timetable 1.5.0-beta.1" (fdde772), on top of
+1.4.0-beta.1's, as a fast-forward from the local `public` branch. Pre-release `v6`, titled
+"1.5.0-beta.1", carries `UM-Timetable-1.5.0-beta.1.apk`, built from a clean checkout of that commit:
+versionCode 6, signed with the release key (SHA-256 bf:c0:58…b2:94:20). The notes are seven plain lines.
+
+**Checked:** the APK's version and certificate (aapt2, apksigner); the release lists the APK as its only
+asset. The published APK goes on the user's phone once the app isn't in front. None of today's changes has
+been tried by hand yet.
+
 ## 16 October 2026 (the plan card comes up with the keyboard)
 
 **Asked for:** when the plan card pops out of the calendar, it should pop up to its final height together
