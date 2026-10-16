@@ -18,6 +18,17 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 16 October 2026 (swipe the title for another tab)
+
+**Asked for:** a swipe across the title should go to another tab.
+
+**Change** (`MainActivity`: `titleRow` is a `Motion.RowFrame`, `swipeTab`): the title row swipes like the
+tab bar, one tab per swipe: to the left for the next tab, to the right for the one before, the page
+sliding in from that side. Day and Week count as the first tab, as on the tab bar. A long press on the
+title still opens Settings: a swipe takes the touch away from it, so it can't open them too.
+
+**Checked:** it builds; unit tests pass. The swipe: by hand on the phone.
+
 ## 16 October 2026 (less room above the title)
 
 **Asked for:** move the whole page up a little: there's a lot of space above the main title.

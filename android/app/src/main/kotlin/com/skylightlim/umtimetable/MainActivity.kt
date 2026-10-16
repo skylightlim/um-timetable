@@ -78,7 +78,7 @@ class MainActivity : Activity(), SpectrumHost {
     private val contentErrors = mutableMapOf<Int, String>()
     private val loading = mutableSetOf<Int>()
 
-    private lateinit var titleRow: LinearLayout
+    private lateinit var titleRow: Motion.RowFrame
     private lateinit var titleBox: FrameLayout
     /** What the title says now, so a redraw that doesn't change it doesn't animate it. */
     private var titleKey: String? = null
@@ -223,7 +223,11 @@ class MainActivity : Activity(), SpectrumHost {
                 }
             }
         }
-        titleRow = ui.row().apply { addView(titleBox, ui.grow()) }
+        // Swiping across the title moves one tab, as across the tab bar; a long press still opens Settings.
+        titleRow = Motion.RowFrame(this).apply {
+            addView(titleBox, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            onSwipe = ::swipeTab
+        }
         titleKey = null
         // The day strip: a track of slots, the selection pill gliding over it, and the chips on top.
         strip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -257,14 +261,7 @@ class MainActivity : Activity(), SpectrumHost {
             addView(tabs, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
         // Swiping across the tab bar moves one tab, and the page slides in from that side.
-        tabBar.onSwipe = { dir ->
-            val here = TABS.indexOfFirst { it.first == if (view == "week") "day" else view }
-            TABS.getOrNull(here + dir)?.let { next ->
-                pendingSlide = dir
-                slideFar = true
-                setView(next.first)
-            }
-        }
+        tabBar.onSwipe = ::swipeTab
         tabGlider = Motion.Glider(tabBar, tabs, ui.dp(12f).toFloat(), 0)
         tabShown = null
         buildTabs()
@@ -296,6 +293,16 @@ class MainActivity : Activity(), SpectrumHost {
             WindowInsets.CONSUMED
         }
         setContentView(root)
+    }
+
+    /** A swipe across the tab bar or the title: the next tab ([dir] 1) or the one before (-1), sliding in from that side. */
+    private fun swipeTab(dir: Int) {
+        val here = TABS.indexOfFirst { it.first == if (view == "week") "day" else view }
+        TABS.getOrNull(here + dir)?.let { next ->
+            pendingSlide = dir
+            slideFar = true
+            setView(next.first)
+        }
     }
 
     private fun buildTabs() {
