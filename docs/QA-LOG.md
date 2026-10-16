@@ -18,6 +18,27 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 16 October 2026 (the plan card comes up with the keyboard)
+
+**Asked for:** when the plan card pops out of the calendar, it should pop up to its final height together
+with the keyboard, not land in the middle first and then get pushed up by the keyboard.
+
+**Found:** a new plan's keyboard was only asked for once the card had landed, and the card's frame was
+padded by the keyboard's height, so the card jumped up to the middle of what was left.
+
+**Change** (`PlanSheet.show`):
+- A new plan's keyboard is asked for as the card pops out (the dialog shows it as its window takes
+  focus), so both come up together.
+- The card flies inside a holder that follows the keyboard frame by frame
+  (`WindowInsetsAnimation.Callback`), lifting it to the middle of what the keyboard leaves. The flight
+  and the keyboard's rise add up, so the card heads straight to where it ends. A plan tapped open has
+  no keyboard at first; tapping its text field later raises the card with the keyboard the same way.
+- A card taller than the room the keyboard leaves keeps its top (the time and the text field) in view.
+- Going back down to the grid, the holder stays where it is while the keyboard goes, so the card still
+  lands right on its cell.
+
+**Checked:** it builds; unit tests pass. The motion: by hand on the phone (a still can't show it).
+
 ## 16 October 2026 (swipe the title for another tab)
 
 **Asked for:** a swipe across the title should go to another tab.
