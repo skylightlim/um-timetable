@@ -18,6 +18,22 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 16 October 2026 (1.5.1-beta.1 published)
+
+**Asked for:** push the update to GitHub.
+
+**Published:** 1.5.1-beta.1, versionCode 7: a patch, for the two fixes from the user's "things to fix"
+(the scrim's light border, How long and Reminder as tapes). Before publishing, everything new since
+1.5.0-beta.1 was checked against the backups' lecturer names and occurrences (only the generic title
+words in the previous entry match) and the new QA entries were read for the user's schedule: none.
+GitHub's `main` got one release commit with `main`'s tree, "UM Timetable 1.5.1-beta.1" (ffad04c), on top
+of 1.5.0-beta.1's, as a fast-forward from the local `public` branch. Pre-release `v7`, titled
+"1.5.1-beta.1", carries `UM-Timetable-1.5.1-beta.1.apk`, built from a clean checkout of that commit:
+versionCode 7, signed with the release key (SHA-256 bf:c0:58…b2:94:20). The notes are five plain lines.
+
+**Checked:** the APK's version and certificate (aapt2, apksigner); the release lists the APK as its only
+asset. The published APK goes on the user's phone once the app isn't in front.
+
 ## 16 October 2026 (the plan card's How long and Reminder are tapes)
 
 **Asked for:** on the plan card, How long and Reminder shouldn't only be tapped: the selection should
