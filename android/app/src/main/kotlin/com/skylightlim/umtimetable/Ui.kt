@@ -361,8 +361,17 @@ class Wheel(private val ui: Ui, private val options: List<String>, chosen: Int, 
         contentDescription = if (name.isEmpty()) option else "$name: $option"
     }
 
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) =
-        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (rows * rowH + inset * 2).toInt())
+    /** As wide as its widest option needs, with room around it (unless told a width): a band only as wide as the labels. */
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val natural = ((options.maxOfOrNull { label.measureText(it) } ?: 0f) + ui.dp(44f)).toInt().coerceAtLeast(ui.dp(84))
+        val size = MeasureSpec.getSize(widthMeasureSpec)
+        val width = when (MeasureSpec.getMode(widthMeasureSpec)) {
+            MeasureSpec.EXACTLY -> size
+            MeasureSpec.AT_MOST -> minOf(natural, size)
+            else -> natural
+        }
+        setMeasuredDimension(width, (rows * rowH + inset * 2).toInt())
+    }
 
     /** Past either end it resists more the further it's pulled, as iOS's edges do. */
     private fun rubber(raw: Float): Float {

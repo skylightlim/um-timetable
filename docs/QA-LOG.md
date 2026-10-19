@@ -18,6 +18,17 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (narrower wheels on the plan card)
+
+**Asked for:** the selection strip on the plan card is too wide; make it smaller.
+
+**Change:** a `Wheel` is now only as wide as its widest option needs, plus room around it (84dp at
+least), unless it's given a width. On the plan card How long and Reminder each sit under their label at
+that width (about a third of the card's width each) instead of filling half the card.
+
+**Checked:** unit tests pass. A render of a saved plan's card: both wheels narrow under their labels,
+their bands as wide as the options.
+
 ## 19 October 2026 (the plan card's How long and Reminder as wheels)
 
 **Asked for:** How long and Reminder on the plan card chosen vertically, to save space: the keyboard was

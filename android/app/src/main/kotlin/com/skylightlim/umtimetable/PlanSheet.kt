@@ -166,7 +166,8 @@ object PlanSheet {
         // (with the keyboard up, the card ran under it).
         fun column(title: String, content: View) = ui.column().apply {
             addView(ui.label(title, p.muted, 10.5f), ui.wide(bottom = 8f))
-            addView(content)
+            // As wide as it needs, under its label: a wheel's band only as wide as its options.
+            addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
         // How long: every half hour that fits before the next class or plan (or 19:00).
         val lengths = Plan.lengths(maxEnd - plan.start).ifEmpty { listOf((maxEnd - plan.start) to "${maxEnd - plan.start} min") }
