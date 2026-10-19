@@ -17,6 +17,7 @@ import kotlin.concurrent.thread
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es attendance check|sync
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es sso probe [--es site timeedit] [--ez signout true]
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es timeedit build
+ *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es automark dry [--ei cmid N]
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es sync full
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es haptic tick|back|cross|uncross
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es fake signin
@@ -92,6 +93,22 @@ class DebugSpectrumReceiver : BroadcastReceiver() {
                 else -> Haptics.tick(v)
             }
             Log.i("UMTimetable", "debug: haptic $kind at ${Haptics.level(c)}")
+            return
+        }
+        // --es automark dry [--ei cmid N]: what auto attendance would find on an attendance activity's page
+        // (today's first session's, or activity N's), without marking anything: logged as "automark dry".
+        if (intent.getStringExtra("automark") == "dry") {
+            val pending = goAsync()
+            val cmid = intent.getIntExtra("cmid", 0)
+            Thread {
+                try {
+                    val url = if (cmid > 0) "${Spectrum.SITE}/mod/attendance/view.php?id=$cmid"
+                    else SpectrumStore.array(c, "attendance").objects().firstOrNull()?.optString("url")
+                    Log.i("UMTimetable", "automark dry: ${url?.let { AutoAttendance.mark(c, it, dry = true) } ?: "no attendance today; pass --ei cmid"}")
+                } finally {
+                    pending.finish()
+                }
+            }.start()
             return
         }
         // --es timeedit build: the timetable TimeEdit would give, compared with the app's (DebugTimeEdit).

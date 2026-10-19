@@ -18,6 +18,35 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (marking attendance by itself)
+
+**Asked for:** an auto-mark setting: the app marks attendance once a class is 5 minutes in, and if it
+can't, a notification.
+
+**Change:** Settings has an **Attendance** section with **Mark my attendance** (a `Toggle`, off at
+first). On, `AutoAttendance` sets an exact alarm 5 minutes into each class; the alarm hands the work to
+an expedited job (`AutoAttendanceJob`), which reads Spectrum's attendance for today again, and for each
+class in progress with an attendance activity matched to it opens that activity's page in a hidden
+WebView with the user's Spectrum sign-in (Spectrum's login goes straight to Microsoft, which signs it
+back in when Spectrum's session has run out) and runs `assets/attendance-mark.js` there. Spectrum has no
+attendance web service, so the script does what the page's "Submit attendance" link does
+(`mod/attendance/attendance.php?sessid=…`, from the attendance plugin's source): Spectrum either records
+the session's best status at once, or shows a form, where "Present" is chosen and sent. It's confirmed by
+Spectrum's "has been recorded" message, or by the session's row now saying "Self-recorded". Either way a
+notification replaces the session's "Attendance open" one: "Marked present", or "Couldn't mark
+attendance" and why (no session open yet, the lecturer's password, a QR code, campus network only,
+signed out, Spectrum unreachable), with a tap to mark it by hand. A class with no attendance activity
+says nothing. One try per class.
+
+**Checked:** unit tests pass. A dry run (`DebugSpectrumReceiver --es automark dry --ei cmid N`, which
+only reads the activity's page and opens no link) on the phone signed itself in through Microsoft and
+read three real attendance pages in about 9 seconds: their sessions are self-recorded by students, with
+no link left once marked. The marking script against a stand-in for the plugin's pages in headless
+Chromium: a status form ("Present" chosen over "Late", the form's sesskey and fields sent), a submit
+confirmed only by the row, a session that records at once, a password (refused), campus network only
+(refused) and nothing open (refused). Not tried for real: the first real marking happens at the user's
+first class after they switch it on.
+
 ## 19 October 2026 (Day's cards: a clear first line)
 
 **Asked for:** the Day page's class cards all read alike, with no hierarchy: you have to read every

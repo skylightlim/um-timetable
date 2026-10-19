@@ -694,6 +694,7 @@ object Reminders {
  */
 object AttendanceWatch {
     fun schedule(c: Context) {
+        AutoAttendance.schedule(c) // its own alarm, five minutes into each class, when it's on
         val am = c.getSystemService(AlarmManager::class.java)
         val pi = SpectrumAlarmReceiver.intent(c, SpectrumAlarmReceiver.ACTION_ATTENDANCE)
         if (!SpectrumStore.signedIn(c)) {
@@ -830,6 +831,7 @@ class SpectrumAlarmReceiver : BroadcastReceiver() {
                     ACTION_ATTENDANCE -> SpectrumSync.run(c, attendanceOnly = true, background = true)
                     ACTION_REMINDER -> Reminders.fire(c)
                     ACTION_PLAN -> PlanReminders.fire(c)
+                    ACTION_AUTOMARK -> AutoAttendance.fire(c)
                     Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
                         Reminders.schedule(c)
                         AttendanceWatch.schedule(c)
@@ -846,6 +848,7 @@ class SpectrumAlarmReceiver : BroadcastReceiver() {
         const val ACTION_ATTENDANCE = "com.skylightlim.umtimetable.ATTENDANCE_CHECK"
         const val ACTION_REMINDER = "com.skylightlim.umtimetable.DEADLINE_REMINDER"
         const val ACTION_PLAN = "com.skylightlim.umtimetable.PLAN_REMINDER"
+        const val ACTION_AUTOMARK = "com.skylightlim.umtimetable.AUTO_ATTENDANCE"
 
         fun intent(c: Context, action: String): PendingIntent = PendingIntent.getBroadcast(
             c, action.hashCode(),
