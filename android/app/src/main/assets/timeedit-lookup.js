@@ -2,7 +2,8 @@
 // requests carry that page's sign-in. The app sends the user's courses as {"WIX1002": 16, …}
 // over a message port and gets back the weekly classes of those occurrences, or
 // {error, signedOut}. Each class: code, module (TimeEdit's name), day, start, end, activity,
-// room, weeks (how many weeks it's on in the period), term ("2026/S1") and lecturers.
+// room, weeks (how many weeks it's on in the period), term ("2026/S1") and lecturers. Also, per
+// course, every occurrence TimeEdit lists in those weeks ({"WIX1002": [1, 2, 16]}), to choose from.
 //
 // Per course: search the module by code, list its classes for the next six weeks (a mid-semester
 // break doesn't empty it) and keep those of the occurrence ("WIX1002/2026/S1/16"). One class per
@@ -28,6 +29,7 @@
   async function lookUp(courses) {
     const lecturers = {};
     const slots = [];
+    const offered = {};
     for (const [code, occ] of Object.entries(courses)) {
       const search = await (await get('objects.html?max=20&fr=t&partajax=t&im=f&sid=4&l=en_US&objects=&types=15&part=t&media=html&search_text=' + encodeURIComponent(code))).text();
       const module = [...new DOMParser().parseFromString(search, 'text/html').querySelectorAll('[data-idonly]')]
@@ -43,7 +45,12 @@
       if (offering < 0 || activity < 0) continue;
       const mine = o => { const p = o.trim().split('/'); return p.length === 4 && p[0] === code && p[3] === String(occ); };
       const groups = new Map();
+      const occs = new Set();
       for (const r of ri.reservations || []) {
+        for (const o of r.columns[offering].split(',')) {
+          const p = o.trim().split('/');
+          if (p.length === 4 && p[0] === code && /^\d+$/.test(p[3])) occs.add(Number(p[3]));
+        }
         const offerings = r.columns[offering].split(',').filter(mine);
         if (!offerings.length) continue;
         if (/exam/i.test((type >= 0 ? r.columns[type] : '') + ' ' + r.columns[activity])) continue;
@@ -52,6 +59,7 @@
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(Object.assign(r, { term: offerings[0].trim().split('/').slice(1, 3).join('/') }));
       }
+      offered[code] = [...occs].sort((a, b) => a - b);
       for (const [key, classes] of groups) {
         // A week can be missing its lecturer; look at up to three weeks of the slot.
         let ids = [];
@@ -78,7 +86,7 @@
         });
       }
     }
-    return slots;
+    return { slots, offered };
   }
 
   window.addEventListener('message', function handler(e) {
@@ -89,7 +97,7 @@
     window.removeEventListener('message', handler);
     const port = e.ports[0];
     lookUp(courses).then(
-      slots => port.postMessage(JSON.stringify({ slots })),
+      ({ slots, offered }) => port.postMessage(JSON.stringify({ slots, offered })),
       err => port.postMessage(JSON.stringify({ error: String((err && err.message) || err), signedOut: !!(err && err.signedOut) })),
     );
   });

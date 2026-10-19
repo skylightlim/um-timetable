@@ -18,6 +18,27 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (choosing your occurrence in Settings)
+
+**Asked for:** an option in Settings, under Timetable, to choose the occurrence.
+
+**Change:** Settings › Timetable has an **Occurrences** fold. Shut, it says "Yours from Spectrum" or how
+many the user chose. Open, each course has a tape of its occurrences ("Occ 1", "Occ 2"…), the one in use
+chosen; a choice other than Spectrum's group says "Spectrum: N" beside the course. TimeEdit's lookup now
+also returns every occurrence each course has in the six weeks it reads (`offered`), saved as
+`occurrence-options` (before any lookup, the tape offers 1 to 30). A choice is saved at once
+(`SpectrumStore.pickOccurrence`; choosing Spectrum's again removes it) and `SpectrumStore.occurrences`
+puts choices over Spectrum's groups, so the TimeEdit lookup, News and Grades follow it. The timetable
+keeps its classes until it's got again: once a choice differs from the timetable's, **Update timetable
+from TimeEdit** appears under the courses and opens TimeEdit, whose answer is shown before it's used.
+Debug: `--es view settings --ez open true` draws the fold open; the debug TimeEdit check logs `offered`.
+
+**Checked:** unit tests pass. The debug TimeEdit check on the phone listed every course's occurrences
+(one university course has dozens: the tape scrolls) and still matched the app's timetable class for
+class. Renders of Settings with the fold open, with no choice (no notes, no button) and with a made-up
+choice for one course (its note, and the Update button), removed afterwards. Choosing on the tape and the
+Update button's TimeEdit round trip need a try by hand.
+
 ## 16 October 2026 (1.5.1-beta.1 published)
 
 **Asked for:** push the update to GitHub.

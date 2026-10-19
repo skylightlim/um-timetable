@@ -64,6 +64,12 @@ class TimeEditActivity : WebScreen() {
                 status.text = error
                 return@request
             }
+            // Every occurrence of each course, for choosing one in Settings; kept for courses not looked up this time.
+            answer.optJSONObject("offered")?.let { offered ->
+                val options = SpectrumStore.occurrenceOptions(this)
+                for (code in offered.keys()) offered.optJSONArray(code)?.takeIf { it.length() > 0 }?.let { options.put(code, it) }
+                SpectrumStore.write(this, "occurrence-options", options.toString())
+            }
             val current = Timetable.local(this)?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
             val names = SpectrumStore.array(this, "courses").objects().associate { it.optString("code") to it.optString("name") }
             val result = TimeEditTimetable.build(answer, courses, names, current)

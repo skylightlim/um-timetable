@@ -176,9 +176,10 @@ object SettingsSheet {
         })
 
         val tt = h.timetable
-        section("Timetable", listOf(
+        section("Timetable", listOfNotNull(
             row("Get timetable from TimeEdit", if (tt.sessions.isEmpty()) "No timetable yet" else listOfNotNull("${tt.sessions.size} classes a week", tt.term).joinToString(" · "), chevron()) { h.openTimeEdit() },
             row("Import from MAYA instead", "If TimeEdit can't: you sign in to MAYA yourself", chevron()) { h.openMaya() },
+            if (signedIn) occurrences(h, context, ::row) else null,
         ))
 
         // Android owns the switch: off, it asks; on, it opens the app's notification settings.
@@ -208,5 +209,85 @@ object SettingsSheet {
             },
         ))
         return sheet
+    }
+
+    /** Whether the Occurrences fold is open: it stays so when the sheet is redrawn (back from TimeEdit). */
+    var occurrencesOpen = false
+
+    /**
+     * Occurrences, a fold in Timetable: each course's occurrence, Spectrum's unless the user chose
+     * another, on a tape of those TimeEdit lists for it. A choice is saved at once; the timetable keeps
+     * its classes until it's got again from TimeEdit (the button under the courses), whose answer is
+     * shown before it's used. [row] makes the sheet's rows.
+     */
+    private fun occurrences(h: SpectrumHost, context: Context, row: (String, String?, View?, (() -> Unit)?) -> LinearLayout): View? {
+        val ui = h.ui
+        val p = ui.p
+        val chosen = TimeEditLookup.occurrences(context)
+        if (chosen.length() == 0) return null
+        val spectrum = SpectrumStore.spectrumOccurrences(context)
+        val offered = SpectrumStore.occurrenceOptions(context)
+        val names = SpectrumStore.array(context, "courses").objects().associate { it.optString("code") to it.optString("name") }
+        // In the timetable's order, then any course only Spectrum has.
+        val codes = (h.timetable.courses.map { it.code } + chosen.keys().asSequence()).distinct().filter { chosen.has(it) }
+        fun inTimetable(code: String) = h.timetable.courses.firstOrNull { it.code == code }?.occ
+        fun stale() = codes.any { code -> inTimetable(code).let { it != null && it != chosen.optInt(code) } }
+        fun summary() = SpectrumStore.occurrencePicks(context).length().let { n -> if (n == 0) "Yours from Spectrum" else "$n chosen by you" }
+
+        // A 16dp box: turned on its side the 8×16 chevron is 16dp wide.
+        val chevron = Motion.chevron(ui, occurrencesOpen, p.faint).apply { layoutParams = LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)) }
+        val head = row("Occurrences", summary(), chevron, null)
+        val sub = (head.getChildAt(0) as LinearLayout).getChildAt(1) as android.widget.TextView
+        val fold = ui.column().apply { visibility = if (occurrencesOpen) View.VISIBLE else View.GONE; setPadding(0, ui.dp(2), 0, ui.dp(12)) }
+        val update = ui.text("Update timetable from TimeEdit", 14f, p.accentInk, ui.f.bodySemi).apply {
+            gravity = Gravity.CENTER
+            minHeight = ui.dp(44)
+            background = ui.pressable(ui.shape(p.accent, 12f), 12f)
+            visibility = if (stale()) View.VISIBLE else View.GONE
+            setOnClickListener { h.openTimeEdit() }
+        }
+        for (code in codes) {
+            val course = h.timetable.courses.firstOrNull { it.code == code }
+            val mine = chosen.getInt(code)
+            val theirs = spectrum.optInt(code).takeIf { it > 0 }
+            val known = offered.optJSONArray(code)?.let { a -> (0 until a.length()).map { a.getInt(it) } }.orEmpty()
+            // TimeEdit's list (and the ones in use, in case it left one out); before any lookup, 1 to 30.
+            val options = (known.ifEmpty { (1..30).toList() } + listOfNotNull(mine, theirs)).distinct().sorted()
+            // Said only when the choice isn't Spectrum's: the fold's head already says the rest are.
+            val note = ui.text("", 12.5f, p.muted)
+            fun showNote(occ: Int) {
+                note.text = if (theirs == null || occ == theirs) "" else "Spectrum: $theirs"
+            }
+            showNote(mine)
+            fold.addView(ui.row(gap = 8f).apply {
+                addView(ui.text(code, 13f, p.courseText(course?.color ?: p.muted), ui.f.monoBold))
+                addView(ui.text(course?.short ?: names[code].orEmpty(), 13f, p.muted).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }, ui.grow())
+                addView(note)
+            }, ui.wide(top = 12f, bottom = 6f))
+            fold.addView(ui.tape(options.map { "Occ $it" }, options.indexOf(mine)) { i ->
+                val occ = options[i]
+                SpectrumStore.pickOccurrence(context, code, occ)
+                chosen.put(code, occ)
+                showNote(occ)
+                sub.text = summary()
+                val show = stale()
+                if ((update.visibility == View.VISIBLE) != show) {
+                    Motion.resize(update)
+                    update.visibility = if (show) View.VISIBLE else View.GONE
+                }
+            })
+        }
+        fold.addView(update, ui.wide(top = 16f))
+        head.background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
+        head.setOnClickListener {
+            Motion.resize(head)
+            occurrencesOpen = !occurrencesOpen
+            fold.visibility = if (occurrencesOpen) View.VISIBLE else View.GONE
+            Motion.turn(chevron, occurrencesOpen)
+        }
+        return ui.column().apply {
+            addView(head)
+            addView(fold)
+        }
     }
 }
