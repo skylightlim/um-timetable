@@ -36,7 +36,7 @@ object TimeEditLookup {
     }
 
     /**
-     * Looks up [courses] ({"WIX1002": 16}) inside TimeEdit's page in [web] and calls [done] once,
+     * Looks up [courses] ({"WIX1002": 10}) inside TimeEdit's page in [web] and calls [done] once,
      * with the script's answer or an error message.
      */
     fun request(web: WebView, courses: JSONObject, timeoutMs: Long, done: (JSONObject?, String?) -> Unit) {

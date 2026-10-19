@@ -9,6 +9,11 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.Layout
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
+import android.text.style.TypefaceSpan
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
@@ -209,7 +214,7 @@ object DayScreen {
 
         // The day's classes and the user's plans for that date, in time order, with the free time between.
         val date = h.dateOf(day)
-        val plans = (sample ?: Plans.all(ui.context)).filter { it.date == date }
+        val plans = Plans.on(sample ?: Plans.all(ui.context), date)
         val items = (list.map { Triple(it.start, it.end, it as Any) } + plans.map { Triple(it.start, it.end, it as Any) }).sortedBy { it.first }
         val agenda = ui.column(gap = 8f)
         var until: Int? = null
@@ -240,19 +245,21 @@ object DayScreen {
         val ui = h.ui
         val p = ui.p
         val over = plan.endsAt <= System.currentTimeMillis()
-        val card = ui.row(gap = 10f).apply {
-            background = ui.pressable(ui.shape(Palette.mix(plan.color, p.surface, 0.24f), 16f, plan.color, 1.5f, dash = 5f), 16f)
-            setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(14))
+        val card = agendaCard(ui, ui.shape(Palette.mix(plan.color, p.surface, 0.24f), 16f, plan.color, 1.5f, dash = 5f)).apply {
             contentDescription = "Plan, ${clockText(plan.start)} to ${clockText(plan.end)}: ${plan.title}"
         }
-        card.addView(ui.column().apply {
-            addView(ui.text(clockText(plan.start), 14f, p.text, ui.f.monoBold))
-            addView(ui.text(clockText(plan.end), 12f, p.text, ui.f.mono).apply { alpha = 0.7f }, ui.wide(top = 2f))
-        }, LinearLayout.LayoutParams(ui.dp(52), ViewGroup.LayoutParams.WRAP_CONTENT))
+        card.addView(times(ui, plan.start, plan.end, p.text))
         val remind = plan.remind?.let { r -> Plan.REMINDERS.firstOrNull { it.first == r }?.second }
+        // As a class's card: what it is first, then quieter, "Plan" (in its colour) and how it repeats and reminds.
+        val meta = SpannableStringBuilder(if (over) "Plan · done" else "Plan").apply {
+            setSpan(TypefaceSpan(ui.f.bodySemi), 0, 4, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(ForegroundColorSpan(p.courseText(plan.color)), 0, 4, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            listOfNotNull("every week".takeIf { plan.weekly }, remind?.let { "reminder ${it.lowercase()}" }).forEach { append(" · ").append(it) }
+        }
         card.addView(ui.column().apply {
-            addView(ui.text(listOfNotNull(if (over) "PLAN · DONE" else "PLAN", remind?.let { "REMINDER ${it.uppercase()}" }).joinToString(" · "), 11f, p.courseText(plan.color), ui.f.monoBold))
-            addView(ui.text(plan.title, 15f, p.text, ui.f.bodySemi), ui.wide(top = 3f))
+            addView(title(ui, plan.title, p.text))
+            addView(ui.text(meta, 13.5f, p.muted), ui.wide(top = 4f))
+            baselineAlignedChildIndex = 0
         }, ui.grow())
         card.setOnClickListener {
             // The free time after it (to the next class or plan, or 19:00), and the card's height per hour for the way back.
@@ -329,8 +336,10 @@ object DayScreen {
     }
 
     /**
-     * One class, as in redesign 1b: its times, then code · type · occurrence, the course name and the
-     * lecturer, and the room large on the right. The yellow block above counts down the class in progress.
+     * One class, as in redesign 1b, set out so it reads in one glance: a first line of when, what and
+     * where (the start time, the course name in bold and the room large, on one baseline), then quieter
+     * lines for the rest: the type and lecturer, and smallest the code and occurrence. One text face
+     * for the words and times (tabular figures), the display face for the room only.
      */
     private fun slot(h: Host, s: Session, state: String): View {
         val ui = h.ui
@@ -340,21 +349,27 @@ object DayScreen {
         val fg = if (tut) p.text else p.ink
         val fgMuted = if (tut) p.muted else p.inkMuted
 
-        val card = ui.row(gap = 10f).apply {
-            background = ui.pressable(if (tut) ui.shape(p.courseTint(c), 16f, c, 1.5f) else ui.shape(c, 16f))
-            setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(14))
-            setOnClickListener { h.openSheet(s.course, s) }
+        val card = agendaCard(ui, if (tut) ui.shape(p.courseTint(c), 16f, c, 1.5f) else ui.shape(c, 16f))
+        card.setOnClickListener { h.openSheet(s.course, s) }
+        card.contentDescription = "${clockText(s.start)} to ${clockText(s.end)}, ${s.course.name}, ${s.type}, " +
+            "${if (s.room == "Online") "online" else "room ${s.room}"}${s.lecturer?.let { ", $it" }.orEmpty()}, ${s.course.code} occurrence ${s.course.occ}"
+        card.addView(times(ui, s.start, s.end, fg))
+        val meta = SpannableStringBuilder(s.type).apply {
+            setSpan(TypefaceSpan(ui.f.bodySemi), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            append(" · ")
+            val at = length
+            append(s.lecturer ?: "Lecturer not listed")
+            if (s.lecturer == null) setSpan(StyleSpan(Typeface.ITALIC), at, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
+        val name = title(ui, s.course.name, fg)
         card.addView(ui.column().apply {
-            addView(ui.text(clockText(s.start), 14f, fg, ui.f.monoBold))
-            addView(ui.text(clockText(s.end), 12f, fg, ui.f.mono).apply { alpha = 0.7f }, ui.wide(top = 2f))
-        }, LinearLayout.LayoutParams(ui.dp(52), ViewGroup.LayoutParams.WRAP_CONTENT))
-        card.addView(ui.column().apply {
-            addView(ui.text("${s.course.code} · ${s.type.uppercase()} · Occ ${s.course.occ}", 11f, if (tut) p.courseText(c) else p.ink, ui.f.monoBold))
-            addView(ui.text(s.course.name, 15f, fg, ui.f.bodySemi), ui.wide(top = 3f))
-            addView(ui.text(s.lecturer ?: "Lecturer not listed", 13f, fgMuted).apply { if (s.lecturer == null) setTypeface(ui.f.body, Typeface.ITALIC) }, ui.wide(top = 3f))
+            addView(name)
+            // One line: a long name runs out of room (it's whole on the class sheet) rather than making the card taller.
+            addView(ui.text(meta, 13.5f, fgMuted, lines = 1), ui.wide(top = 4f))
+            addView(ui.text("${s.course.code} · Occ ${s.course.occ}", 11f, if (tut) p.courseText(c) else fgMuted, ui.f.mono, caps = true), ui.wide(top = 6f))
+            baselineAlignedChildIndex = 0
         }, ui.grow())
-        card.addView(ui.text(s.room, 30f, fg, ui.f.sign))
+        card.addView(room(ui, s.room, fg, name))
 
         if (state == "past") card.alpha = 0.42f
         if (state != "live") return card
@@ -365,6 +380,73 @@ object DayScreen {
             addView(card)
         }
     }
+
+    /** A class's or plan's card on Day: a row whose columns share their first line's baseline. */
+    private fun agendaCard(ui: Ui, fill: android.graphics.drawable.Drawable) = BaselineRow(ui.context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+        dividerDrawable = GradientDrawable().apply { setSize(ui.dp(12f), 1) }
+        background = ui.pressable(fill, 16f)
+        setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(15))
+        gravity = Gravity.TOP // baselines line up only with top gravity
+        isBaselineAligned = true
+    }
+
+    /**
+     * A row whose children share their first baseline, as tall as they are once lined up. LinearLayout
+     * lines them up but, wrapping its content, measures them as if they weren't: a short first line
+     * beside the room's tall one moved the class's details down, and the last line was cut off.
+     */
+    private class BaselineRow(context: Context) : LinearLayout(context) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+            if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY) return
+            val shown = (0 until childCount).map(::getChildAt).filter { it.visibility != GONE }
+            val line = shown.maxOfOrNull { it.baseline } ?: return
+            if (line < 0) return
+            // Where layout puts each child (top gravity): down by how far its baseline is above the highest.
+            val need = paddingTop + paddingBottom + shown.maxOf { v ->
+                val lp = v.layoutParams as LayoutParams
+                (if (v.baseline >= 0) line - v.baseline else 0) + lp.topMargin + v.measuredHeight + lp.bottomMargin
+            }
+            if (need > measuredHeight) setMeasuredDimension(measuredWidth, need)
+        }
+    }
+
+    /** The start time, firm, over the end time, faint; as wide as "00:00" so names line up card to card. */
+    private fun times(ui: Ui, start: Int, end: Int, color: Int): View {
+        val first = ui.text(clockText(start), 16f, color, ui.f.bodySemi).apply { fontFeatureSettings = "tnum" }
+        val wide = kotlin.math.ceil(first.paint.measureText("00:00")).toInt()
+        return ui.column().apply {
+            addView(first)
+            addView(ui.text(clockText(end), 13f, color).apply { fontFeatureSettings = "tnum"; alpha = 0.6f }, ui.wide(top = 3f))
+            baselineAlignedChildIndex = 0 // after the children: it must name one that's there
+            layoutParams = LinearLayout.LayoutParams(wide, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+    }
+
+    /**
+     * The room, large in the display face, the tops of its capitals level with those of the course [name]
+     * beside it. On the name's baseline instead, its taller capitals stood well above the name, out of
+     * line with it. It reports a baseline higher than its own by the difference in capital heights, so the
+     * row lowers it by that much.
+     */
+    private fun room(ui: Ui, room: String, color: Int, name: android.widget.TextView): android.widget.TextView {
+        fun capHeight(paint: Paint) = android.graphics.Rect().also { paint.getTextBounds("H", 0, 1, it) }.height()
+        return object : android.widget.TextView(ui.context) {
+            override fun getBaseline(): Int = super.getBaseline().let { if (it < 0) it else it - (capHeight(paint) - capHeight(name.paint)) }
+        }.apply {
+            text = room
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f)
+            setTextColor(color)
+            typeface = ui.f.sign
+            includeFontPadding = false
+        }
+    }
+
+    /** A card's title: bold, a touch tight, as large text wants. */
+    private fun title(ui: Ui, text: String, color: Int) =
+        ui.text(text, 18f, color, ui.f.bodyBold, spacing = -0.01f).apply { setLineSpacing(0f, 1.1f) }
 }
 
 object WeekScreen {
@@ -599,6 +681,7 @@ class WeekGrid(
         strokeWidth = ui.dp(1.5f).toFloat()
         pathEffect = android.graphics.DashPathEffect(floatArrayOf(ui.dp(4f).toFloat(), ui.dp(3f).toFloat()), 0f)
     }
+    private val repeatIcon = context.getDrawable(R.drawable.ic_repeat)!!.mutate()
     /** A plan just saved pops into its place ([landing]). */
     private var landId = landing.also { landing = null }
     private var landScale = 1f
@@ -777,6 +860,15 @@ class WeekGrid(
         canvas.clipRect(r)
         codePaint.color = p.courseText(plan.color); codePaint.alpha = alpha
         canvas.drawText(clockText(plan.start), r.left + pad, r.top + pad + codePaint.textSize, codePaint)
+        // A weekly plan: the repeat arrows in its top corner, where the time leaves room.
+        val mark = codePaint.textSize.toInt()
+        if (plan.weekly && r.width() >= pad * 2 + codePaint.measureText(clockText(plan.start)) + ui.dp(3f) + mark) {
+            repeatIcon.setTint(codePaint.color)
+            repeatIcon.alpha = alpha
+            val top = (r.top + pad + codePaint.textSize * 0.12f).toInt()
+            repeatIcon.setBounds((r.right - pad).toInt() - mark, top, (r.right - pad).toInt(), top + mark)
+            repeatIcon.draw(canvas)
+        }
         val nameTop = r.top + pad + codePaint.textSize + ui.dp(3f)
         val lines = ((r.bottom - pad - nameTop) / namePaint.fontSpacing).toInt()
         if (lines >= 1) {

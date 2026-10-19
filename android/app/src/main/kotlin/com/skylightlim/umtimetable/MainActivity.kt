@@ -954,7 +954,7 @@ class MainActivity : Activity(), SpectrumHost {
     override fun signIn() = startActivityForResult(Intent(this, LoginActivity::class.java), REQ_LOGIN)
 
     /** Sign out can't be undone: ask first, and only a held button signs out. */
-    override fun signOut() = ConfirmDialog.show(ui, SIGN_OUT_TITLE, SIGN_OUT_BODY, "Sign out", hold = true) { signOutNow() }
+    override fun signOut(from: View?) = ConfirmDialog.show(ui, SIGN_OUT_TITLE, SIGN_OUT_BODY, "Sign out", hold = true, from = from?.let(Motion::onScreen)) { signOutNow() }
 
     /** Sign out deletes everything, and the app starts again at the first-run poster. */
     private fun signOutNow() {

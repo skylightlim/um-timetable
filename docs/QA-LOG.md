@@ -18,6 +18,267 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (examples use the made-up student)
+
+**Asked for:** push the update to GitHub (part of the check before publishing).
+
+**Change:** five code comments gave the user's own occurrence as their example (`{"WIX1002": …}`, an
+offering `…/2026/S1/…`) or one of their class times (the attendance script's date-and-time example).
+They now use the made-up student's occurrence and a made-up time. The occurrence examples had been
+public since earlier releases; the time was new.
+
+**Checked:** unit tests pass. The tracked files grepped again for the backups' lecturer names, course
+occurrences and that class time: none left.
+
+## 19 October 2026 (the plan card's colour on a wheel too)
+
+**Asked for:** choose the colour the same way as How long and Reminder, so all three are vertical and
+use up the empty space.
+
+**Change:** the colour is a third `Wheel` beside How long and Reminder, the three sharing the card's
+width. A wheel can hold swatches instead of words: dots that shrink and fade away from the middle, under
+a ring rather than an accent band (the accent is one of the colours and would vanish on it). Turning it
+recolours the card's band as it goes. The card is about 466dp tall now, from 541dp.
+
+**Checked:** unit tests pass. Renders of a saved plan's card, light and dark: the three wheels side by
+side, the colour in use in the ring.
+
+## 19 October 2026 (cards that fly out: occurrences and Sign out, over a blur)
+
+**Asked for:** the occurrence choice as a pop-up over a blurred background like Sign out's, popping out
+the way the plan card pops out of the calendar; and Sign out's card popping out like that too.
+
+**Change:** the plan card's flight is now `Motion.flyOut`/`Motion.flyBack`, shared: a card shows at the
+size of what it came from, pops (swells, lifts, tilts up off the page), then flies to the middle on a
+spring, turning to face the user, its contents fading in; closing, it shrinks back down into where it
+came from. Out of something as wide as a row it swells less (8% at most), so it never pops past the
+screen; the plan card out of a week cell moves as before. `ConfirmDialog.present` takes where it was
+opened (`from`): the card flies out of it, and back into it when closed without its action (outside,
+Back, Cancel). Its background now really blurs (the window's background blur, growing in as the card
+comes out) under a lighter dim; Sign out's card had a dark dim only. Where the phone has blur off (battery
+saver), the darker dim stays. Sign out's card flies out of the Sign out button; confirmed, it fades as
+before. Occurrences: the courses stay rows with their occurrence; a tap flies a card out of the row with
+the course's code and name, its occurrences on a five-row wheel, a line on what Spectrum says, and Cancel
+and Choose. Choose saves it, and the card flies back into the row, whose value pops. Debug: `--es view
+occcard [--es code CODE]` draws the card.
+
+**Checked:** unit tests pass. Renders of the occurrence card and of Settings' course rows. The flights,
+the blur and the pops are motion and need a try by hand.
+
+## 19 October 2026 (occurrences: choose the course first)
+
+**Asked for:** the occurrence choice as a secondary menu: choose the course to change first, and only
+then does its strip appear to scroll.
+
+**Change:** the Occurrences fold lists the courses as rows (code, name, "Spectrum: N" when the choice
+isn't Spectrum's) with the occurrence in use and a chevron at the end. A tap on a course opens its wheel
+under it (five options in view, as wide as they need, centred) and closes any other; a tap again closes
+it. The row's value follows the wheel as it turns. Which course is open stays across a redraw of the
+sheet. Debug: `--es view settings --ez open true --es occ CODE` draws that course's wheel open.
+
+**Checked:** unit tests pass. A render of Settings with the fold open and one course's wheel open: the
+other courses closed, lines between rows only. Opening, closing and turning need a try by hand.
+
+## 19 October 2026 (Day's cards: the room level with the course name)
+
+**Asked for:** on the class cards the course name isn't aligned with the room.
+
+**Change:** the room sat on the course name's baseline, so the display face's taller capitals stood
+well above the name. Now the tops of their capitals are level: the room reports a baseline higher than
+its own by the difference in capital heights (`DayScreen.room`), so the card's row lowers it by that
+much, and the room hangs down from the name's top line.
+
+**Checked:** unit tests pass. A render of a day during a class, compared with the one before: the
+room's capitals start level with the name's first line on every card.
+
+## 19 October 2026 (narrower wheels on the plan card)
+
+**Asked for:** the selection strip on the plan card is too wide; make it smaller.
+
+**Change:** a `Wheel` is now only as wide as its widest option needs, plus room around it (84dp at
+least), unless it's given a width. On the plan card How long and Reminder each sit under their label at
+that width (about a third of the card's width each) instead of filling half the card.
+
+**Checked:** unit tests pass. A render of a saved plan's card: both wheels narrow under their labels,
+their bands as wide as the options.
+
+## 19 October 2026 (the plan card's How long and Reminder as wheels)
+
+**Asked for:** How long and Reminder on the plan card chosen vertically, to save space: the keyboard was
+covering a bit of the card.
+
+**Change:** How long and Reminder are two `Wheel`s side by side in one row, instead of two full-width
+tapes one under the other (a passed time shows "no reminder" in the Reminder column). The card is about
+30dp shorter (about 541dp at the default font size). On the user's phone that's just under the room left
+above the keyboard (about 560dp under a 68dp status bar), so the card also makes sure: its time band and
+its buttons stay put, and the middle (what, how long, reminder, repeat, colour) is a `PlanSheet.Capped`
+scroll view sized to what the keyboard leaves (`fit`, set once the keyboard's final height is known),
+fading out where it's cut. Save and Cancel are always in view, whatever the keyboard, font size or
+phone. Debug: `--es view plan --ei cap 260` draws the card as when room runs out.
+
+**Checked:** unit tests pass. Renders of a saved plan's card (wheels side by side, chosen length and
+reminder in their bands) and of the card capped at 260dp (band and buttons whole, the middle faded at
+its cut). How it rides a real keyboard needs a try by hand.
+
+## 19 October 2026 (pin a section with a long press)
+
+**Asked for:** pin by long-pressing a section's title, which brings up an option to pin; the pin icon
+only on pinned sections, not on every section.
+
+**Change:** section headings no longer carry a pin each. A long press on one vibrates and brings up a
+small card under the name, growing out of it on a spring: "Pin to top" with a pin, or "Unpin" on a pinned
+section (`pinMenu`, a `PopupWindow`; a tap anywhere else puts it away). Choosing moves the section as
+before. A pinned section has a filled pin in the accent at the end of its heading, popping in when
+pinned; the others have none. Screen readers hear "pinned" and that a long press pins or unpins it.
+Debug: `--es view pinmenu [--ez pinned true]` draws the card.
+
+**Checked:** unit tests pass. Renders: a course page with one section pinned (its pin shown, none on
+the others) and the card in light ("Pin to top") and dark ("Unpin"). The long press, the card coming up
+and the move need a try by hand.
+
+## 19 October 2026 (occurrences on a vertical wheel)
+
+**Asked for:** the occurrence chooser as a vertical strip: sideways it was difficult and awkward, with
+some courses having dozens of occurrences.
+
+**Change:** a new `Wheel` (Ui.kt, `ui.wheel`): a vertical picker drawn like iOS's, three options in view,
+the chosen one in an accent band in the middle. Dragged, it follows the finger (resisting past either
+end); let go, it carries on at the finger's speed and settles on a spring on the option nearest where
+that speed would have taken it (Apple's projection), so a flick runs through dozens. A tap on the option
+above or below rolls it into the band. Each option reaching the band ticks and is chosen at once. Options
+shrink and fade away from the band; a label turns to the band's ink exactly where it crosses the band's
+edge. A vertical drag on it rolls it, not the sheet; anywhere else scrolls the sheet. Screen readers get
+its name and value, and scroll it one option at a time. In Settings › Timetable › Occurrences each course
+is now a row: code and name on the left (and "Spectrum: N" when the choice isn't Spectrum's), its wheel
+on the right.
+
+**Checked:** unit tests pass. A render of Settings with the fold open: every course with its wheel, the
+chosen occurrence in the band, the first and last options sitting at the wheel's ends. The roll, the
+fling and the ticks need a try by hand.
+
+## 19 October 2026 (marking attendance by itself)
+
+**Asked for:** an auto-mark setting: the app marks attendance once a class is 5 minutes in, and if it
+can't, a notification.
+
+**Change:** Settings has an **Attendance** section with **Mark my attendance** (a `Toggle`, off at
+first). On, `AutoAttendance` sets an exact alarm 5 minutes into each class; the alarm hands the work to
+an expedited job (`AutoAttendanceJob`), which reads Spectrum's attendance for today again, and for each
+class in progress with an attendance activity matched to it opens that activity's page in a hidden
+WebView with the user's Spectrum sign-in (Spectrum's login goes straight to Microsoft, which signs it
+back in when Spectrum's session has run out) and runs `assets/attendance-mark.js` there. Spectrum has no
+attendance web service, so the script does what the page's "Submit attendance" link does
+(`mod/attendance/attendance.php?sessid=…`, from the attendance plugin's source): Spectrum either records
+the session's best status at once, or shows a form, where "Present" is chosen and sent. It's confirmed by
+Spectrum's "has been recorded" message, or by the session's row now saying "Self-recorded". Either way a
+notification replaces the session's "Attendance open" one: "Marked present", or "Couldn't mark
+attendance" and why (no session open yet, the lecturer's password, a QR code, campus network only,
+signed out, Spectrum unreachable), with a tap to mark it by hand. A class with no attendance activity
+says nothing. One try per class.
+
+**Checked:** unit tests pass. A dry run (`DebugSpectrumReceiver --es automark dry --ei cmid N`, which
+only reads the activity's page and opens no link) on the phone signed itself in through Microsoft and
+read three real attendance pages in about 9 seconds: their sessions are self-recorded by students, with
+no link left once marked. The marking script against a stand-in for the plugin's pages in headless
+Chromium: a status form ("Present" chosen over "Late", the form's sesskey and fields sent), a submit
+confirmed only by the row, a session that records at once, a password (refused), campus network only
+(refused) and nothing open (refused). Not tried for real: the first real marking happens at the user's
+first class after they switch it on.
+
+## 19 October 2026 (Day's cards: a clear first line)
+
+**Asked for:** the Day page's class cards all read alike, with no hierarchy: you have to read every
+line to find anything. Apple's design as the reference; the font could change if needed.
+
+**Change:** each class card now reads in one glance. Its first line is when, what and where, on one
+baseline: the start time (Instrument Sans semibold, tabular figures), the course name (18sp bold, a
+touch tight) and the room (the display face, the card's only use of it). Under them, quieter: the type
+in semibold and the lecturer (one line, cut short if long; whole on the class sheet), then smallest the
+code and occurrence in small mono capitals. The end time sits faint under the start time. Before, a
+coloured mono line of code, type and occurrence came first, the name was 15sp, and the times were mono
+in two near-equal sizes: three faces and five pieces of text at about one weight. Plan cards on Day
+follow the same layout ("Plan" in its colour, then "every week" and its reminder). LinearLayout lines up
+baselines but measures the row as if it hadn't, which cut the last line off; the cards are a
+`BaselineRow` that measures itself after lining up. The fonts stay the app's own.
+
+**Checked:** unit tests pass. Renders of a day during a class, light and dark, at 1.3× system font size,
+and with a made-up weekly plan: first lines line up, nothing is cut off, long lecturer names end in an
+ellipsis. Debug: `--ez bounds true` logs every view's place, size and baseline (tag `bounds`).
+
+## 19 October 2026 (plans that repeat every week)
+
+**Asked for:** a persistent switch on the plan card: switched on, the plan is in the same cell every
+following week for the whole semester.
+
+**Change:** the plan card has an **Every week** row with a switch (`Toggle`, new in Ui.kt: an iOS-style
+track and knob; the knob stretches while held and springs across, with a tick). Its line says what it
+means: "Wednesdays until 7 Feb, the semester's end", "Just this Wednesday", or, switched off on a later
+week, "Stops after this Wednesday". A weekly plan is saved once, dated its first week (`weekly`, plus
+`until` when stopped and `skip` for weeks deleted alone); `Plans.on`/`inWeek` give a copy for each week
+up to the end of that semester (`AcademicCalendar.semesterEnd`: the exams' last Sunday, or the next
+semester's end between semesters). Editing any week's copy edits every week; moving it to another
+weekday moves the whole plan. Delete on a weekly plan asks **This week** (that week is skipped) or **Every
+week**. Day labels it "PLAN · EVERY WEEK"; the week grid draws repeat arrows (`ic_repeat`) in its top
+corner. Reminders go off for each week (`reminderKey` is the plan and the date).
+
+**Checked:** unit tests pass, with new ones for weekly copies (weekday, first and last week, skipped and
+stopped weeks, saving under the first week) and for semester ends. Renders with a made-up weekly plan:
+the card with the switch on, the week grid with the arrows, Day with "EVERY WEEK". Switching, saving,
+deleting one week and the reminders need a try by hand.
+
+## 19 October 2026 (pinning sections of a course page)
+
+**Asked for:** being able to pin certain sections of a Spectrum course page.
+
+**Change:** every section heading on a course page ends with a pin (an outline pushpin, `ic_pin`). A tap
+fills it in the accent (`ic_pin_on`) with a pop and a tick, and the section moves to the top of the page
+under a "Pinned" label, the others following under "Other sections" in Spectrum's order; pinned sections
+keep the order they were pinned in. A tap on a filled pin puts the section back in its place. The move
+animates (the page's views are reordered in place, not rebuilt, so the scroll position stays). Pins are
+saved per course (`SpectrumStore.pinSection`, `pinned-sections`) by Spectrum's section id, which the
+course page's JSON now keeps; a page cached before that goes by section name until it's loaded again.
+
+**Checked:** unit tests pass. A render of a course page with two sections pinned by a made-up
+`pinned-sections` file (removed afterwards): both on top under "Pinned" with filled pins, the rest under
+"Other sections" with outline pins. The tap, the pop and the move need a try by hand.
+
+## 19 October 2026 (choosing your occurrence in Settings)
+
+**Asked for:** an option in Settings, under Timetable, to choose the occurrence.
+
+**Change:** Settings › Timetable has an **Occurrences** fold. Shut, it says "Yours from Spectrum" or how
+many the user chose. Open, each course has a tape of its occurrences ("Occ 1", "Occ 2"…), the one in use
+chosen; a choice other than Spectrum's group says "Spectrum: N" beside the course. TimeEdit's lookup now
+also returns every occurrence each course has in the six weeks it reads (`offered`), saved as
+`occurrence-options` (before any lookup, the tape offers 1 to 30). A choice is saved at once
+(`SpectrumStore.pickOccurrence`; choosing Spectrum's again removes it) and `SpectrumStore.occurrences`
+puts choices over Spectrum's groups, so the TimeEdit lookup, News and Grades follow it. The timetable
+keeps its classes until it's got again: once a choice differs from the timetable's, **Update timetable
+from TimeEdit** appears under the courses and opens TimeEdit, whose answer is shown before it's used.
+Debug: `--es view settings --ez open true` draws the fold open; the debug TimeEdit check logs `offered`.
+
+**Checked:** unit tests pass. The debug TimeEdit check on the phone listed every course's occurrences
+(one university course has dozens: the tape scrolls) and still matched the app's timetable class for
+class. Renders of Settings with the fold open, with no choice (no notes, no button) and with a made-up
+choice for one course (its note, and the Update button), removed afterwards. Choosing on the tape and the
+Update button's TimeEdit round trip need a try by hand.
+
+## 16 October 2026 (1.5.1-beta.1 published)
+
+**Asked for:** push the update to GitHub.
+
+**Published:** 1.5.1-beta.1, versionCode 7: a patch, for the two fixes from the user's "things to fix"
+(the scrim's light border, How long and Reminder as tapes). Before publishing, everything new since
+1.5.0-beta.1 was checked against the backups' lecturer names and occurrences (only the generic title
+words in the previous entry match) and the new QA entries were read for the user's schedule: none.
+GitHub's `main` got one release commit with `main`'s tree, "UM Timetable 1.5.1-beta.1" (ffad04c), on top
+of 1.5.0-beta.1's, as a fast-forward from the local `public` branch. Pre-release `v7`, titled
+"1.5.1-beta.1", carries `UM-Timetable-1.5.1-beta.1.apk`, built from a clean checkout of that commit:
+versionCode 7, signed with the release key (SHA-256 bf:c0:58…b2:94:20). The notes are five plain lines.
+
+**Checked:** the APK's version and certificate (aapt2, apksigner); the release lists the APK as its only
+asset. The published APK goes on the user's phone once the app isn't in front.
+
 ## 16 October 2026 (the plan card's How long and Reminder are tapes)
 
 **Asked for:** on the plan card, How long and Reminder shouldn't only be tapped: the selection should

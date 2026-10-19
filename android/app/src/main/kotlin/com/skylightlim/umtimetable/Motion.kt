@@ -363,6 +363,66 @@ object Motion {
         )
     }
 
+    /** Where [v] is on screen, as a rectangle (a card flies out of it and back into it). */
+    fun onScreen(v: View): android.graphics.RectF {
+        val at = IntArray(2).also(v::getLocationOnScreen)
+        return android.graphics.RectF(at[0].toFloat(), at[1].toFloat(), (at[0] + v.width).toFloat(), (at[1] + v.height).toFloat())
+    }
+
+    /** [card]'s centre on screen where it rests: from its layout in its parent, so its own moves and scaling don't count. */
+    private fun restingCentre(card: View): Pair<Float, Float> {
+        val at = IntArray(2).also { (card.parent as View).getLocationOnScreen(it) }
+        return (at[0] + card.left + card.width / 2f) to (at[1] + card.top + card.height / 2f)
+    }
+
+    /**
+     * A card flying out of [from] (where it came from, on screen) into its place, as the plan card does out of
+     * the week grid: it shows at [from]'s size there, pops (swells, lifts and tilts up off the page), then flies
+     * to its place on a spring, turning to face the user, [content] fading in as it goes; [landing] runs as it
+     * sets off. Out of something big (a whole row) it swells less, so it never pops past the screen.
+     */
+    fun flyOut(card: View, from: android.graphics.RectF, content: View? = null, landing: () -> Unit = {}) {
+        if (!enabled) return
+        val d = card.resources.displayMetrics.density
+        // Without a [content], what's on the card (its children) is what fades in.
+        val parts = content?.let { listOf(it) } ?: (card as? ViewGroup)?.let { g -> (0 until g.childCount).map(g::getChildAt) }.orEmpty()
+        parts.forEach { it.alpha = 0f }
+        card.alpha = 0f
+        card.post {
+            val (cx, cy) = restingCentre(card)
+            val sx = from.width() / card.width.coerceAtLeast(1)
+            val sy = from.height() / card.height.coerceAtLeast(1)
+            val swell = minOf(1.3f, 1.08f / maxOf(sx, sy, 0.01f))
+            card.pivotX = card.width / 2f
+            card.pivotY = card.height / 2f
+            card.cameraDistance = 9000 * d
+            card.translationX = from.centerX() - cx
+            card.translationY = from.centerY() - cy
+            card.scaleX = sx
+            card.scaleY = sy
+            card.alpha = 1f
+            card.animate().scaleX(sx * swell).scaleY(sy * swell).rotationX(24f).rotation(-7f).translationZ(10 * d)
+                .setInterpolator(android.view.animation.DecelerateInterpolator(1.5f)).setDuration(130).withEndAction {
+                    card.animate().translationX(0f).translationY(0f).scaleX(1f).scaleY(1f).rotationX(0f).rotation(0f)
+                        .translationZ(24 * d).spring(SETTLE).start()
+                    parts.forEach { fade(it, 0f, 1f, 220) }
+                    landing()
+                }.start()
+        }
+    }
+
+    /** [flyOut] backwards: [card] shrinks back down into [to], tilting as it goes, [content] (or its children) fading first; then [end]. */
+    fun flyBack(card: View, to: android.graphics.RectF, content: View? = null, end: () -> Unit) {
+        if (!enabled) return end()
+        val parts = content?.let { listOf(it) } ?: (card as? ViewGroup)?.let { g -> (0 until g.childCount).map(g::getChildAt) }.orEmpty()
+        parts.forEach { it.animate().alpha(0f).setDuration(90).start() }
+        val (cx, cy) = restingCentre(card)
+        card.animate().translationX(to.centerX() - cx).translationY(to.centerY() - cy)
+            .scaleX(to.width() / card.width.coerceAtLeast(1)).scaleY(to.height() / card.height.coerceAtLeast(1))
+            .rotationX(18f).rotation(-3f).translationZ(0f)
+            .setInterpolator(EXIT).setDuration(260).withEndAction(end).start()
+    }
+
     /** A pop for something that just appeared or changed (a badge's count). */
     fun pop(v: View, from: Float = 0.4f) {
         if (!enabled) return

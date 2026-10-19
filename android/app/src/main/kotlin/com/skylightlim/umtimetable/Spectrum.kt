@@ -118,8 +118,41 @@ object SpectrumStore {
 
     fun read(c: Context, name: String): String? = File(dir(c), "$name.json").takeIf { it.exists() }?.readText()
 
-    /** The user's occurrence in each course ({"WIX1002": 16}), from their Spectrum groups at the last sync. */
-    fun occurrences(c: Context): JSONObject = read(c, "occurrences")?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
+    /**
+     * The user's occurrence in each course ({"WIX1002": 10}): from their Spectrum groups at the last
+     * sync, except where they chose another in Settings ([occurrencePicks]).
+     */
+    fun occurrences(c: Context): JSONObject = spectrumOccurrences(c).also { o -> occurrencePicks(c).let { p -> for (k in p.keys()) o.put(k, p.getInt(k)) } }
+
+    /** The occurrences of the user's Spectrum groups alone, at the last sync. */
+    fun spectrumOccurrences(c: Context): JSONObject = json(c, "occurrences")
+
+    /** The occurrences the user chose in Settings over Spectrum's ({"WIX1002": 3}). */
+    fun occurrencePicks(c: Context): JSONObject = json(c, "occurrence-picks")
+
+    /** Chooses [occ] for [code]; Spectrum's own (or null) takes the choice away. */
+    fun pickOccurrence(c: Context, code: String, occ: Int?) {
+        val picks = occurrencePicks(c)
+        if (occ == null || occ == spectrumOccurrences(c).optInt(code)) picks.remove(code) else picks.put(code, occ)
+        write(c, "occurrence-picks", picks.toString())
+    }
+
+    /** Each course's occurrences on TimeEdit ({"WIX1002": [1, 2, 16]}), from the last timetable lookup. */
+    fun occurrenceOptions(c: Context): JSONObject = json(c, "occurrence-options")
+
+    /** The sections of course [courseId] the user pinned to the top of its page, in the order pinned. */
+    fun pinnedSections(c: Context, courseId: Int): List<String> =
+        json(c, "pinned-sections").optJSONArray(courseId.toString())?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty()
+
+    /** Pins section [key] of course [courseId] (after those pinned already), or unpins it. */
+    fun pinSection(c: Context, courseId: Int, key: String, pin: Boolean) {
+        val all = json(c, "pinned-sections")
+        val now = pinnedSections(c, courseId).filter { it != key } + listOfNotNull(key.takeIf { pin })
+        if (now.isEmpty()) all.remove(courseId.toString()) else all.put(courseId.toString(), JSONArray(now))
+        write(c, "pinned-sections", all.toString())
+    }
+
+    private fun json(c: Context, name: String) = read(c, name)?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
     fun write(c: Context, name: String, json: String) {
         // A sync still running when the user signs out mustn't put back what Sign out deleted.
         if (!signedIn(c)) return

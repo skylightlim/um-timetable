@@ -176,9 +176,10 @@ object SettingsSheet {
         })
 
         val tt = h.timetable
-        section("Timetable", listOf(
+        section("Timetable", listOfNotNull(
             row("Get timetable from TimeEdit", if (tt.sessions.isEmpty()) "No timetable yet" else listOfNotNull("${tt.sessions.size} classes a week", tt.term).joinToString(" · "), chevron()) { h.openTimeEdit() },
             row("Import from MAYA instead", "If TimeEdit can't: you sign in to MAYA yourself", chevron()) { h.openMaya() },
+            if (signedIn) occurrences(h, context, ::row) else null,
         ))
 
         // Android owns the switch: off, it asks; on, it opens the app's notification settings.
@@ -192,6 +193,12 @@ object SettingsSheet {
             }) { if (ask) h.enableNotifications() else h.openAppSettings() },
         ))
 
+        // Marking attendance by itself, five minutes into each class (AutoAttendance).
+        if (signedIn) section("Attendance", listOf(
+            row("Mark my attendance", "${AutoAttendance.AFTER_MIN} minutes into each class, the app marks you present on Spectrum. If it can't, a notification says why.",
+                Toggle(ui, AutoAttendance.enabled(context)) { on -> AutoAttendance.setEnabled(context, on) }.apply { contentDescription = "Mark my attendance" }, null),
+        ))
+
         label("Vibration")
         sheet.addView(ui.segmented(Haptics.Level.entries.map { it.label }, Haptics.level(context).ordinal, fill = true) { i, _ -> Haptics.setLevel(context, Haptics.Level.entries[i]) })
 
@@ -202,11 +209,142 @@ object SettingsSheet {
 
         section("Account", listOf(
             if (signedIn) {
-                row(SpectrumScreens.accountName(context).ifBlank { "Signed in" }, null, button("Sign out") { h.signOut() }, null)
+                lateinit var out: View
+                out = button("Sign out") { h.signOut(out) }
+                row(SpectrumScreens.accountName(context).ifBlank { "Signed in" }, null, out, null)
             } else {
                 row("Not signed in", "Sign in to Spectrum with your SiswaMail for courses, deadlines, marks and news.", button("Sign in") { h.signIn() }, null)
             },
         ))
         return sheet
+    }
+
+    /** Whether the Occurrences fold is open: it stays so when the sheet is redrawn (back from TimeEdit). */
+    var occurrencesOpen = false
+
+    /**
+     * The card for choosing [code]'s occurrence: the course's code large in its colour and its name, its
+     * occurrences on a wheel ([mine], the one in use, chosen), what Spectrum says ([theirs]), then Cancel
+     * and Choose. [done] gets the occurrence chosen, or null for Cancel.
+     */
+    fun occurrenceCard(ui: Ui, code: String, name: String, color: Int, options: List<Int>, mine: Int, theirs: Int?, done: (Int?) -> Unit): View {
+        val p = ui.p
+        var pick = mine
+        fun says(occ: Int) = when {
+            theirs == null -> "Spectrum doesn't say which is yours."
+            occ == theirs -> "Your group on Spectrum."
+            else -> "Spectrum puts you in Occ $theirs."
+        }
+        val note = ui.text(says(mine), 13f, p.muted).apply { gravity = Gravity.CENTER }
+        return ConfirmDialog.frame(ui).apply {
+            addView(ui.text(code, 30f, p.courseText(color), ui.f.sign))
+            addView(ui.text(name, 15f, p.muted), ui.wide(top = 2f))
+            addView(ui.column().apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                addView(ui.wheel(options.map { "Occ $it" }, options.indexOf(mine).coerceAtLeast(0), rows = 5) { i ->
+                    pick = options[i]
+                    note.text = says(pick)
+                }.apply { this.name = "$code occurrence" }, LinearLayout.LayoutParams(ui.dp(150), LinearLayout.LayoutParams.WRAP_CONTENT))
+            }, ui.wide(top = 18f))
+            addView(note, ui.wide(top = 12f))
+            addView(ui.row(gap = 8f).apply {
+                addView(ConfirmDialog.button(ui, "Cancel", p.surface2, p.text) { done(null) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(ConfirmDialog.button(ui, "Choose", p.accent, p.accentInk) { done(pick) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            }, ui.wide(top = 20f))
+        }
+    }
+
+    /**
+     * Occurrences, a fold in Timetable: each course with its occurrence, Spectrum's unless the user chose
+     * another; a tap on a course flies a card out of it ([occurrenceCard]) with a wheel of those TimeEdit
+     * lists for it, over the sheet, blurred. A choice is saved at once; the timetable keeps
+     * its classes until it's got again from TimeEdit (the button under the courses), whose answer is
+     * shown before it's used. [row] makes the sheet's rows.
+     */
+    private fun occurrences(h: SpectrumHost, context: Context, row: (String, String?, View?, (() -> Unit)?) -> LinearLayout): View? {
+        val ui = h.ui
+        val p = ui.p
+        val chosen = TimeEditLookup.occurrences(context)
+        if (chosen.length() == 0) return null
+        val spectrum = SpectrumStore.spectrumOccurrences(context)
+        val offered = SpectrumStore.occurrenceOptions(context)
+        val names = SpectrumStore.array(context, "courses").objects().associate { it.optString("code") to it.optString("name") }
+        // In the timetable's order, then any course only Spectrum has.
+        val codes = (h.timetable.courses.map { it.code } + chosen.keys().asSequence()).distinct().filter { chosen.has(it) }
+        fun inTimetable(code: String) = h.timetable.courses.firstOrNull { it.code == code }?.occ
+        fun stale() = codes.any { code -> inTimetable(code).let { it != null && it != chosen.optInt(code) } }
+        fun summary() = SpectrumStore.occurrencePicks(context).length().let { n -> if (n == 0) "Yours from Spectrum" else "$n chosen by you" }
+
+        // A 16dp box: turned on its side the 8×16 chevron is 16dp wide.
+        val chevron = Motion.chevron(ui, occurrencesOpen, p.faint).apply { layoutParams = LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)) }
+        val head = row("Occurrences", summary(), chevron, null)
+        val sub = (head.getChildAt(0) as LinearLayout).getChildAt(1) as android.widget.TextView
+        val fold = ui.column().apply { visibility = if (occurrencesOpen) View.VISIBLE else View.GONE; setPadding(0, ui.dp(2), 0, ui.dp(12)) }
+        val update = ui.text("Update timetable from TimeEdit", 14f, p.accentInk, ui.f.bodySemi).apply {
+            gravity = Gravity.CENTER
+            minHeight = ui.dp(44)
+            background = ui.pressable(ui.shape(p.accent, 12f), 12f)
+            visibility = if (stale()) View.VISIBLE else View.GONE
+            setOnClickListener { h.openTimeEdit() }
+        }
+        // Each course a row with the occurrence in use; a tap flies a card out of it with that course's wheel.
+        for ((n, code) in codes.withIndex()) {
+            val course = h.timetable.courses.firstOrNull { it.code == code }
+            val name = course?.short ?: names[code].orEmpty()
+            val theirs = spectrum.optInt(code).takeIf { it > 0 }
+            val known = offered.optJSONArray(code)?.let { a -> (0 until a.length()).map { a.getInt(it) } }.orEmpty()
+            // Said only when the choice isn't Spectrum's: the fold's head already says the rest are.
+            val note = ui.text("", 12.5f, p.muted)
+            fun showNote(occ: Int) {
+                note.text = if (theirs == null || occ == theirs) "" else "Spectrum: $theirs"
+                note.visibility = if (note.text.isEmpty()) View.GONE else View.VISIBLE
+            }
+            showNote(chosen.getInt(code))
+            val value = ui.text("Occ ${chosen.getInt(code)}", 14f, p.text, ui.f.bodySemi)
+            if (n > 0) fold.addView(View(context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
+            fold.addView(ui.row(gap = 12f).apply {
+                minimumHeight = ui.dp(56)
+                setPadding(0, ui.dp(10), 0, ui.dp(10))
+                background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
+                contentDescription = "$code, $name. Change its occurrence."
+                addView(ui.column().apply {
+                    addView(ui.text(code, 13f, p.courseText(course?.color ?: p.muted), ui.f.monoBold))
+                    addView(ui.text(name, 14f, p.text, ui.f.bodySemi).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }, ui.wide(top = 2f))
+                    addView(note, ui.wide(top = 3f))
+                }, ui.grow())
+                addView(value)
+                addView(ui.icon(R.drawable.ic_chevron, p.faint).apply { layoutParams = LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)) })
+                setOnClickListener { row ->
+                    val mine = chosen.getInt(code)
+                    // TimeEdit's list (and the ones in use, in case it left one out); before any lookup, 1 to 30.
+                    val options = (known.ifEmpty { (1..30).toList() } + listOfNotNull(mine, theirs)).distinct().sorted()
+                    lateinit var close: (then: (() -> Unit)?) -> Unit
+                    val card = occurrenceCard(ui, code, name, course?.color ?: p.muted, options, mine, theirs) { occ ->
+                        if (occ == null || occ == mine) return@occurrenceCard close(null)
+                        SpectrumStore.pickOccurrence(context, code, occ)
+                        chosen.put(code, occ)
+                        value.text = "Occ $occ"
+                        showNote(occ)
+                        sub.text = summary()
+                        update.visibility = if (stale()) View.VISIBLE else View.GONE
+                        // Back into its row, whose value then pops.
+                        close { Motion.pop(value, 0.6f) }
+                    }
+                    close = ConfirmDialog.present(ui, card, from = Motion.onScreen(row), backAlways = true)
+                }
+            })
+        }
+        fold.addView(update, ui.wide(top = 16f))
+        head.background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
+        head.setOnClickListener {
+            Motion.resize(head)
+            occurrencesOpen = !occurrencesOpen
+            fold.visibility = if (occurrencesOpen) View.VISIBLE else View.GONE
+            Motion.turn(chevron, occurrencesOpen)
+        }
+        return ui.column().apply {
+            addView(head)
+            addView(fold)
+        }
     }
 }

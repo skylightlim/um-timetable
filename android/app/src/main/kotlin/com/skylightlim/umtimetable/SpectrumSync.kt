@@ -132,7 +132,7 @@ object SpectrumSync {
         }
     }
 
-    /** core_course_get_contents → [{ name, summary, modules: [{ kind, name, label, url, files, html, dates, availability }] }] */
+    /** core_course_get_contents → [{ id, name, summary, modules: [{ kind, name, label, url, files, html, dates, availability }] }] */
     fun normalizeContents(sections: JSONArray): JSONArray {
         val out = JSONArray()
         for (s in sections.objects()) {
@@ -168,7 +168,7 @@ object SpectrumSync {
             }
             val summary = s.optString("summary")
             if (modules.length() > 0 || plain(summary).isNotEmpty()) {
-                out.put(JSONObject().put("name", plain(s.optString("name")).ifBlank { "General" }).put("summary", summary).put("modules", modules))
+                out.put(JSONObject().put("id", s.optInt("id")).put("name", plain(s.optString("name")).ifBlank { "General" }).put("summary", summary).put("modules", modules))
             }
         }
         return out
@@ -694,6 +694,7 @@ object Reminders {
  */
 object AttendanceWatch {
     fun schedule(c: Context) {
+        AutoAttendance.schedule(c) // its own alarm, five minutes into each class, when it's on
         val am = c.getSystemService(AlarmManager::class.java)
         val pi = SpectrumAlarmReceiver.intent(c, SpectrumAlarmReceiver.ACTION_ATTENDANCE)
         if (!SpectrumStore.signedIn(c)) {
@@ -830,6 +831,7 @@ class SpectrumAlarmReceiver : BroadcastReceiver() {
                     ACTION_ATTENDANCE -> SpectrumSync.run(c, attendanceOnly = true, background = true)
                     ACTION_REMINDER -> Reminders.fire(c)
                     ACTION_PLAN -> PlanReminders.fire(c)
+                    ACTION_AUTOMARK -> AutoAttendance.fire(c)
                     Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
                         Reminders.schedule(c)
                         AttendanceWatch.schedule(c)
@@ -846,6 +848,7 @@ class SpectrumAlarmReceiver : BroadcastReceiver() {
         const val ACTION_ATTENDANCE = "com.skylightlim.umtimetable.ATTENDANCE_CHECK"
         const val ACTION_REMINDER = "com.skylightlim.umtimetable.DEADLINE_REMINDER"
         const val ACTION_PLAN = "com.skylightlim.umtimetable.PLAN_REMINDER"
+        const val ACTION_AUTOMARK = "com.skylightlim.umtimetable.AUTO_ATTENDANCE"
 
         fun intent(c: Context, action: String): PendingIntent = PendingIntent.getBroadcast(
             c, action.hashCode(),

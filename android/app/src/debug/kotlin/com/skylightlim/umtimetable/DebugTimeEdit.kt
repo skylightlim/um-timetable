@@ -44,6 +44,7 @@ object DebugTimeEdit {
             Log.i(TAG, "timeedit build: signed in after ${System.currentTimeMillis() - began} ms")
             TimeEditLookup.request(web, courses, 45_000) { answer, error ->
                 if (answer == null) return@request finish("FAILED: $error")
+                Log.i(TAG, "timeedit build: occurrences offered ${answer.optJSONObject("offered")}")
                 val current = Timetable.local(c)?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
                 val names = SpectrumStore.array(c, "courses").objects().associate { it.optString("code") to it.optString("name") }
                 val result = TimeEditTimetable.build(answer, courses, names, current) ?: return@request finish("no weekly classes")

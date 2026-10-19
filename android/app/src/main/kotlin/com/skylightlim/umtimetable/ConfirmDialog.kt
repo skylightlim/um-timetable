@@ -66,25 +66,51 @@ object ConfirmDialog {
         }
     }
 
-    fun show(ui: Ui, title: String, body: String, action: String, hold: Boolean = false, onConfirm: () -> Unit) {
+    fun show(ui: Ui, title: String, body: String, action: String, hold: Boolean = false, from: android.graphics.RectF? = null, onConfirm: () -> Unit) {
         lateinit var close: (then: (() -> Unit)?) -> Unit
-        close = present(ui, card(ui, title, body, action, onCancel = { close(null) }, onConfirm = { close(onConfirm) }, hold = hold))
+        close = present(ui, card(ui, title, body, action, onCancel = { close(null) }, onConfirm = { close(onConfirm) }, hold = hold), from = from)
     }
 
     /**
-     * Shows [card] over a dark scrim and returns what closes it. Closing runs its argument once the card
-     * has gone: the action may restart the screen (Sign out does), and a dialog can't be dismissed from a
-     * screen that has been replaced. [onClosed] runs however it closes (outside, Back or a button).
+     * Shows [card] over the screen behind it, blurred and dimmed, and returns what closes it. Closing runs
+     * its argument once the card has gone: the action may restart the screen (Sign out does), and a dialog
+     * can't be dismissed from a screen that has been replaced. [onClosed] runs however it closes (outside,
+     * Back or a button).
+     *
+     * With [from] (where it was opened, on screen), the card flies out of it as the plan card flies out of
+     * the week grid ([Motion.flyOut]), and goes back into it when closed without its action (outside, Back,
+     * Cancel), or always with [backAlways]; done with its action, it just fades.
      */
-    fun present(ui: Ui, card: View, onClosed: (() -> Unit)? = null): (then: (() -> Unit)?) -> Unit {
+    fun present(ui: Ui, card: View, from: android.graphics.RectF? = null, backAlways: Boolean = false, onClosed: (() -> Unit)? = null): (then: (() -> Unit)?) -> Unit {
         val dialog = Dialog(ui.context, android.R.style.Theme_Translucent_NoTitleBar)
-        val scrim = View(ui.context).apply { setBackgroundColor(0x99000000.toInt()) }
+        // The screen behind blurs where the phone can (not in battery saver, say), with a lighter dim over it;
+        // where it can't, the dim alone is darker.
+        val blur = Build.VERSION.SDK_INT >= 31 && ui.context.getSystemService(android.view.WindowManager::class.java).isCrossWindowBlurEnabled
+        val scrim = View(ui.context).apply { setBackgroundColor(if (blur) 0x59000000 else 0x99000000.toInt()) }
+        var radius = 0
+        var blurring: ValueAnimator? = null
+        fun blurTo(to: Int, ms: Long) {
+            val window = dialog.window ?: return
+            if (!blur) return
+            blurring?.cancel()
+            if (!Motion.enabled) { radius = to; window.setBackgroundBlurRadius(to); return }
+            blurring = ValueAnimator.ofInt(radius, to).setDuration(ms).apply {
+                addUpdateListener { radius = it.animatedValue as Int; window.setBackgroundBlurRadius(radius) }
+                start()
+            }
+        }
         var closing = false
         fun close(then: (() -> Unit)?) {
             if (closing) return
             closing = true
-            fun done() { dialog.dismiss(); onClosed?.invoke(); then?.invoke() }
+            fun done() { blurring?.cancel(); dialog.dismiss(); onClosed?.invoke(); then?.invoke() }
             if (!Motion.enabled) return done()
+            blurTo(0, 220)
+            if (from != null && (then == null || backAlways)) {
+                Motion.fade(scrim, scrim.alpha, 0f, 240)
+                Motion.flyBack(card, from) { done() }
+                return
+            }
             card.animate().alpha(0f).scaleX(0.96f).scaleY(0.96f).setInterpolator(Motion.EXIT).setDuration(150).withEndAction { done() }.start()
             Motion.fade(scrim, scrim.alpha, 0f, 150)
         }
@@ -112,14 +138,20 @@ object ConfirmDialog {
         }
         if (Motion.enabled) {
             scrim.alpha = 0f
-            card.alpha = 0f
-            card.scaleX = 0.94f
-            card.scaleY = 0.94f
-            Motion.fade(scrim, 0f, 1f, 180)
-            Motion.fade(card, 0f, 1f, 180)
-            card.animate().scaleX(1f).scaleY(1f).spring(Motion.SETTLE).start()
+            if (from != null) {
+                Motion.fade(scrim, 0f, 1f, 260)
+                Motion.flyOut(card, from)
+            } else {
+                card.alpha = 0f
+                card.scaleX = 0.94f
+                card.scaleY = 0.94f
+                Motion.fade(scrim, 0f, 1f, 180)
+                Motion.fade(card, 0f, 1f, 180)
+                card.animate().scaleX(1f).scaleY(1f).spring(Motion.SETTLE).start()
+            }
         }
         dialog.show()
+        blurTo(ui.dp(24), 260)
         return ::close
     }
 }

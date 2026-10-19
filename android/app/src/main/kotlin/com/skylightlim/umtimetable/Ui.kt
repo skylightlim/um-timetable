@@ -238,6 +238,300 @@ class SegmentPill(context: Context, private val pill: Drawable, private var at: 
 }
 
 /**
+ * An on/off switch, drawn as iOS draws one: a pill track, the accent when on, with a white knob that
+ * springs across. Held, the knob stretches toward the other side; let go on it, the knob springs over,
+ * the track's colour following, with a tick, and [onChange] gets the new state. 48dp tall to touch,
+ * the track 31dp of it.
+ */
+@android.annotation.SuppressLint("ViewConstructor")
+class Toggle(private val ui: Ui, on: Boolean, private val onChange: (Boolean) -> Unit) : View(ui.context) {
+    var on = on
+        private set
+    /** Where the knob is, 0 (off) to 1 (on), and how stretched, 0 to 1. */
+    private var at = if (on) 1f else 0f
+    private var stretch = 0f
+    private var move: android.animation.ValueAnimator? = null
+    private var hold: android.animation.ValueAnimator? = null
+    private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private val knob = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        setShadowLayer(ui.dp(2f).toFloat(), 0f, ui.dp(1f).toFloat(), 0x40000000)
+    }
+    private val off = Palette.mix(ui.p.text, ui.p.surface, if (ui.p.dark) 0.22f else 0.13f)
+    private val rect = android.graphics.RectF()
+
+    init {
+        isClickable = true
+        stateDescription = if (on) "On" else "Off"
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) = setMeasuredDimension(ui.dp(51), ui.dp(48))
+
+    private fun tween(from: Float, to: Float, spring: Motion.Spring, set: (Float) -> Unit) =
+        if (!Motion.enabled) { set(to); invalidate(); null } else android.animation.ValueAnimator.ofFloat(from, to).apply {
+            interpolator = spring
+            duration = spring.duration
+            addUpdateListener { set(it.animatedValue as Float); invalidate() }
+            start()
+        }
+
+    private fun holdTo(to: Float) {
+        hold?.cancel()
+        hold = tween(stretch, to, Motion.QUICK) { stretch = it }
+    }
+
+    override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
+        when (e.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> holdTo(1f)
+            android.view.MotionEvent.ACTION_CANCEL -> holdTo(0f)
+            android.view.MotionEvent.ACTION_UP -> holdTo(0f)
+        }
+        return super.onTouchEvent(e)
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        on = !on
+        stateDescription = if (on) "On" else "Off"
+        move?.cancel()
+        move = tween(at, if (on) 1f else 0f, Motion.BOUNCY) { at = it }
+        Haptics.tick(this)
+        onChange(on)
+        return true
+    }
+
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        val h = ui.dp(31f).toFloat()
+        val top = (height - h) / 2
+        rect.set(0f, top, width.toFloat(), top + h)
+        paint.color = Palette.mix(ui.p.accent, off, at.coerceIn(0f, 1f))
+        canvas.drawRoundRect(rect, h / 2, h / 2, paint)
+        val inset = ui.dp(2f).toFloat()
+        val size = h - inset * 2
+        val w = size + ui.dp(7f) * stretch
+        val left = inset + (width - inset * 2 - w) * at
+        rect.set(left, top + inset, left + w, top + inset + size)
+        canvas.drawRoundRect(rect, size / 2, size / 2, knob)
+    }
+}
+
+/**
+ * A [Ui.wheel]: a vertical picker, as iOS draws one. Its options (words, or colour swatches) roll up and
+ * down under a fixed accent band, and the one in the band is chosen. Dragged, it follows the finger (resisting past either end);
+ * let go, it carries on at the finger's speed and settles, on a spring, on the option nearest where that
+ * speed would have taken it. A tap on an option above or below rolls it into the band. Each option that
+ * reaches the band ticks and is chosen at once ([onPick]). Away from the band the options shrink and
+ * fade, as on a drum; an option's label turns to the band's ink exactly where it enters the band. Drawn
+ * rather than built of views, so a roll is one draw a frame.
+ */
+@android.annotation.SuppressLint("ViewConstructor")
+class Wheel(private val ui: Ui, private val options: List<String>, chosen: Int, private val rows: Int = 3, private val colors: List<Int>? = null) : View(ui.context) {
+    var chosen = chosen.coerceIn(0, maxOf(0, options.lastIndex))
+        private set
+    var onPick: (Int) -> Unit = {}
+    /** What it chooses ("How long"), said before the chosen option to a screen reader. */
+    var name = ""
+        set(value) { field = value; describe() }
+    private val rowH = ui.dp(34f).toFloat()
+    private val inset = ui.dp(3f).toFloat()
+    /** The option at the band's centre, fractional while it rolls. */
+    private var at = this.chosen.toFloat()
+    private val label = android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = ui.f.bodySemi
+        textSize = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, 15f, ui.context.resources.displayMetrics)
+        textAlign = android.graphics.Paint.Align.CENTER
+    }
+    private val track = ui.shape(ui.p.surface2, 12f)
+    private val band = ui.shape(ui.p.accent, 10f)
+    /** With [colors] (a wheel of swatches, [options] naming them), the band is a ring: an accent fill would hide the accent's own swatch. */
+    private val ring = ui.shape(ui.p.surface, 10f, ui.p.text, 2f)
+    private val dot = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private val bandRect = android.graphics.RectF()
+    private val slop = android.view.ViewConfiguration.get(ui.context).scaledTouchSlop
+    private var downY = 0f
+    private var startAt = 0f
+    private var dragging = false
+    private var tracker: android.view.VelocityTracker? = null
+    private var roll: android.animation.ValueAnimator? = null
+
+    init {
+        isClickable = true // takes its touches: press feedback leaves what's behind it alone
+        describe()
+    }
+
+    private fun describe() {
+        val option = options.getOrNull(chosen).orEmpty()
+        contentDescription = if (name.isEmpty()) option else "$name: $option"
+    }
+
+    /** As wide as its widest option needs, with room around it (unless told a width): a band only as wide as the labels. */
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val natural = if (colors != null) ui.dp(84) else ((options.maxOfOrNull { label.measureText(it) } ?: 0f) + ui.dp(44f)).toInt().coerceAtLeast(ui.dp(84))
+        val size = MeasureSpec.getSize(widthMeasureSpec)
+        val width = when (MeasureSpec.getMode(widthMeasureSpec)) {
+            MeasureSpec.EXACTLY -> size
+            MeasureSpec.AT_MOST -> minOf(natural, size)
+            else -> natural
+        }
+        setMeasuredDimension(width, (rows * rowH + inset * 2).toInt())
+    }
+
+    /** Past either end it resists more the further it's pulled, as iOS's edges do. */
+    private fun rubber(raw: Float): Float {
+        val last = options.lastIndex.toFloat()
+        fun band(o: Float) = o * rows * 0.55f / (rows + 0.55f * kotlin.math.abs(o))
+        return when {
+            raw < 0 -> -band(-raw)
+            raw > last -> last + band(raw - last)
+            else -> raw
+        }
+    }
+
+    /** At [to] (fractional): ticks and chooses as a new option reaches the band's middle. */
+    private fun moveTo(to: Float) {
+        at = to
+        val now = kotlin.math.round(at).toInt().coerceIn(0, options.lastIndex)
+        if (now != chosen) {
+            chosen = now
+            describe()
+            Haptics.tick(this)
+            onPick(now)
+        }
+        invalidate()
+    }
+
+    /** Rolls to option [i] on a spring, starting at [rowsPerSecond] (a fling let go). */
+    private fun settle(i: Int, rowsPerSecond: Float = 0f) {
+        roll?.cancel()
+        val to = i.coerceIn(0, options.lastIndex).toFloat()
+        if (!Motion.enabled) return moveTo(to)
+        val spring = Motion.SETTLE.toward(at, to, rowsPerSecond)
+        roll = android.animation.ValueAnimator.ofFloat(at, to).apply {
+            interpolator = spring
+            duration = spring.duration
+            addUpdateListener { moveTo(it.animatedValue as Float) }
+            start()
+        }
+    }
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
+        if (options.isEmpty()) return false
+        when (e.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                roll?.cancel()
+                // Vertical drags here roll the wheel, not the sheet or page around it.
+                parent?.requestDisallowInterceptTouchEvent(true)
+                downY = e.y
+                startAt = at
+                dragging = false
+                tracker = android.view.VelocityTracker.obtain().apply { addMovement(e) }
+            }
+            android.view.MotionEvent.ACTION_MOVE -> {
+                tracker?.addMovement(e)
+                val dy = e.y - downY
+                if (!dragging && kotlin.math.abs(dy) > slop) { dragging = true; downY = e.y; startAt = at }
+                if (dragging) moveTo(rubber(startAt - (e.y - downY) / rowH))
+            }
+            android.view.MotionEvent.ACTION_UP -> {
+                tracker?.addMovement(e)
+                if (dragging) {
+                    val v = tracker?.run { computeCurrentVelocity(1000); -yVelocity / rowH } ?: 0f
+                    // Where the fling would come to rest (Apple's projection, normal deceleration), then the option nearest it.
+                    val rest = at + v * 0.998f / (1 - 0.998f) / 1000f
+                    settle(kotlin.math.round(rest).toInt(), v)
+                } else {
+                    performClick()
+                    settle(kotlin.math.round(at + (e.y - height / 2f) / rowH).toInt())
+                }
+                tracker?.recycle(); tracker = null
+            }
+            android.view.MotionEvent.ACTION_CANCEL -> {
+                settle(kotlin.math.round(at).toInt())
+                tracker?.recycle(); tracker = null
+            }
+        }
+        return true
+    }
+
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        track.setBounds(0, 0, width, height)
+        track.draw(canvas)
+        val cy = height / 2f
+        bandRect.set(inset, cy - rowH / 2, width - inset, cy + rowH / 2)
+        if (colors != null) {
+            ring.setBounds(bandRect.left.toInt(), bandRect.top.toInt(), bandRect.right.toInt(), bandRect.bottom.toInt())
+            ring.draw(canvas)
+            canvas.save()
+            canvas.clipRect(inset, inset, width - inset, height - inset)
+            drawSwatches(canvas, cy, colors)
+            canvas.restore()
+            return
+        }
+        band.setBounds(bandRect.left.toInt(), bandRect.top.toInt(), bandRect.right.toInt(), bandRect.bottom.toInt())
+        band.draw(canvas)
+        canvas.save()
+        canvas.clipRect(inset, inset, width - inset, height - inset)
+        drawLabels(canvas, cy, ui.p.muted, fade = true)
+        canvas.restore()
+        // Again inside the band, in its ink: a label changes colour right where it crosses the band's edge.
+        canvas.save()
+        canvas.clipRect(bandRect)
+        drawLabels(canvas, cy, ui.p.accentInk, fade = false)
+        canvas.restore()
+    }
+
+    /** A dot of each colour, shrinking and fading away from the band as the labels do. */
+    private fun drawSwatches(canvas: android.graphics.Canvas, cy: Float, colors: List<Int>) {
+        val reach = rows / 2f + 0.5f
+        val first = kotlin.math.floor(at - reach).toInt().coerceAtLeast(0)
+        val last = kotlin.math.ceil(at + reach).toInt().coerceAtMost(colors.lastIndex)
+        val r = ui.dp(10f).toFloat()
+        for (i in first..last) {
+            val away = ((i - at) / reach).coerceIn(-1f, 1f)
+            dot.color = colors[i]
+            dot.alpha = (255 * (1 - 0.6f * kotlin.math.abs(away))).toInt()
+            canvas.drawCircle(width / 2f, cy + (i - at) * rowH, r * (1 - 0.18f * away * away), dot)
+        }
+    }
+
+    private fun drawLabels(canvas: android.graphics.Canvas, cy: Float, color: Int, fade: Boolean) {
+        val reach = rows / 2f + 0.5f
+        val first = kotlin.math.floor(at - reach).toInt().coerceAtLeast(0)
+        val last = kotlin.math.ceil(at + reach).toInt().coerceAtMost(options.lastIndex)
+        val baseline = -(label.ascent() + label.descent()) / 2
+        for (i in first..last) {
+            val away = ((i - at) / reach).coerceIn(-1f, 1f)
+            val y = cy + (i - at) * rowH
+            val k = 1 - 0.14f * away * away
+            label.color = color
+            label.alpha = if (fade) (255 * (1 - 0.7f * kotlin.math.abs(away))).toInt() else 255
+            canvas.save()
+            canvas.scale(k, k, width / 2f, y)
+            canvas.drawText(options[i], width / 2f, y + baseline, label)
+            canvas.restore()
+        }
+    }
+
+    override fun onInitializeAccessibilityNodeInfo(info: android.view.accessibility.AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        if (chosen < options.lastIndex) info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD)
+        if (chosen > 0) info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD)
+    }
+
+    override fun performAccessibilityAction(action: Int, arguments: android.os.Bundle?): Boolean = when (action) {
+        android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD -> { settle(chosen + 1); true }
+        android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> { settle(chosen - 1); true }
+        else -> super.performAccessibilityAction(action, arguments)
+    }
+
+    override fun onDetachedFromWindow() {
+        roll?.cancel()
+        super.onDetachedFromWindow()
+    }
+}
+
+/**
  * A [Ui.tape]: a [SegmentPill] row with more options than fit, on a track that scrolls sideways under it
  * like a tape. A tap chooses an option. The pill can be dragged too: it follows the finger, choosing the
  * option it's nearest, and held near either end the tape runs on under it (faster nearer the edge),
@@ -606,6 +900,9 @@ class Ui(val context: Context, val p: Palette, val f: Fonts) {
      * sideways, four and a half in view, and the pill can be dragged along them as well as tapped.
      * [onChoose] runs each time the chosen option changes, during a drag too, each change with a tick.
      */
+    /** A [Wheel]: [options] rolling up and down under a band, [rows] of them in view; [onChoose] runs as each reaches the band. */
+    fun wheel(options: List<String>, chosen: Int, rows: Int = 3, colors: List<Int>? = null, onChoose: (Int) -> Unit) = Wheel(this, options, chosen, rows, colors).apply { onPick = onChoose }
+
     fun tape(options: List<String>, chosen: Int, onChoose: (Int) -> Unit): Tape {
         val labels = options.mapIndexed { i, label ->
             fitText(label, 13f, if (i == chosen) p.accentInk else p.muted, f.bodySemi, lines = 1).apply {

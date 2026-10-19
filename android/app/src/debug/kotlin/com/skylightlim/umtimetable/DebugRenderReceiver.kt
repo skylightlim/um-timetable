@@ -36,8 +36,11 @@ import java.io.File
  * view week or day with --ez sample true draws made-up plans on it (--ei boxDay 2 --ei boxAt 900: with the selection box
  * waiting on Tuesday 15:00); view plan draws the plan editor's card
  * (--ez new false: a saved plan's, with Delete; --ei ahead 3: dated 3 days from today, so its reminders show;
- * --ei maxEnd 1140: room until 19:00, so How long's tape runs on).
+ * --ei maxEnd 1140: room until 19:00, so How long's wheel runs on; --ei cap 260: its middle at most 260dp, scrolling, as
+ * when the keyboard leaves too little room).
  * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200).
+ * view occcard draws Settings' card for choosing an occurrence (--es code CODE).
+ * view pinmenu draws the card a long press on a course page's section name brings up (--ez pinned true: Unpin).
  * view signout draws the Sign out question's card. view settings draws the Settings sheet (--ez signedIn true|false
  * for either Account row); view signin the first-run sign-in poster, at screen height (or --ei height px).
  * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
@@ -73,12 +76,27 @@ class DebugRenderReceiver : BroadcastReceiver() {
             "plan" -> PlanSheet.build(host.ui, samplePlans(host)[1].let {
                 val dated = if (intent.hasExtra("ahead")) it.copy(date = java.time.LocalDate.now().plusDays(intent.getIntExtra("ahead", 0).toLong())) else it
                 if (intent.getBooleanExtra("new", true)) dated.copy(text = "") else dated
-            }, intent.getBooleanExtra("new", true), intent.getIntExtra("maxEnd", 16 * 60 + 30)).card
+            }, intent.getBooleanExtra("new", true), intent.getIntExtra("maxEnd", 16 * 60 + 30)).also { e ->
+                // --ei cap N: the card's middle at most N dp, as when the keyboard leaves too little room.
+                intent.getIntExtra("cap", 0).takeIf { it > 0 }?.let { e.scroll.cap = host.ui.dp(it) }
+            }.card
+            // The card for choosing an occurrence (--es code CODE, else the timetable's first course), with made-up options 1–20.
+            "occcard" -> FrameLayout(c).apply {
+                setPadding(host.ui.dp(4), host.ui.dp(16), host.ui.dp(4), host.ui.dp(24))
+                val course = host.timetable.courses.firstOrNull { it.code == intent.getStringExtra("code") } ?: host.timetable.courses.first()
+                addView(SettingsSheet.occurrenceCard(host.ui, course.code, course.short, course.color, (1..20).toList(), course.occ, course.occ) {})
+            }
+            // The card a long press on a course page's section name brings up (--ez pinned true: "Unpin").
+            "pinmenu" -> FrameLayout(c).apply {
+                setPadding(host.ui.dp(16), host.ui.dp(16), host.ui.dp(16), host.ui.dp(24))
+                addView(SpectrumScreens.pinCard(host.ui, intent.getBooleanExtra("pinned", false)), FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+            }
             "due" -> if (intent.getBooleanExtra("sample", false)) sampleDue(context, host) else SpectrumScreens.due(host)
             "news" -> SpectrumScreens.news(host)
             "files" -> SpectrumScreens.courses(host)
             "grades" -> if (intent.getBooleanExtra("sample", false)) SpectrumScreens.grades(host, sampleGrades(context)) else SpectrumScreens.grades(host)
-            "settings" -> SettingsSheet.build(host, c, intent.getBooleanExtra("signedIn", SpectrumStore.signedIn(context))) {}
+            // --ez open true: the Occurrences fold open.
+            "settings" -> SettingsSheet.also { it.occurrencesOpen = intent.getBooleanExtra("open", false) }.build(host, c, intent.getBooleanExtra("signedIn", SpectrumStore.signedIn(context))) {}
             "signin" -> SignInScreen.build(host.ui) {}
             // The top bar as MainActivity lays it out: --es view title --es page Grades|day|week (day and week
             // with their widest titles)
@@ -125,6 +143,8 @@ class DebugRenderReceiver : BroadcastReceiver() {
             if (view == "signin") View.MeasureSpec.makeMeasureSpec(intent.getIntExtra("height", context.resources.displayMetrics.heightPixels), View.MeasureSpec.EXACTLY) else View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
         )
         frame.layout(0, 0, frame.measuredWidth, frame.measuredHeight)
+        // --ez bounds true: every view's place and size (and a text's baseline) in logcat, as "bounds".
+        if (intent.getBooleanExtra("bounds", false)) logBounds(frame, 0)
         // Week with --ez sample true --ei boxDay D --ei boxAt MIN: the selection box waiting there (taken or free).
         if (intent.hasExtra("boxDay")) {
             fun grid(v: View): WeekGrid? = v as? WeekGrid ?: (v as? android.view.ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { grid(g.getChildAt(it)) } }
@@ -143,13 +163,19 @@ class DebugRenderReceiver : BroadcastReceiver() {
         save(context, bitmap, "$view${host.openCourse?.let { "-$it" } ?: ""}${if (dark) "-dark" else ""}")
     }
 
-    /** Made-up plans in the week drawn: study, the gym, reading (none of them the user's). */
+    private fun logBounds(v: View, depth: Int) {
+        val text = (v as? android.widget.TextView)?.text?.toString()?.take(24)?.let { " \"$it\" baseline ${v.baseline}" }.orEmpty()
+        Log.i("bounds", "${"  ".repeat(depth)}${v.javaClass.simpleName} ${v.left},${v.top} ${v.width}x${v.height} measured ${v.measuredHeight}$text")
+        if (v is android.view.ViewGroup) for (i in 0 until v.childCount) logBounds(v.getChildAt(i), depth + 1)
+    }
+
+    /** Made-up plans in the week drawn: study, the gym (every week), reading (none of them the user's). */
     private fun samplePlans(host: Host): List<Plan> {
         val palette = Plans.palette(Scheme.load(host.ui.context), host.ui.p.accent)
         val monday = host.dateOf(1)
         return listOf(
             Plan("s1", monday.plusDays(1), 10 * 60, 11 * 60, "Group study for the quiz", palette[0], 10),
-            Plan("s2", monday.plusDays(2), 14 * 60, 16 * 60, "Gym", palette[3]),
+            Plan("s2", monday.plusDays(2), 14 * 60, 16 * 60, "Gym", palette[3], weekly = true, from = monday.plusDays(2).minusWeeks(1)),
             Plan("s3", monday.plusDays(4), 11 * 60, 11 * 60 + 30, "Read chapter 3", palette[7], 0),
         )
     }
@@ -460,7 +486,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         override fun courseContents(id: Int): JSONArray? = SpectrumStore.read(context, "contents-$id")?.let { runCatching { JSONArray(it) }.getOrNull() }
         override fun courseError(id: Int): String? = null
         override fun signIn() = Unit
-        override fun signOut() = Unit
+        override fun signOut(from: View?) = Unit
         override fun refresh() = Unit
         override fun openMaya() = Unit
         override fun openTimeEdit() = Unit

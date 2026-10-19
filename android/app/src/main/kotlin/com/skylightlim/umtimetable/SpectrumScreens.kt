@@ -11,6 +11,7 @@ import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.skylightlim.umtimetable.Motion.spring
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Calendar
@@ -25,7 +26,8 @@ interface SpectrumHost : Host {
     fun courseContents(id: Int): JSONArray?
     fun courseError(id: Int): String?
     fun signIn()
-    fun signOut()
+    /** Sign out's question, its card flying out of [from] (the Sign out button) when there is one. */
+    fun signOut(from: View? = null)
     fun refresh()
     fun openMaya()
     fun openTimeEdit()
@@ -744,14 +746,58 @@ object SpectrumScreens {
             return page
         }
         val folder = code.ifEmpty { "Spectrum" }
+        // Each section in a box of its own, so a pin can move it to the top: pinned ones come first (in
+        // the order pinned), under "Pinned", then the rest in Spectrum's order.
+        val boxes = LinkedHashMap<String, LinearLayout>()
+        val pins = SpectrumStore.pinnedSections(ui.context, id).toMutableList()
+        val holder = ui.column()
+        val pinnedLabel = ui.label("Pinned", p.muted, 10.5f)
+        val restLabel = ui.label("Other sections", p.muted, 10.5f)
+        fun arrange() {
+            holder.removeAllViews()
+            val pinned = pins.filter { it in boxes }
+            if (pinned.isNotEmpty()) holder.addView(pinnedLabel, ui.wide(top = 18f, bottom = -12f))
+            for (k in pinned) holder.addView(boxes.getValue(k))
+            if (pinned.isNotEmpty() && boxes.size > pinned.size) holder.addView(restLabel, ui.wide(top = 30f, bottom = -12f))
+            for ((k, box) in boxes) if (k !in pinned) holder.addView(box)
+        }
         sections.objects().forEachIndexed { si, sec ->
             val modules = sec.optJSONArray("modules")?.objects().orEmpty().filter { it.optString("kind") != "label" || hasContent(it.optString("html")) }
             val summary = sec.optString("summary")
             if (modules.isEmpty() && !hasContent(summary)) return@forEachIndexed
-            // Section names as Spectrum writes them ("Course Information (SEM1, 2026/2027)"), bold and dark.
-            page.addView(ui.text(sec.optString("name"), 18f, p.text, ui.f.bodyBold), ui.wide(top = 26f, bottom = 10f))
+            // Spectrum's section id; a page cached before ids were kept goes by the name.
+            val sectionKey = sec.optInt("id").takeIf { it > 0 }?.toString() ?: "name:${sec.optString("name")}"
+            val box = ui.column()
+            boxes[sectionKey] = box
+            // Section names as Spectrum writes them ("Course Information (SEM1, 2026/2027)"), bold and dark. A
+            // long press on one offers to pin it (or unpin it); a pinned one has a pin after its name.
+            val name = sec.optString("name")
+            val mark = ui.icon(R.drawable.ic_pin_on, p.accentText, 16f).apply {
+                visibility = if (sectionKey in pins) View.VISIBLE else View.GONE
+                contentDescription = "Pinned"
+            }
+            box.addView(ui.row(gap = 8f).apply {
+                minimumHeight = ui.dp(48)
+                addView(ui.text(name, 18f, p.text, ui.f.bodyBold), ui.grow())
+                addView(mark)
+                contentDescription = "$name${if (sectionKey in pins) ", pinned" else ""}. Long press to ${if (sectionKey in pins) "unpin" else "pin"} it."
+                setOnLongClickListener { heading ->
+                    val pinned = sectionKey in pins
+                    pinMenu(ui, heading, pinned) {
+                        Motion.resize(holder)
+                        pins.remove(sectionKey)
+                        if (!pinned) pins += sectionKey
+                        SpectrumStore.pinSection(ui.context, id, sectionKey, !pinned)
+                        heading.contentDescription = "$name${if (!pinned) ", pinned" else ""}. Long press to ${if (!pinned) "unpin" else "pin"} it."
+                        mark.visibility = if (pinned) View.GONE else View.VISIBLE
+                        if (!pinned) Motion.pop(mark, 0.3f)
+                        arrange()
+                    }
+                    true
+                }
+            }, ui.wide(top = 14f, bottom = -2f))
             // Every text in full and at reading size: nothing behind Show more.
-            if (hasContent(summary)) page.addView(textBlock(ui, RichText.view(h, summary, "s$id-$si", folder, 0, 16f, expanded = h.expanded)), ui.wide(bottom = 8f))
+            if (hasContent(summary)) box.addView(textBlock(ui, RichText.view(h, summary, "s$id-$si", folder, 0, 16f, expanded = h.expanded)), ui.wide(bottom = 8f))
             val list = ui.column(gap = 8f)
             modules.forEachIndexed { mi, m ->
                 val key = "m$id-$si-$mi"
@@ -792,9 +838,56 @@ object SpectrumScreens {
                 if (hasContent(availability)) item.addView(RichText.view(h, availability, "$key-a", folder, 0, 13.5f, p.muted, h.expanded).apply { setPadding(ui.dp(42), ui.dp(4), ui.dp(4), ui.dp(2)) })
                 list.addView(item)
             }
-            page.addView(list)
+            box.addView(list)
         }
+        arrange()
+        page.addView(holder)
         return page
+    }
+
+    /** [pinMenu]'s card: a pin and "Pin to top", or an outline pin and "Unpin". */
+    fun pinCard(ui: Ui, pinned: Boolean) = ui.row(gap = 10f).apply {
+        background = ui.pressable(ui.shape(ui.p.surface, 14f, ui.p.line), 14f)
+        elevation = ui.dp(10f).toFloat()
+        setPadding(ui.dp(14), ui.dp(12), ui.dp(18), ui.dp(12))
+        addView(ui.icon(if (pinned) R.drawable.ic_pin else R.drawable.ic_pin_on, ui.p.accentText, 18f))
+        addView(ui.text(if (pinned) "Unpin" else "Pin to top", 15f, ui.p.text, ui.f.bodySemi))
+    }
+
+    /**
+     * What a long press on a section's name offers: "Pin to top", or "Unpin" for a pinned one, on a small
+     * card that grows out of the name (anchored where the finger asked), with a vibration as it comes up.
+     * A tap on it runs [toggle]; a tap anywhere else puts it away.
+     */
+    private fun pinMenu(ui: Ui, heading: View, pinned: Boolean, toggle: () -> Unit) {
+        val card = pinCard(ui, pinned)
+        // Room around the card for its shadow, which the popup's window would otherwise cut.
+        val room = FrameLayout(ui.context).apply {
+            setPadding(ui.dp(12), ui.dp(4), ui.dp(12), ui.dp(16))
+            clipChildren = false
+            addView(card)
+        }
+        val popup = android.widget.PopupWindow(room, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            isOutsideTouchable = true
+            elevation = 0f
+            animationStyle = 0
+        }
+        card.setOnClickListener {
+            Haptics.tick(card)
+            popup.dismiss()
+            toggle()
+        }
+        Haptics.threshold(heading, true)
+        popup.showAsDropDown(heading, -ui.dp(12), -ui.dp(6))
+        if (!Motion.enabled) return
+        card.pivotX = 0f
+        card.pivotY = 0f
+        card.scaleX = 0.8f
+        card.scaleY = 0.8f
+        card.alpha = 0f
+        card.animate().scaleX(1f).scaleY(1f).spring(Motion.BOUNCY).start()
+        Motion.fade(card, 0f, 1f, 120)
     }
 
     private fun hasContent(html: String) = html.contains("<img", ignoreCase = true) ||
