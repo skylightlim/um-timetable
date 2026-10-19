@@ -18,6 +18,20 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (occurrences: choose the course first)
+
+**Asked for:** the occurrence choice as a secondary menu: choose the course to change first, and only
+then does its strip appear to scroll.
+
+**Change:** the Occurrences fold lists the courses as rows (code, name, "Spectrum: N" when the choice
+isn't Spectrum's) with the occurrence in use and a chevron at the end. A tap on a course opens its wheel
+under it (five options in view, as wide as they need, centred) and closes any other; a tap again closes
+it. The row's value follows the wheel as it turns. Which course is open stays across a redraw of the
+sheet. Debug: `--es view settings --ez open true --es occ CODE` draws that course's wheel open.
+
+**Checked:** unit tests pass. A render of Settings with the fold open and one course's wheel open: the
+other courses closed, lines between rows only. Opening, closing and turning need a try by hand.
+
 ## 19 October 2026 (Day's cards: the room level with the course name)
 
 **Asked for:** on the class cards the course name isn't aligned with the room.

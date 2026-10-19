@@ -88,7 +88,8 @@ class DebugRenderReceiver : BroadcastReceiver() {
             "news" -> SpectrumScreens.news(host)
             "files" -> SpectrumScreens.courses(host)
             "grades" -> if (intent.getBooleanExtra("sample", false)) SpectrumScreens.grades(host, sampleGrades(context)) else SpectrumScreens.grades(host)
-            "settings" -> SettingsSheet.also { it.occurrencesOpen = intent.getBooleanExtra("open", false) }.build(host, c, intent.getBooleanExtra("signedIn", SpectrumStore.signedIn(context))) {}
+            // --ez open true: the Occurrences fold open; --es occ WIX1002: that course's wheel open in it.
+            "settings" -> SettingsSheet.also { it.occurrencesOpen = intent.getBooleanExtra("open", false); it.occurrenceOpen = intent.getStringExtra("occ") }.build(host, c, intent.getBooleanExtra("signedIn", SpectrumStore.signedIn(context))) {}
             "signin" -> SignInScreen.build(host.ui) {}
             // The top bar as MainActivity lays it out: --es view title --es page Grades|day|week (day and week
             // with their widest titles)
