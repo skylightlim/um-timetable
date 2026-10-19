@@ -26,7 +26,8 @@ interface SpectrumHost : Host {
     fun courseContents(id: Int): JSONArray?
     fun courseError(id: Int): String?
     fun signIn()
-    fun signOut()
+    /** Sign out's question, its card flying out of [from] (the Sign out button) when there is one. */
+    fun signOut(from: View? = null)
     fun refresh()
     fun openMaya()
     fun openTimeEdit()

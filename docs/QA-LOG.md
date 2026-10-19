@@ -18,6 +18,28 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (cards that fly out: occurrences and Sign out, over a blur)
+
+**Asked for:** the occurrence choice as a pop-up over a blurred background like Sign out's, popping out
+the way the plan card pops out of the calendar; and Sign out's card popping out like that too.
+
+**Change:** the plan card's flight is now `Motion.flyOut`/`Motion.flyBack`, shared: a card shows at the
+size of what it came from, pops (swells, lifts, tilts up off the page), then flies to the middle on a
+spring, turning to face the user, its contents fading in; closing, it shrinks back down into where it
+came from. Out of something as wide as a row it swells less (8% at most), so it never pops past the
+screen; the plan card out of a week cell moves as before. `ConfirmDialog.present` takes where it was
+opened (`from`): the card flies out of it, and back into it when closed without its action (outside,
+Back, Cancel). Its background now really blurs (the window's background blur, growing in as the card
+comes out) under a lighter dim; Sign out's card had a dark dim only. Where the phone has blur off (battery
+saver), the darker dim stays. Sign out's card flies out of the Sign out button; confirmed, it fades as
+before. Occurrences: the courses stay rows with their occurrence; a tap flies a card out of the row with
+the course's code and name, its occurrences on a five-row wheel, a line on what Spectrum says, and Cancel
+and Choose. Choose saves it, and the card flies back into the row, whose value pops. Debug: `--es view
+occcard [--es code CODE]` draws the card.
+
+**Checked:** unit tests pass. Renders of the occurrence card and of Settings' course rows. The flights,
+the blur and the pops are motion and need a try by hand.
+
 ## 19 October 2026 (occurrences: choose the course first)
 
 **Asked for:** the occurrence choice as a secondary menu: choose the course to change first, and only

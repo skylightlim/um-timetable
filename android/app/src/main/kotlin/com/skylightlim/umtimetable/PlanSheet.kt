@@ -18,7 +18,6 @@ import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsAnimation
 import android.view.WindowManager
-import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
@@ -295,7 +294,6 @@ object PlanSheet {
      */
     fun show(ui: Ui, from: RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float, onRepick: (Plan) -> Unit = {}, onDone: () -> Unit) {
         val c = ui.context
-        val d = c.resources.displayMetrics.density
         val editor = build(ui, plan, isNew, maxEnd)
         val card = editor.card
         val content = editor.content
@@ -385,13 +383,6 @@ object PlanSheet {
             @Suppress("DEPRECATION") setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         }
 
-        /** Where the card is (its centre on screen), so the flight can start from and end at the cell. */
-        fun centre(): Pair<Float, Float> {
-            // From its layout in its lifted place, so the flight's own moves and scaling don't count.
-            val at = IntArray(2).also(holder::getLocationOnScreen)
-            return (at[0] + card.left + card.width / 2f) to (at[1] + card.top + card.height / 2f)
-        }
-
         var closing = false
         val close: (String) -> Unit = close@{ how ->
             if (closing) return@close
@@ -426,12 +417,7 @@ object PlanSheet {
                 return@close
             }
             // Back down into its cell: for a save, as long as the plan now is.
-            val (cx, cy) = centre()
-            val to = RectF(from).apply { if (how == "save") bottom = top + (editor.end - plan.start) / 60f * hourPx - 2 }
-            card.animate().translationX(to.centerX() - cx).translationY(to.centerY() - cy)
-                .scaleX(to.width() / card.width).scaleY(to.height() / card.height)
-                .rotationX(18f).rotation(-3f).translationZ(0f)
-                .setInterpolator(Motion.EXIT).setDuration(260).withEndAction { done() }.start()
+            Motion.flyBack(card, RectF(from).apply { if (how == "save") bottom = top + (editor.end - plan.start) / 60f * hourPx - 2 }) { done() }
         }
 
         editor.close = close
@@ -451,32 +437,10 @@ object PlanSheet {
         dialog.show()
         if (isNew) field.requestFocus()
         if (!Motion.enabled) return
-        // Out of the grid: the cell as it is there, its contents hidden until the card lands.
-        content.alpha = 0f
+        // Out of the grid: the cell as it is there, its contents hidden until the card lands. It pops, flies to
+        // the middle turning to face the user, and lands with a bounce (the flight other cards share).
         scrim.alpha = 0f
-        card.alpha = 0f
-        card.post {
-            val (cx, cy) = centre()
-            val sx = from.width() / card.width
-            val sy = from.height() / card.height
-            card.pivotX = card.width / 2f
-            card.pivotY = card.height / 2f
-            card.cameraDistance = 9000 * d
-            card.translationX = from.centerX() - cx
-            card.translationY = from.centerY() - cy
-            card.scaleX = sx
-            card.scaleY = sy
-            card.alpha = 1f
-            Motion.fade(scrim, 0f, 1f, 260)
-            // It pops: swells, lifts and tilts up off the page...
-            card.animate().scaleX(sx * 1.3f).scaleY(sy * 1.3f).rotationX(24f).rotation(-7f).translationZ(ui.dp(10f).toFloat())
-                .setInterpolator(DecelerateInterpolator(1.5f)).setDuration(130).withEndAction {
-                    // ...then flies to the middle, turning to face the user, and lands with a bounce.
-                    card.animate().translationX(0f).translationY(0f).scaleX(1f).scaleY(1f).rotationX(0f).rotation(0f)
-                        .translationZ(ui.dp(24f).toFloat()).spring(Motion.SETTLE).start()
-                    Motion.fade(content, 0f, 1f, 220)
-                    Motion.enter(body, ui.dp(14f).toFloat())
-                }.start()
-        }
+        Motion.fade(scrim, 0f, 1f, 260)
+        Motion.flyOut(card, from, content) { Motion.enter(body, ui.dp(14f).toFloat()) }
     }
 }

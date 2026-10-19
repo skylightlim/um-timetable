@@ -209,7 +209,9 @@ object SettingsSheet {
 
         section("Account", listOf(
             if (signedIn) {
-                row(SpectrumScreens.accountName(context).ifBlank { "Signed in" }, null, button("Sign out") { h.signOut() }, null)
+                lateinit var out: View
+                out = button("Sign out") { h.signOut(out) }
+                row(SpectrumScreens.accountName(context).ifBlank { "Signed in" }, null, out, null)
             } else {
                 row("Not signed in", "Sign in to Spectrum with your SiswaMail for courses, deadlines, marks and news.", button("Sign in") { h.signIn() }, null)
             },
@@ -217,13 +219,45 @@ object SettingsSheet {
         return sheet
     }
 
-    /** Whether the Occurrences fold is open, and which course's wheel: they stay so when the sheet is redrawn (back from TimeEdit). */
+    /** Whether the Occurrences fold is open: it stays so when the sheet is redrawn (back from TimeEdit). */
     var occurrencesOpen = false
-    var occurrenceOpen: String? = null
+
+    /**
+     * The card for choosing [code]'s occurrence: the course's code large in its colour and its name, its
+     * occurrences on a wheel ([mine], the one in use, chosen), what Spectrum says ([theirs]), then Cancel
+     * and Choose. [done] gets the occurrence chosen, or null for Cancel.
+     */
+    fun occurrenceCard(ui: Ui, code: String, name: String, color: Int, options: List<Int>, mine: Int, theirs: Int?, done: (Int?) -> Unit): View {
+        val p = ui.p
+        var pick = mine
+        fun says(occ: Int) = when {
+            theirs == null -> "Spectrum doesn't say which is yours."
+            occ == theirs -> "Your group on Spectrum."
+            else -> "Spectrum puts you in Occ $theirs."
+        }
+        val note = ui.text(says(mine), 13f, p.muted).apply { gravity = Gravity.CENTER }
+        return ConfirmDialog.frame(ui).apply {
+            addView(ui.text(code, 30f, p.courseText(color), ui.f.sign))
+            addView(ui.text(name, 15f, p.muted), ui.wide(top = 2f))
+            addView(ui.column().apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                addView(ui.wheel(options.map { "Occ $it" }, options.indexOf(mine).coerceAtLeast(0), rows = 5) { i ->
+                    pick = options[i]
+                    note.text = says(pick)
+                }.apply { this.name = "$code occurrence" }, LinearLayout.LayoutParams(ui.dp(150), LinearLayout.LayoutParams.WRAP_CONTENT))
+            }, ui.wide(top = 18f))
+            addView(note, ui.wide(top = 12f))
+            addView(ui.row(gap = 8f).apply {
+                addView(ConfirmDialog.button(ui, "Cancel", p.surface2, p.text) { done(null) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(ConfirmDialog.button(ui, "Choose", p.accent, p.accentInk) { done(pick) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            }, ui.wide(top = 20f))
+        }
+    }
 
     /**
      * Occurrences, a fold in Timetable: each course with its occurrence, Spectrum's unless the user chose
-     * another; a tap on a course opens a wheel of those TimeEdit lists for it. A choice is saved at once; the timetable keeps
+     * another; a tap on a course flies a card out of it ([occurrenceCard]) with a wheel of those TimeEdit
+     * lists for it, over the sheet, blurred. A choice is saved at once; the timetable keeps
      * its classes until it's got again from TimeEdit (the button under the courses), whose answer is
      * shown before it's used. [row] makes the sheet's rows.
      */
@@ -253,74 +287,52 @@ object SettingsSheet {
             visibility = if (stale()) View.VISIBLE else View.GONE
             setOnClickListener { h.openTimeEdit() }
         }
-        // Each course a row with the occurrence in use; a tap opens its wheel under it (and closes any
-        // other), so only the course being changed has one.
-        val wheels = mutableMapOf<String, Pair<View, View>>() // code → (its wheel's box, its chevron)
-        fun open(code: String?) {
-            for ((k, v) in wheels) {
-                val on = k == code
-                if ((v.first.visibility == View.VISIBLE) != on) {
-                    v.first.visibility = if (on) View.VISIBLE else View.GONE
-                    Motion.turn(v.second, on)
-                }
-            }
-            occurrenceOpen = code
-        }
+        // Each course a row with the occurrence in use; a tap flies a card out of it with that course's wheel.
         for ((n, code) in codes.withIndex()) {
             val course = h.timetable.courses.firstOrNull { it.code == code }
-            val mine = chosen.getInt(code)
+            val name = course?.short ?: names[code].orEmpty()
             val theirs = spectrum.optInt(code).takeIf { it > 0 }
             val known = offered.optJSONArray(code)?.let { a -> (0 until a.length()).map { a.getInt(it) } }.orEmpty()
-            // TimeEdit's list (and the ones in use, in case it left one out); before any lookup, 1 to 30.
-            val options = (known.ifEmpty { (1..30).toList() } + listOfNotNull(mine, theirs)).distinct().sorted()
             // Said only when the choice isn't Spectrum's: the fold's head already says the rest are.
             val note = ui.text("", 12.5f, p.muted)
             fun showNote(occ: Int) {
                 note.text = if (theirs == null || occ == theirs) "" else "Spectrum: $theirs"
                 note.visibility = if (note.text.isEmpty()) View.GONE else View.VISIBLE
             }
-            showNote(mine)
-            val value = ui.text("Occ $mine", 14f, p.text, ui.f.bodySemi)
-            val chevron = Motion.chevron(ui, code == occurrenceOpen, p.faint).apply { layoutParams = LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)) }
-            val wheel = ui.wheel(options.map { "Occ $it" }, options.indexOf(mine), rows = 5) { i ->
-                val occ = options[i]
-                SpectrumStore.pickOccurrence(context, code, occ)
-                chosen.put(code, occ)
-                value.text = "Occ $occ"
-                showNote(occ)
-                sub.text = summary()
-                val show = stale()
-                if ((update.visibility == View.VISIBLE) != show) {
-                    Motion.resize(update)
-                    update.visibility = if (show) View.VISIBLE else View.GONE
-                }
-            }.apply { name = "$code occurrence" }
-            val box = ui.column().apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                visibility = if (code == occurrenceOpen) View.VISIBLE else View.GONE
-                setPadding(0, ui.dp(4), 0, ui.dp(14))
-                addView(wheel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-            }
-            wheels[code] = box to chevron
+            showNote(chosen.getInt(code))
+            val value = ui.text("Occ ${chosen.getInt(code)}", 14f, p.text, ui.f.bodySemi)
             if (n > 0) fold.addView(View(context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
             fold.addView(ui.row(gap = 12f).apply {
                 minimumHeight = ui.dp(56)
                 setPadding(0, ui.dp(10), 0, ui.dp(10))
                 background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
-                contentDescription = "$code, ${course?.short ?: names[code].orEmpty()}. Change its occurrence."
+                contentDescription = "$code, $name. Change its occurrence."
                 addView(ui.column().apply {
                     addView(ui.text(code, 13f, p.courseText(course?.color ?: p.muted), ui.f.monoBold))
-                    addView(ui.text(course?.short ?: names[code].orEmpty(), 14f, p.text, ui.f.bodySemi).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }, ui.wide(top = 2f))
+                    addView(ui.text(name, 14f, p.text, ui.f.bodySemi).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }, ui.wide(top = 2f))
                     addView(note, ui.wide(top = 3f))
                 }, ui.grow())
                 addView(value)
-                addView(chevron)
-                setOnClickListener {
-                    Motion.resize(this)
-                    open(if (occurrenceOpen == code) null else code)
+                addView(ui.icon(R.drawable.ic_chevron, p.faint).apply { layoutParams = LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)) })
+                setOnClickListener { row ->
+                    val mine = chosen.getInt(code)
+                    // TimeEdit's list (and the ones in use, in case it left one out); before any lookup, 1 to 30.
+                    val options = (known.ifEmpty { (1..30).toList() } + listOfNotNull(mine, theirs)).distinct().sorted()
+                    lateinit var close: (then: (() -> Unit)?) -> Unit
+                    val card = occurrenceCard(ui, code, name, course?.color ?: p.muted, options, mine, theirs) { occ ->
+                        if (occ == null || occ == mine) return@occurrenceCard close(null)
+                        SpectrumStore.pickOccurrence(context, code, occ)
+                        chosen.put(code, occ)
+                        value.text = "Occ $occ"
+                        showNote(occ)
+                        sub.text = summary()
+                        update.visibility = if (stale()) View.VISIBLE else View.GONE
+                        // Back into its row, whose value then pops.
+                        close { Motion.pop(value, 0.6f) }
+                    }
+                    close = ConfirmDialog.present(ui, card, from = Motion.onScreen(row), backAlways = true)
                 }
             })
-            fold.addView(box)
         }
         fold.addView(update, ui.wide(top = 16f))
         head.background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)

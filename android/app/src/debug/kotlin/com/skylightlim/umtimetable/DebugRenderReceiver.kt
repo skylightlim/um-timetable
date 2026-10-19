@@ -39,6 +39,7 @@ import java.io.File
  * --ei maxEnd 1140: room until 19:00, so How long's wheel runs on; --ei cap 260: its middle at most 260dp, scrolling, as
  * when the keyboard leaves too little room).
  * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200).
+ * view occcard draws Settings' card for choosing an occurrence (--es code CODE).
  * view pinmenu draws the card a long press on a course page's section name brings up (--ez pinned true: Unpin).
  * view signout draws the Sign out question's card. view settings draws the Settings sheet (--ez signedIn true|false
  * for either Account row); view signin the first-run sign-in poster, at screen height (or --ei height px).
@@ -79,6 +80,12 @@ class DebugRenderReceiver : BroadcastReceiver() {
                 // --ei cap N: the card's middle at most N dp, as when the keyboard leaves too little room.
                 intent.getIntExtra("cap", 0).takeIf { it > 0 }?.let { e.scroll.cap = host.ui.dp(it) }
             }.card
+            // The card for choosing an occurrence (--es code CODE, else the timetable's first course), with made-up options 1–20.
+            "occcard" -> FrameLayout(c).apply {
+                setPadding(host.ui.dp(4), host.ui.dp(16), host.ui.dp(4), host.ui.dp(24))
+                val course = host.timetable.courses.firstOrNull { it.code == intent.getStringExtra("code") } ?: host.timetable.courses.first()
+                addView(SettingsSheet.occurrenceCard(host.ui, course.code, course.short, course.color, (1..20).toList(), course.occ, course.occ) {})
+            }
             // The card a long press on a course page's section name brings up (--ez pinned true: "Unpin").
             "pinmenu" -> FrameLayout(c).apply {
                 setPadding(host.ui.dp(16), host.ui.dp(16), host.ui.dp(16), host.ui.dp(24))
@@ -88,8 +95,8 @@ class DebugRenderReceiver : BroadcastReceiver() {
             "news" -> SpectrumScreens.news(host)
             "files" -> SpectrumScreens.courses(host)
             "grades" -> if (intent.getBooleanExtra("sample", false)) SpectrumScreens.grades(host, sampleGrades(context)) else SpectrumScreens.grades(host)
-            // --ez open true: the Occurrences fold open; --es occ WIX1002: that course's wheel open in it.
-            "settings" -> SettingsSheet.also { it.occurrencesOpen = intent.getBooleanExtra("open", false); it.occurrenceOpen = intent.getStringExtra("occ") }.build(host, c, intent.getBooleanExtra("signedIn", SpectrumStore.signedIn(context))) {}
+            // --ez open true: the Occurrences fold open.
+            "settings" -> SettingsSheet.also { it.occurrencesOpen = intent.getBooleanExtra("open", false) }.build(host, c, intent.getBooleanExtra("signedIn", SpectrumStore.signedIn(context))) {}
             "signin" -> SignInScreen.build(host.ui) {}
             // The top bar as MainActivity lays it out: --es view title --es page Grades|day|week (day and week
             // with their widest titles)
@@ -479,7 +486,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         override fun courseContents(id: Int): JSONArray? = SpectrumStore.read(context, "contents-$id")?.let { runCatching { JSONArray(it) }.getOrNull() }
         override fun courseError(id: Int): String? = null
         override fun signIn() = Unit
-        override fun signOut() = Unit
+        override fun signOut(from: View?) = Unit
         override fun refresh() = Unit
         override fun openMaya() = Unit
         override fun openTimeEdit() = Unit
