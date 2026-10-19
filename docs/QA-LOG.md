@@ -18,6 +18,19 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (the plan card's colour on a wheel too)
+
+**Asked for:** choose the colour the same way as How long and Reminder, so all three are vertical and
+use up the empty space.
+
+**Change:** the colour is a third `Wheel` beside How long and Reminder, the three sharing the card's
+width. A wheel can hold swatches instead of words: dots that shrink and fade away from the middle, under
+a ring rather than an accent band (the accent is one of the colours and would vanish on it). Turning it
+recolours the card's band as it goes. The card is about 466dp tall now, from 541dp.
+
+**Checked:** unit tests pass. Renders of a saved plan's card, light and dark: the three wheels side by
+side, the colour in use in the ring.
+
 ## 19 October 2026 (cards that fly out: occurrences and Sign out, over a blur)
 
 **Asked for:** the occurrence choice as a pop-up over a blurred background like Sign out's, popping out

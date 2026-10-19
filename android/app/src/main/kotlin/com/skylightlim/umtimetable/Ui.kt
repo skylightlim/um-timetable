@@ -316,8 +316,8 @@ class Toggle(private val ui: Ui, on: Boolean, private val onChange: (Boolean) ->
 }
 
 /**
- * A [Ui.wheel]: a vertical picker, as iOS draws one. Its options roll up and down under a fixed accent
- * band, and the one in the band is chosen. Dragged, it follows the finger (resisting past either end);
+ * A [Ui.wheel]: a vertical picker, as iOS draws one. Its options (words, or colour swatches) roll up and
+ * down under a fixed accent band, and the one in the band is chosen. Dragged, it follows the finger (resisting past either end);
  * let go, it carries on at the finger's speed and settles, on a spring, on the option nearest where that
  * speed would have taken it. A tap on an option above or below rolls it into the band. Each option that
  * reaches the band ticks and is chosen at once ([onPick]). Away from the band the options shrink and
@@ -325,7 +325,7 @@ class Toggle(private val ui: Ui, on: Boolean, private val onChange: (Boolean) ->
  * rather than built of views, so a roll is one draw a frame.
  */
 @android.annotation.SuppressLint("ViewConstructor")
-class Wheel(private val ui: Ui, private val options: List<String>, chosen: Int, private val rows: Int = 3) : View(ui.context) {
+class Wheel(private val ui: Ui, private val options: List<String>, chosen: Int, private val rows: Int = 3, private val colors: List<Int>? = null) : View(ui.context) {
     var chosen = chosen.coerceIn(0, maxOf(0, options.lastIndex))
         private set
     var onPick: (Int) -> Unit = {}
@@ -343,6 +343,9 @@ class Wheel(private val ui: Ui, private val options: List<String>, chosen: Int, 
     }
     private val track = ui.shape(ui.p.surface2, 12f)
     private val band = ui.shape(ui.p.accent, 10f)
+    /** With [colors] (a wheel of swatches, [options] naming them), the band is a ring: an accent fill would hide the accent's own swatch. */
+    private val ring = ui.shape(ui.p.surface, 10f, ui.p.text, 2f)
+    private val dot = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
     private val bandRect = android.graphics.RectF()
     private val slop = android.view.ViewConfiguration.get(ui.context).scaledTouchSlop
     private var downY = 0f
@@ -363,7 +366,7 @@ class Wheel(private val ui: Ui, private val options: List<String>, chosen: Int, 
 
     /** As wide as its widest option needs, with room around it (unless told a width): a band only as wide as the labels. */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val natural = ((options.maxOfOrNull { label.measureText(it) } ?: 0f) + ui.dp(44f)).toInt().coerceAtLeast(ui.dp(84))
+        val natural = if (colors != null) ui.dp(84) else ((options.maxOfOrNull { label.measureText(it) } ?: 0f) + ui.dp(44f)).toInt().coerceAtLeast(ui.dp(84))
         val size = MeasureSpec.getSize(widthMeasureSpec)
         val width = when (MeasureSpec.getMode(widthMeasureSpec)) {
             MeasureSpec.EXACTLY -> size
@@ -456,6 +459,15 @@ class Wheel(private val ui: Ui, private val options: List<String>, chosen: Int, 
         track.draw(canvas)
         val cy = height / 2f
         bandRect.set(inset, cy - rowH / 2, width - inset, cy + rowH / 2)
+        if (colors != null) {
+            ring.setBounds(bandRect.left.toInt(), bandRect.top.toInt(), bandRect.right.toInt(), bandRect.bottom.toInt())
+            ring.draw(canvas)
+            canvas.save()
+            canvas.clipRect(inset, inset, width - inset, height - inset)
+            drawSwatches(canvas, cy, colors)
+            canvas.restore()
+            return
+        }
         band.setBounds(bandRect.left.toInt(), bandRect.top.toInt(), bandRect.right.toInt(), bandRect.bottom.toInt())
         band.draw(canvas)
         canvas.save()
@@ -467,6 +479,20 @@ class Wheel(private val ui: Ui, private val options: List<String>, chosen: Int, 
         canvas.clipRect(bandRect)
         drawLabels(canvas, cy, ui.p.accentInk, fade = false)
         canvas.restore()
+    }
+
+    /** A dot of each colour, shrinking and fading away from the band as the labels do. */
+    private fun drawSwatches(canvas: android.graphics.Canvas, cy: Float, colors: List<Int>) {
+        val reach = rows / 2f + 0.5f
+        val first = kotlin.math.floor(at - reach).toInt().coerceAtLeast(0)
+        val last = kotlin.math.ceil(at + reach).toInt().coerceAtMost(colors.lastIndex)
+        val r = ui.dp(10f).toFloat()
+        for (i in first..last) {
+            val away = ((i - at) / reach).coerceIn(-1f, 1f)
+            dot.color = colors[i]
+            dot.alpha = (255 * (1 - 0.6f * kotlin.math.abs(away))).toInt()
+            canvas.drawCircle(width / 2f, cy + (i - at) * rowH, r * (1 - 0.18f * away * away), dot)
+        }
     }
 
     private fun drawLabels(canvas: android.graphics.Canvas, cy: Float, color: Int, fade: Boolean) {
@@ -875,7 +901,7 @@ class Ui(val context: Context, val p: Palette, val f: Fonts) {
      * [onChoose] runs each time the chosen option changes, during a drag too, each change with a tick.
      */
     /** A [Wheel]: [options] rolling up and down under a band, [rows] of them in view; [onChoose] runs as each reaches the band. */
-    fun wheel(options: List<String>, chosen: Int, rows: Int = 3, onChoose: (Int) -> Unit) = Wheel(this, options, chosen, rows).apply { onPick = onChoose }
+    fun wheel(options: List<String>, chosen: Int, rows: Int = 3, colors: List<Int>? = null, onChoose: (Int) -> Unit) = Wheel(this, options, chosen, rows, colors).apply { onPick = onChoose }
 
     fun tape(options: List<String>, chosen: Int, onChoose: (Int) -> Unit): Tape {
         val labels = options.mapIndexed { i, label ->

@@ -159,14 +159,12 @@ object PlanSheet {
         val editor = Editor(card, content, body, field, scroll)
         editorRef = editor
 
-        fun label(text: String) = body.addView(ui.label(text, p.muted, 10.5f), ui.wide(top = 18f, bottom = 8f))
 
-        // How long and the reminder, side by side on two wheels: one row instead of two full-width tapes
-        // (with the keyboard up, the card ran under it).
+        // How long, the reminder and the colour, side by side on three wheels sharing the card's width: one
+        // row instead of rows under each other (with the keyboard up, the card ran under it).
         fun column(title: String, content: View) = ui.column().apply {
             addView(ui.label(title, p.muted, 10.5f), ui.wide(bottom = 8f))
-            // As wide as it needs, under its label: a wheel's band only as wide as its options.
-            addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(content)
         }
         // How long: every half hour that fits before the next class or plan (or 19:00).
         val lengths = Plan.lengths(maxEnd - plan.start).ifEmpty { listOf((maxEnd - plan.start) to "${maxEnd - plan.start} min") }
@@ -180,15 +178,30 @@ object PlanSheet {
         // to come (and the one set): a reminder already past would never go off.
         val reminder = if (passed) {
             remind = null
-            column("Reminder", ui.text("This time has passed: no reminder.", 13.5f, p.muted))
+            column("Reminder", ui.text("It has passed: none.", 13.5f, p.muted))
         } else {
             val now = System.currentTimeMillis()
             val reminders = Plan.REMINDERS.filter { (m, _) -> m == null || m == remind || plan.startsAt - m * 60_000L > now }
             column("Reminder", ui.wheel(reminders.map { it.second }, reminders.indexOfFirst { it.first == remind }.coerceAtLeast(0)) { i -> remind = reminders[i].first; editor.remind = remind }.apply { name = "Reminder" })
         }
-        body.addView(ui.row(gap = 12f, center = false).apply {
+        // The colour: the theme's course colours and its accent, as swatches; turning it recolours the band.
+        val palette = Plans.palette(Scheme.load(c), p.accent).let { if (color in it) it else it + color }
+        var recolour: ValueAnimator? = null
+        val colour = column("Colour", ui.wheel(palette.indices.map { if (it < 7) "Colour ${it + 1}" else "Accent" }, palette.indexOf(color), colors = palette) { i ->
+            color = palette[i]
+            editor.color = color
+            val fill = band.background as GradientDrawable
+            recolour?.cancel()
+            if (!Motion.enabled) fill.setColor(color)
+            else recolour = ValueAnimator.ofArgb(fill.color?.defaultColor ?: color, color).setDuration(160).apply {
+                addUpdateListener { fill.setColor(it.animatedValue as Int) }
+                start()
+            }
+        }.apply { name = "Colour" })
+        body.addView(ui.row(gap = 10f, center = false).apply {
             addView(howLong, ui.grow())
             addView(reminder, ui.grow())
+            addView(colour, ui.grow())
         }, ui.wide(top = 18f))
         if (!passed && !Notify.allowed(c)) body.addView(ui.text("Notifications are off for the app: turn them on in Settings for reminders.", 12.5f, p.muted), ui.wide(top = 8f))
 
@@ -212,40 +225,6 @@ object PlanSheet {
             }, ui.grow())
             addView(Toggle(ui, editor.weekly) { on -> editor.weekly = on; showRepeat(on) }.apply { contentDescription = "Every week" })
         }, ui.wide(top = 14f))
-
-        // The colour: a dot each, the chosen one ringed; picking one hops it and recolours the band.
-        label("Colour")
-        val dots = ui.row().apply { clipChildren = false; clipToPadding = false; setPadding(0, ui.dp(8), 0, 0) }
-        val palette = Plans.palette(Scheme.load(c), p.accent).let { if (color in it) it else it + color }
-        fun ring(v: View, on: Boolean, of: Int) {
-            v.background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(of)
-                if (on) setStroke(ui.dp(2.5f), p.text)
-            }
-        }
-        val dotViews = palette.map { col ->
-            View(c).apply {
-                ring(this, col == color, col)
-                contentDescription = if (col == color) "Colour, chosen" else "Colour"
-            }
-        }
-        for ((i, col) in palette.withIndex()) {
-            val v = dotViews[i]
-            v.setOnClickListener {
-                if (col == color) return@setOnClickListener
-                val was = color
-                color = col
-                editor.color = col
-                dotViews.forEachIndexed { k, o -> ring(o, palette[k] == color, palette[k]); o.contentDescription = if (palette[k] == color) "Colour, chosen" else "Colour" }
-                Motion.hop(v, 0, ui.dp(8f).toFloat())
-                Haptics.tick(v)
-                if (!Motion.enabled) (band.background as GradientDrawable).setColor(col)
-                else ValueAnimator.ofArgb(was, col).setDuration(220).apply { addUpdateListener { (band.background as GradientDrawable).setColor(it.animatedValue as Int) } }.start()
-            }
-            dots.addView(v, LinearLayout.LayoutParams(ui.dp(28), ui.dp(28)).apply { if (i > 0) marginStart = ui.dp(10) })
-        }
-        body.addView(dots)
 
         // Delete (a saved plan), then Cancel and Save. A weekly plan's Delete asks which: this week's alone,
         // or every week's; the buttons give way to that question in place.
