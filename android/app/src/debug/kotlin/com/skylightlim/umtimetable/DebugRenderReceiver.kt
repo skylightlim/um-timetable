@@ -125,6 +125,8 @@ class DebugRenderReceiver : BroadcastReceiver() {
             if (view == "signin") View.MeasureSpec.makeMeasureSpec(intent.getIntExtra("height", context.resources.displayMetrics.heightPixels), View.MeasureSpec.EXACTLY) else View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
         )
         frame.layout(0, 0, frame.measuredWidth, frame.measuredHeight)
+        // --ez bounds true: every view's place and size (and a text's baseline) in logcat, as "bounds".
+        if (intent.getBooleanExtra("bounds", false)) logBounds(frame, 0)
         // Week with --ez sample true --ei boxDay D --ei boxAt MIN: the selection box waiting there (taken or free).
         if (intent.hasExtra("boxDay")) {
             fun grid(v: View): WeekGrid? = v as? WeekGrid ?: (v as? android.view.ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { grid(g.getChildAt(it)) } }
@@ -141,6 +143,12 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val bitmap = Bitmap.createBitmap(frame.measuredWidth, frame.measuredHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         frame.draw(Canvas(bitmap))
         save(context, bitmap, "$view${host.openCourse?.let { "-$it" } ?: ""}${if (dark) "-dark" else ""}")
+    }
+
+    private fun logBounds(v: View, depth: Int) {
+        val text = (v as? android.widget.TextView)?.text?.toString()?.take(24)?.let { " \"$it\" baseline ${v.baseline}" }.orEmpty()
+        Log.i("bounds", "${"  ".repeat(depth)}${v.javaClass.simpleName} ${v.left},${v.top} ${v.width}x${v.height} measured ${v.measuredHeight}$text")
+        if (v is android.view.ViewGroup) for (i in 0 until v.childCount) logBounds(v.getChildAt(i), depth + 1)
     }
 
     /** Made-up plans in the week drawn: study, the gym (every week), reading (none of them the user's). */

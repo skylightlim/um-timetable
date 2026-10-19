@@ -18,6 +18,26 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (Day's cards: a clear first line)
+
+**Asked for:** the Day page's class cards all read alike, with no hierarchy: you have to read every
+line to find anything. Apple's design as the reference; the font could change if needed.
+
+**Change:** each class card now reads in one glance. Its first line is when, what and where, on one
+baseline: the start time (Instrument Sans semibold, tabular figures), the course name (18sp bold, a
+touch tight) and the room (the display face, the card's only use of it). Under them, quieter: the type
+in semibold and the lecturer (one line, cut short if long; whole on the class sheet), then smallest the
+code and occurrence in small mono capitals. The end time sits faint under the start time. Before, a
+coloured mono line of code, type and occurrence came first, the name was 15sp, and the times were mono
+in two near-equal sizes: three faces and five pieces of text at about one weight. Plan cards on Day
+follow the same layout ("Plan" in its colour, then "every week" and its reminder). LinearLayout lines up
+baselines but measures the row as if it hadn't, which cut the last line off; the cards are a
+`BaselineRow` that measures itself after lining up. The fonts stay the app's own.
+
+**Checked:** unit tests pass. Renders of a day during a class, light and dark, at 1.3× system font size,
+and with a made-up weekly plan: first lines line up, nothing is cut off, long lecturer names end in an
+ellipsis. Debug: `--ez bounds true` logs every view's place, size and baseline (tag `bounds`).
+
 ## 19 October 2026 (plans that repeat every week)
 
 **Asked for:** a persistent switch on the plan card: switched on, the plan is in the same cell every
