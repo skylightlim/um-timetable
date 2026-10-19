@@ -18,6 +18,22 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (pinning sections of a course page)
+
+**Asked for:** being able to pin certain sections of a Spectrum course page.
+
+**Change:** every section heading on a course page ends with a pin (an outline pushpin, `ic_pin`). A tap
+fills it in the accent (`ic_pin_on`) with a pop and a tick, and the section moves to the top of the page
+under a "Pinned" label, the others following under "Other sections" in Spectrum's order; pinned sections
+keep the order they were pinned in. A tap on a filled pin puts the section back in its place. The move
+animates (the page's views are reordered in place, not rebuilt, so the scroll position stays). Pins are
+saved per course (`SpectrumStore.pinSection`, `pinned-sections`) by Spectrum's section id, which the
+course page's JSON now keeps; a page cached before that goes by section name until it's loaded again.
+
+**Checked:** unit tests pass. A render of a course page with two sections pinned by a made-up
+`pinned-sections` file (removed afterwards): both on top under "Pinned" with filled pins, the rest under
+"Other sections" with outline pins. The tap, the pop and the move need a try by hand.
+
 ## 19 October 2026 (choosing your occurrence in Settings)
 
 **Asked for:** an option in Settings, under Timetable, to choose the occurrence.

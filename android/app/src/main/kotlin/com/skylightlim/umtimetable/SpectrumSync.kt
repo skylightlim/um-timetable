@@ -132,7 +132,7 @@ object SpectrumSync {
         }
     }
 
-    /** core_course_get_contents → [{ name, summary, modules: [{ kind, name, label, url, files, html, dates, availability }] }] */
+    /** core_course_get_contents → [{ id, name, summary, modules: [{ kind, name, label, url, files, html, dates, availability }] }] */
     fun normalizeContents(sections: JSONArray): JSONArray {
         val out = JSONArray()
         for (s in sections.objects()) {
@@ -168,7 +168,7 @@ object SpectrumSync {
             }
             val summary = s.optString("summary")
             if (modules.length() > 0 || plain(summary).isNotEmpty()) {
-                out.put(JSONObject().put("name", plain(s.optString("name")).ifBlank { "General" }).put("summary", summary).put("modules", modules))
+                out.put(JSONObject().put("id", s.optInt("id")).put("name", plain(s.optString("name")).ifBlank { "General" }).put("summary", summary).put("modules", modules))
             }
         }
         return out

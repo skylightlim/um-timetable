@@ -744,14 +744,43 @@ object SpectrumScreens {
             return page
         }
         val folder = code.ifEmpty { "Spectrum" }
+        // Each section in a box of its own, so a pin can move it to the top: pinned ones come first (in
+        // the order pinned), under "Pinned", then the rest in Spectrum's order.
+        val boxes = LinkedHashMap<String, LinearLayout>()
+        val pins = SpectrumStore.pinnedSections(ui.context, id).toMutableList()
+        val holder = ui.column()
+        val pinnedLabel = ui.label("Pinned", p.muted, 10.5f)
+        val restLabel = ui.label("Other sections", p.muted, 10.5f)
+        fun arrange() {
+            holder.removeAllViews()
+            val pinned = pins.filter { it in boxes }
+            if (pinned.isNotEmpty()) holder.addView(pinnedLabel, ui.wide(top = 18f, bottom = -12f))
+            for (k in pinned) holder.addView(boxes.getValue(k))
+            if (pinned.isNotEmpty() && boxes.size > pinned.size) holder.addView(restLabel, ui.wide(top = 30f, bottom = -12f))
+            for ((k, box) in boxes) if (k !in pinned) holder.addView(box)
+        }
         sections.objects().forEachIndexed { si, sec ->
             val modules = sec.optJSONArray("modules")?.objects().orEmpty().filter { it.optString("kind") != "label" || hasContent(it.optString("html")) }
             val summary = sec.optString("summary")
             if (modules.isEmpty() && !hasContent(summary)) return@forEachIndexed
-            // Section names as Spectrum writes them ("Course Information (SEM1, 2026/2027)"), bold and dark.
-            page.addView(ui.text(sec.optString("name"), 18f, p.text, ui.f.bodyBold), ui.wide(top = 26f, bottom = 10f))
+            // Spectrum's section id; a page cached before ids were kept goes by the name.
+            val sectionKey = sec.optInt("id").takeIf { it > 0 }?.toString() ?: "name:${sec.optString("name")}"
+            val box = ui.column()
+            boxes[sectionKey] = box
+            // Section names as Spectrum writes them ("Course Information (SEM1, 2026/2027)"), bold and dark,
+            // with a pin at the end.
+            box.addView(ui.row(gap = 8f).apply {
+                addView(ui.text(sec.optString("name"), 18f, p.text, ui.f.bodyBold), ui.grow())
+                addView(pinButton(ui, sectionKey in pins, sec.optString("name")) { on ->
+                    Motion.resize(holder)
+                    pins.remove(sectionKey)
+                    if (on) pins += sectionKey
+                    SpectrumStore.pinSection(ui.context, id, sectionKey, on)
+                    arrange()
+                })
+            }, ui.wide(top = 14f, bottom = -2f))
             // Every text in full and at reading size: nothing behind Show more.
-            if (hasContent(summary)) page.addView(textBlock(ui, RichText.view(h, summary, "s$id-$si", folder, 0, 16f, expanded = h.expanded)), ui.wide(bottom = 8f))
+            if (hasContent(summary)) box.addView(textBlock(ui, RichText.view(h, summary, "s$id-$si", folder, 0, 16f, expanded = h.expanded)), ui.wide(bottom = 8f))
             val list = ui.column(gap = 8f)
             modules.forEachIndexed { mi, m ->
                 val key = "m$id-$si-$mi"
@@ -792,9 +821,36 @@ object SpectrumScreens {
                 if (hasContent(availability)) item.addView(RichText.view(h, availability, "$key-a", folder, 0, 13.5f, p.muted, h.expanded).apply { setPadding(ui.dp(42), ui.dp(4), ui.dp(4), ui.dp(2)) })
                 list.addView(item)
             }
-            page.addView(list)
+            box.addView(list)
         }
+        arrange()
+        page.addView(holder)
         return page
+    }
+
+    /**
+     * A section's pin: an outline pushpin, or a filled one in the accent when [pinned]. A tap swaps it with
+     * a pop and a tick, then [onToggle] gets the new state.
+     */
+    private fun pinButton(ui: Ui, pinned: Boolean, name: String, onToggle: (Boolean) -> Unit): View {
+        var on = pinned
+        val icon = ui.icon(if (on) R.drawable.ic_pin_on else R.drawable.ic_pin, if (on) ui.p.accentText else ui.p.faint, 18f)
+        return FrameLayout(ui.context).apply {
+            background = ui.pressable(ui.shape(Color.TRANSPARENT, 99f), 99f)
+            fun describe() { contentDescription = if (on) "Unpin $name" else "Pin $name to the top" }
+            describe()
+            addView(icon, FrameLayout.LayoutParams(ui.dp(18), ui.dp(18), Gravity.CENTER))
+            setOnClickListener {
+                on = !on
+                describe()
+                icon.setImageResource(if (on) R.drawable.ic_pin_on else R.drawable.ic_pin)
+                icon.imageTintList = android.content.res.ColorStateList.valueOf(if (on) ui.p.accentText else ui.p.faint)
+                Haptics.tick(this)
+                Motion.pop(icon, 0.6f)
+                onToggle(on)
+            }
+            layoutParams = LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)).apply { marginEnd = -ui.dp(12) }
+        }
     }
 
     private fun hasContent(html: String) = html.contains("<img", ignoreCase = true) ||

@@ -140,6 +140,18 @@ object SpectrumStore {
     /** Each course's occurrences on TimeEdit ({"WIX1002": [1, 2, 16]}), from the last timetable lookup. */
     fun occurrenceOptions(c: Context): JSONObject = json(c, "occurrence-options")
 
+    /** The sections of course [courseId] the user pinned to the top of its page, in the order pinned. */
+    fun pinnedSections(c: Context, courseId: Int): List<String> =
+        json(c, "pinned-sections").optJSONArray(courseId.toString())?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty()
+
+    /** Pins section [key] of course [courseId] (after those pinned already), or unpins it. */
+    fun pinSection(c: Context, courseId: Int, key: String, pin: Boolean) {
+        val all = json(c, "pinned-sections")
+        val now = pinnedSections(c, courseId).filter { it != key } + listOfNotNull(key.takeIf { pin })
+        if (now.isEmpty()) all.remove(courseId.toString()) else all.put(courseId.toString(), JSONArray(now))
+        write(c, "pinned-sections", all.toString())
+    }
+
     private fun json(c: Context, name: String) = read(c, name)?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
     fun write(c: Context, name: String, json: String) {
         // A sync still running when the user signs out mustn't put back what Sign out deleted.
