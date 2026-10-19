@@ -18,6 +18,18 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (Day's cards: the room level with the course name)
+
+**Asked for:** on the class cards the course name isn't aligned with the room.
+
+**Change:** the room sat on the course name's baseline, so the display face's taller capitals stood
+well above the name. Now the tops of their capitals are level: the room reports a baseline higher than
+its own by the difference in capital heights (`DayScreen.room`), so the card's row lowers it by that
+much, and the room hangs down from the name's top line.
+
+**Checked:** unit tests pass. A render of a day during a class, compared with the one before: the
+room's capitals start level with the name's first line on every card.
+
 ## 19 October 2026 (narrower wheels on the plan card)
 
 **Asked for:** the selection strip on the plan card is too wide; make it smaller.

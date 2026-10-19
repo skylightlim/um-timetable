@@ -361,14 +361,15 @@ object DayScreen {
             append(s.lecturer ?: "Lecturer not listed")
             if (s.lecturer == null) setSpan(StyleSpan(Typeface.ITALIC), at, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
+        val name = title(ui, s.course.name, fg)
         card.addView(ui.column().apply {
-            addView(title(ui, s.course.name, fg))
+            addView(name)
             // One line: a long name runs out of room (it's whole on the class sheet) rather than making the card taller.
             addView(ui.text(meta, 13.5f, fgMuted, lines = 1), ui.wide(top = 4f))
             addView(ui.text("${s.course.code} · Occ ${s.course.occ}", 11f, if (tut) p.courseText(c) else fgMuted, ui.f.mono, caps = true), ui.wide(top = 6f))
             baselineAlignedChildIndex = 0
         }, ui.grow())
-        card.addView(ui.text(s.room, 28f, fg, ui.f.sign))
+        card.addView(room(ui, s.room, fg, name))
 
         if (state == "past") card.alpha = 0.42f
         if (state != "live") return card
@@ -421,6 +422,25 @@ object DayScreen {
             addView(ui.text(clockText(end), 13f, color).apply { fontFeatureSettings = "tnum"; alpha = 0.6f }, ui.wide(top = 3f))
             baselineAlignedChildIndex = 0 // after the children: it must name one that's there
             layoutParams = LinearLayout.LayoutParams(wide, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+    }
+
+    /**
+     * The room, large in the display face, the tops of its capitals level with those of the course [name]
+     * beside it. On the name's baseline instead, its taller capitals stood well above the name, out of
+     * line with it. It reports a baseline higher than its own by the difference in capital heights, so the
+     * row lowers it by that much.
+     */
+    private fun room(ui: Ui, room: String, color: Int, name: android.widget.TextView): android.widget.TextView {
+        fun capHeight(paint: Paint) = android.graphics.Rect().also { paint.getTextBounds("H", 0, 1, it) }.height()
+        return object : android.widget.TextView(ui.context) {
+            override fun getBaseline(): Int = super.getBaseline().let { if (it < 0) it else it - (capHeight(paint) - capHeight(name.paint)) }
+        }.apply {
+            text = room
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f)
+            setTextColor(color)
+            typeface = ui.f.sign
+            includeFontPadding = false
         }
     }
 
