@@ -222,7 +222,7 @@ object SettingsSheet {
 
     /**
      * Occurrences, a fold in Timetable: each course's occurrence, Spectrum's unless the user chose
-     * another, on a tape of those TimeEdit lists for it. A choice is saved at once; the timetable keeps
+     * another, on a wheel of those TimeEdit lists for it. A choice is saved at once; the timetable keeps
      * its classes until it's got again from TimeEdit (the button under the courses), whose answer is
      * shown before it's used. [row] makes the sheet's rows.
      */
@@ -263,25 +263,30 @@ object SettingsSheet {
             val note = ui.text("", 12.5f, p.muted)
             fun showNote(occ: Int) {
                 note.text = if (theirs == null || occ == theirs) "" else "Spectrum: $theirs"
+                note.visibility = if (note.text.isEmpty()) View.GONE else View.VISIBLE
             }
             showNote(mine)
-            fold.addView(ui.row(gap = 8f).apply {
-                addView(ui.text(code, 13f, p.courseText(course?.color ?: p.muted), ui.f.monoBold))
-                addView(ui.text(course?.short ?: names[code].orEmpty(), 13f, p.muted).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }, ui.grow())
-                addView(note)
-            }, ui.wide(top = 12f, bottom = 6f))
-            fold.addView(ui.tape(options.map { "Occ $it" }, options.indexOf(mine)) { i ->
-                val occ = options[i]
-                SpectrumStore.pickOccurrence(context, code, occ)
-                chosen.put(code, occ)
-                showNote(occ)
-                sub.text = summary()
-                val show = stale()
-                if ((update.visibility == View.VISIBLE) != show) {
-                    Motion.resize(update)
-                    update.visibility = if (show) View.VISIBLE else View.GONE
-                }
-            })
+            // The course on the left, its occurrences on a narrow wheel on the right: a vertical drag there
+            // rolls the wheel (dozens of occurrences go by quickly), anywhere else scrolls the sheet.
+            fold.addView(ui.row(gap = 12f).apply {
+                addView(ui.column().apply {
+                    addView(ui.text(code, 13f, p.courseText(course?.color ?: p.muted), ui.f.monoBold))
+                    addView(ui.text(course?.short ?: names[code].orEmpty(), 14f, p.text, ui.f.bodySemi).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }, ui.wide(top = 2f))
+                    addView(note, ui.wide(top = 3f))
+                }, ui.grow())
+                addView(ui.wheel(options.map { "Occ $it" }, options.indexOf(mine)) { i ->
+                    val occ = options[i]
+                    SpectrumStore.pickOccurrence(context, code, occ)
+                    chosen.put(code, occ)
+                    showNote(occ)
+                    sub.text = summary()
+                    val show = stale()
+                    if ((update.visibility == View.VISIBLE) != show) {
+                        Motion.resize(update)
+                        update.visibility = if (show) View.VISIBLE else View.GONE
+                    }
+                }.apply { name = "$code occurrence" }, LinearLayout.LayoutParams(ui.dp(112), LinearLayout.LayoutParams.WRAP_CONTENT))
+            }, ui.wide(top = 12f))
         }
         fold.addView(update, ui.wide(top = 16f))
         head.background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)

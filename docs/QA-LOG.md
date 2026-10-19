@@ -18,6 +18,26 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (occurrences on a vertical wheel)
+
+**Asked for:** the occurrence chooser as a vertical strip: sideways it was difficult and awkward, with
+some courses having dozens of occurrences.
+
+**Change:** a new `Wheel` (Ui.kt, `ui.wheel`): a vertical picker drawn like iOS's, three options in view,
+the chosen one in an accent band in the middle. Dragged, it follows the finger (resisting past either
+end); let go, it carries on at the finger's speed and settles on a spring on the option nearest where
+that speed would have taken it (Apple's projection), so a flick runs through dozens. A tap on the option
+above or below rolls it into the band. Each option reaching the band ticks and is chosen at once. Options
+shrink and fade away from the band; a label turns to the band's ink exactly where it crosses the band's
+edge. A vertical drag on it rolls it, not the sheet; anywhere else scrolls the sheet. Screen readers get
+its name and value, and scroll it one option at a time. In Settings › Timetable › Occurrences each course
+is now a row: code and name on the left (and "Spectrum: N" when the choice isn't Spectrum's), its wheel
+on the right.
+
+**Checked:** unit tests pass. A render of Settings with the fold open: every course with its wheel, the
+chosen occurrence in the band, the first and last options sitting at the wheel's ends. The roll, the
+fling and the ticks need a try by hand.
+
 ## 19 October 2026 (marking attendance by itself)
 
 **Asked for:** an auto-mark setting: the app marks attendance once a class is 5 minutes in, and if it
