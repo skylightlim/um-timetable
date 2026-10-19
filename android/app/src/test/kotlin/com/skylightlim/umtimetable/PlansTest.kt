@@ -52,14 +52,14 @@ class PlansTest {
 
     /** A plan dragged on the week grid stays where the finger took it, rather than putting its start under the finger. */
     @Test fun dragHoldsWhereTaken() {
-        // 13:30–16:30, taken by its bottom (the 16:00 half hour): held 150 minutes below its start.
-        val grab = heldAt(16 * 60, 13 * 60 + 30, 16 * 60 + 30)
-        assertEquals(150, grab)
-        assertEquals(13 * 60 + 30, draggedStart(16 * 60, grab)) // not moved yet: still at 13:30
-        assertEquals(14 * 60, draggedStart(16 * 60 + 30, grab)) // the finger half an hour down
+        // 10:00–13:00, taken by its bottom (the 12:00 half hour): held 120 minutes below its start.
+        val grab = heldAt(12 * 60, 10 * 60, 13 * 60)
+        assertEquals(120, grab)
+        assertEquals(10 * 60, draggedStart(12 * 60, grab)) // not moved yet: still at 10:00
+        assertEquals(10 * 60 + 30, draggedStart(12 * 60 + 30, grab)) // the finger half an hour down
         assertEquals(8 * 60, draggedStart(9 * 60, grab)) // not above 08:00
-        assertEquals(0, heldAt(13 * 60 + 30, 13 * 60 + 30, 16 * 60 + 30)) // by its top
-        assertEquals(0, heldAt(13 * 60, 13 * 60 + 30, 14 * 60)) // a half hour plan: nowhere else to hold it
+        assertEquals(0, heldAt(10 * 60, 10 * 60, 13 * 60)) // by its top
+        assertEquals(0, heldAt(9 * 60 + 30, 10 * 60, 10 * 60 + 30)) // a half hour plan: nowhere else to hold it
         assertEquals(18 * 60 + 30, draggedStart(18 * 60 + 30, 0)) // a new plan: its start under the finger
     }
 
