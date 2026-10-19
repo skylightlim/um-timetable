@@ -18,6 +18,24 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (the plan card's How long and Reminder as wheels)
+
+**Asked for:** How long and Reminder on the plan card chosen vertically, to save space: the keyboard was
+covering a bit of the card.
+
+**Change:** How long and Reminder are two `Wheel`s side by side in one row, instead of two full-width
+tapes one under the other (a passed time shows "no reminder" in the Reminder column). The card is about
+30dp shorter (about 541dp at the default font size). On the user's phone that's just under the room left
+above the keyboard (about 560dp under a 68dp status bar), so the card also makes sure: its time band and
+its buttons stay put, and the middle (what, how long, reminder, repeat, colour) is a `PlanSheet.Capped`
+scroll view sized to what the keyboard leaves (`fit`, set once the keyboard's final height is known),
+fading out where it's cut. Save and Cancel are always in view, whatever the keyboard, font size or
+phone. Debug: `--es view plan --ei cap 260` draws the card as when room runs out.
+
+**Checked:** unit tests pass. Renders of a saved plan's card (wheels side by side, chosen length and
+reminder in their bands) and of the card capped at 260dp (band and buttons whole, the middle faded at
+its cut). How it rides a real keyboard needs a try by hand.
+
 ## 19 October 2026 (pin a section with a long press)
 
 **Asked for:** pin by long-pressing a section's title, which brings up an option to pin; the pin icon

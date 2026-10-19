@@ -36,7 +36,8 @@ import java.io.File
  * view week or day with --ez sample true draws made-up plans on it (--ei boxDay 2 --ei boxAt 900: with the selection box
  * waiting on Tuesday 15:00); view plan draws the plan editor's card
  * (--ez new false: a saved plan's, with Delete; --ei ahead 3: dated 3 days from today, so its reminders show;
- * --ei maxEnd 1140: room until 19:00, so How long's tape runs on).
+ * --ei maxEnd 1140: room until 19:00, so How long's wheel runs on; --ei cap 260: its middle at most 260dp, scrolling, as
+ * when the keyboard leaves too little room).
  * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200).
  * view pinmenu draws the card a long press on a course page's section name brings up (--ez pinned true: Unpin).
  * view signout draws the Sign out question's card. view settings draws the Settings sheet (--ez signedIn true|false
@@ -74,7 +75,10 @@ class DebugRenderReceiver : BroadcastReceiver() {
             "plan" -> PlanSheet.build(host.ui, samplePlans(host)[1].let {
                 val dated = if (intent.hasExtra("ahead")) it.copy(date = java.time.LocalDate.now().plusDays(intent.getIntExtra("ahead", 0).toLong())) else it
                 if (intent.getBooleanExtra("new", true)) dated.copy(text = "") else dated
-            }, intent.getBooleanExtra("new", true), intent.getIntExtra("maxEnd", 16 * 60 + 30)).card
+            }, intent.getBooleanExtra("new", true), intent.getIntExtra("maxEnd", 16 * 60 + 30)).also { e ->
+                // --ei cap N: the card's middle at most N dp, as when the keyboard leaves too little room.
+                intent.getIntExtra("cap", 0).takeIf { it > 0 }?.let { e.scroll.cap = host.ui.dp(it) }
+            }.card
             // The card a long press on a course page's section name brings up (--ez pinned true: "Unpin").
             "pinmenu" -> FrameLayout(c).apply {
                 setPadding(host.ui.dp(16), host.ui.dp(16), host.ui.dp(16), host.ui.dp(24))

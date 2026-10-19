@@ -24,6 +24,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.window.OnBackInvokedDispatcher
 import com.skylightlim.umtimetable.Motion.spring
 import java.time.format.TextStyle
@@ -40,13 +41,40 @@ import java.util.Locale
  */
 object PlanSheet {
     /** The card's views, and what's been chosen on it so far. */
-    class Editor(val card: LinearLayout, val content: LinearLayout, val body: LinearLayout, val field: EditText) {
+    class Editor(val card: LinearLayout, val content: LinearLayout, val body: LinearLayout, val field: EditText, val scroll: Capped) {
         var color = 0
         var end = 0
         var remind: Int? = null
         var weekly = false
         /** Set by [show]: what the card's buttons (and the keyboard's Done) do: "save", "delete", "skip" (this week of a weekly plan) or "cancel". */
         var close: (String) -> Unit = {}
+    }
+
+    /**
+     * The card's middle (what, how long, reminder, repeat, colour) between its time band and its buttons:
+     * no taller than [cap], scrolling inside when it's more. With the keyboard up there may not be room
+     * for the whole card; the band and the buttons then stay in view and only the middle gives way.
+     */
+    class Capped(context: Context) : ScrollView(context) {
+        var cap = Int.MAX_VALUE
+            set(value) {
+                if (field == value) return
+                field = value
+                requestLayout()
+            }
+
+        init {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
+            // Where it's cut, it fades out, rather than ending in a hard edge.
+            isVerticalFadingEdgeEnabled = true
+            setFadingEdgeLength((20 * resources.displayMetrics.density).toInt())
+        }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val given = if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.UNSPECIFIED) Int.MAX_VALUE else MeasureSpec.getSize(heightMeasureSpec)
+            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(minOf(cap, given, (1 shl 30) - 1), MeasureSpec.AT_MOST))
+        }
     }
 
     /** Whether the card's Every week starts on: a weekly plan that goes on after this week (not stopped here). */
@@ -108,8 +136,9 @@ object PlanSheet {
         }, ui.wide(top = 2f))
         content.addView(band)
 
-        val body = ui.column().apply { setPadding(ui.dp(20), ui.dp(16), ui.dp(20), ui.dp(20)) }
-        content.addView(body)
+        val body = ui.column().apply { setPadding(ui.dp(20), ui.dp(16), ui.dp(20), 0) }
+        val scroll = Capped(c).apply { addView(body) }
+        content.addView(scroll)
         val field = EditText(c).apply {
             setText(plan.text)
             // A time that has passed is for saying what really happened.
@@ -128,20 +157,40 @@ object PlanSheet {
             setSelection(text.length)
         }
         body.addView(field)
-        val editor = Editor(card, content, body, field)
+        val editor = Editor(card, content, body, field, scroll)
         editorRef = editor
 
         fun label(text: String) = body.addView(ui.label(text, p.muted, 10.5f), ui.wide(top = 18f, bottom = 8f))
 
-        // How long: every half hour that fits before the next class or plan (or 19:00), on a tape.
+        // How long and the reminder, side by side on two wheels: one row instead of two full-width tapes
+        // (with the keyboard up, the card ran under it).
+        fun column(title: String, content: View) = ui.column().apply {
+            addView(ui.label(title, p.muted, 10.5f), ui.wide(bottom = 8f))
+            addView(content)
+        }
+        // How long: every half hour that fits before the next class or plan (or 19:00).
         val lengths = Plan.lengths(maxEnd - plan.start).ifEmpty { listOf((maxEnd - plan.start) to "${maxEnd - plan.start} min") }
-        label("How long")
         val chosenLength = lengths.indexOfFirst { plan.start + it.first == end }.takeIf { it >= 0 } ?: lengths.lastIndex.also { end = plan.start + lengths.last().first; showTime() }
-        body.addView(ui.tape(lengths.map { it.second }, chosenLength) { i ->
+        val howLong = column("How long", ui.wheel(lengths.map { it.second }, chosenLength) { i ->
             end = plan.start + lengths[i].first
             editor.end = end
             showTime()
-        })
+        }.apply { name = "How long" })
+        // A reminder, before it starts; there's none to set for a time that has passed. Only the ones still
+        // to come (and the one set): a reminder already past would never go off.
+        val reminder = if (passed) {
+            remind = null
+            column("Reminder", ui.text("This time has passed: no reminder.", 13.5f, p.muted))
+        } else {
+            val now = System.currentTimeMillis()
+            val reminders = Plan.REMINDERS.filter { (m, _) -> m == null || m == remind || plan.startsAt - m * 60_000L > now }
+            column("Reminder", ui.wheel(reminders.map { it.second }, reminders.indexOfFirst { it.first == remind }.coerceAtLeast(0)) { i -> remind = reminders[i].first; editor.remind = remind }.apply { name = "Reminder" })
+        }
+        body.addView(ui.row(gap = 12f, center = false).apply {
+            addView(howLong, ui.grow())
+            addView(reminder, ui.grow())
+        }, ui.wide(top = 18f))
+        if (!passed && !Notify.allowed(c)) body.addView(ui.text("Notifications are off for the app: turn them on in Settings for reminders.", 12.5f, p.muted), ui.wide(top = 8f))
 
         // Every week: the plan comes back on this weekday, at this time, to the end of the semester.
         val weekday = plan.date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.UK)
@@ -198,19 +247,6 @@ object PlanSheet {
         }
         body.addView(dots)
 
-        // A reminder, before it starts; there's none to set for a time that has passed.
-        label("Reminder")
-        if (passed) {
-            body.addView(ui.text("This time has passed: no reminder.", 13.5f, p.muted))
-            remind = null
-        } else {
-            // Only the ones still to come (and the one set): a reminder already past would never go off.
-            val now = System.currentTimeMillis()
-            val reminders = Plan.REMINDERS.filter { (m, _) -> m == null || m == remind || plan.startsAt - m * 60_000L > now }
-            body.addView(ui.tape(reminders.map { it.second }, reminders.indexOfFirst { it.first == remind }.coerceAtLeast(0)) { i -> remind = reminders[i].first; editor.remind = remind })
-            if (!Notify.allowed(c)) body.addView(ui.text("Notifications are off for the app: turn them on in Settings for reminders.", 12.5f, p.muted), ui.wide(top = 8f))
-        }
-
         // Delete (a saved plan), then Cancel and Save. A weekly plan's Delete asks which: this week's alone,
         // or every week's; the buttons give way to that question in place.
         val buttons = ui.row(gap = 8f)
@@ -238,8 +274,12 @@ object PlanSheet {
             addView(ConfirmDialog.button(ui, "Cancel", p.surface2, p.text) { editor.close("cancel") })
             addView(ConfirmDialog.button(ui, "Save", p.accent, p.accentInk) { editor.close("save") })
         }
-        body.addView(buttons, ui.wide(top = 22f))
-        body.addView(which, ui.wide(top = 22f))
+        // Under the middle, never scrolled away.
+        content.addView(ui.column().apply {
+            setPadding(ui.dp(20), ui.dp(18), ui.dp(20), ui.dp(20))
+            addView(buttons)
+            addView(which)
+        })
         field.setOnEditorActionListener { _, action, _ -> if (action == EditorInfo.IME_ACTION_DONE) { editor.close("save"); true } else false }
         return editor.apply {
             this.color = color
@@ -271,6 +311,18 @@ object PlanSheet {
         var imeMoving = false
         var riding = true // until the card heads back down to the grid
 
+        /**
+         * The card's middle no taller than leaves the whole card, 12dp clear above and below, in what a
+         * keyboard [keyboard] px tall leaves of its place. Only while the card rides the keyboard: on its way
+         * back down to the grid it keeps its size.
+         */
+        fun fit(keyboard: Int) {
+            if (!riding || holder.height == 0 || card.height == 0) return
+            val room = holder.height - maxOf(0, keyboard - nav) - ui.dp(24)
+            val fixed = card.height - editor.scroll.height // the time band and the buttons
+            editor.scroll.cap = (room - fixed).coerceAtLeast(ui.dp(120))
+        }
+
         /** How far the card sits above its place with a keyboard [keyboard] px tall: centred in what's left, its top in view. */
         fun liftFor(keyboard: Int): Float {
             val room = holder.height - maxOf(0, keyboard - nav)
@@ -298,7 +350,11 @@ object PlanSheet {
                 nav = bars.bottom
                 // While the keyboard moves, this is where it will end; onProgress follows it there.
                 ime = insets.getInsets(WindowInsets.Type.ime()).bottom
-                if (!imeMoving) v.post { if (riding && !imeMoving) holder.translationY = liftFor(ime) }
+                // Sized for the keyboard as it will be, then placed once that size is laid out.
+                v.post {
+                    fit(ime)
+                    holder.post { if (riding && !imeMoving) holder.translationY = liftFor(ime) }
+                }
                 WindowInsets.CONSUMED
             }
             setWindowInsetsAnimationCallback(object : WindowInsetsAnimation.Callback(DISPATCH_MODE_STOP) {
