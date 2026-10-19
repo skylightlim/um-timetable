@@ -18,6 +18,24 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (1.6.0-beta.1 published)
+
+**Asked for:** push the update to GitHub.
+
+**Published:** 1.6.0-beta.1, versionCode 8: a minor version, for the new features since 1.5.1-beta.1
+(occurrences in Settings, pinned course sections, weekly plans, the Day cards, Mark my attendance, the
+wheels and the cards that fly out). Before publishing, the tree was grepped for the backups' lecturer
+names and course occurrences, and the new QA entries were read for the user's schedule: five code
+comments that gave the user's own occurrence or a class time as their example were changed first (the
+previous entry). GitHub's `main` got one release commit with `main`'s tree, "UM Timetable
+1.6.0-beta.1" (6c2ad89), on top of 1.5.1-beta.1's, as a fast-forward from the local `public` branch.
+Pre-release `v8`, titled "1.6.0-beta.1", carries `UM-Timetable-1.6.0-beta.1.apk`, built from a clean
+checkout of that commit: versionCode 8, signed with the release key (SHA-256 bf:c0:58…b2:94:20). The
+notes are nine plain lines, and say Mark my attendance is new, to check Spectrum after class.
+
+**Checked:** the APK's version and certificate (aapt2, apksigner); the release lists the APK as its only
+asset. The published APK is on the user's phone (versionCode 8).
+
 ## 19 October 2026 (examples use the made-up student)
 
 **Asked for:** push the update to GitHub (part of the check before publishing).
