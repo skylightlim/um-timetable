@@ -50,6 +50,19 @@ class PlansTest {
         assertFalse(Plan.from(once.json()).weekly)
     }
 
+    /** A plan dragged on the week grid stays where the finger took it, rather than putting its start under the finger. */
+    @Test fun dragHoldsWhereTaken() {
+        // 10:00–13:00, taken by its bottom (the 12:00 half hour): held 120 minutes below its start.
+        val grab = heldAt(12 * 60, 10 * 60, 13 * 60)
+        assertEquals(120, grab)
+        assertEquals(10 * 60, draggedStart(12 * 60, grab)) // not moved yet: still at 10:00
+        assertEquals(10 * 60 + 30, draggedStart(12 * 60 + 30, grab)) // the finger half an hour down
+        assertEquals(8 * 60, draggedStart(9 * 60, grab)) // not above 08:00
+        assertEquals(0, heldAt(10 * 60, 10 * 60, 13 * 60)) // by its top
+        assertEquals(0, heldAt(9 * 60 + 30, 10 * 60, 10 * 60 + 30)) // a half hour plan: nowhere else to hold it
+        assertEquals(18 * 60 + 30, draggedStart(18 * 60 + 30, 0)) // a new plan: its start under the finger
+    }
+
     @Test fun lengthsAndReminders() {
         // Every half hour that fits, for the plan card's tape.
         assertEquals(listOf(30 to "30 min", 60 to "1 h", 90 to "1.5 h", 120 to "2 h", 150 to "2.5 h"), Plan.lengths(170))

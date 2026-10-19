@@ -18,6 +18,55 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (a held plan drags from where it's held)
+
+**Asked for:** holding and dragging a plan on the week grid should be relative to where it's held:
+pressed and held at its bottom, it shouldn't jump so the finger is at its top.
+
+**Change:** dragged, the selection box put its start at the half hour under the finger, wherever on the
+plan the finger had taken it. It now keeps how far below its start the plan was taken (`grab`, whole
+half hours, `heldAt`) and starts that far above the finger (`draggedStart`, 08:00 to 18:30), so it moves
+with the finger from where it was held. The same for the box waiting after "Change time" when the touch
+lands on it; a touch elsewhere still brings its start under the finger, as does a long press on free
+time for a new plan.
+
+**Checked:** unit tests pass, with a new one for the offset (taken by its bottom, it stays put until the
+finger moves; half an hour down, it moves half an hour; never above 08:00; a new plan starts under the
+finger). The drag itself needs a try by hand.
+
+## 19 October 2026 (plans on Day as class cards)
+
+**Asked for:** the plan set on the Week page should appear on the Day tab too, like a class card.
+
+**Change:** plans already showed on their day's page, but as a pale card with a dashed edge (the week
+grid's look), easy to take for something else. Each is now set out as a class card: filled with the
+plan's colour as a lecture is with its course's (in the ink that colour takes, the accent's own on the
+accent), its times on the left, what it is in bold, and under it "Plan" with how it repeats and
+reminds, where a class has its type and lecturer. While it's on it gets the accent ring the class in
+progress has; once over it fades, as before. The week grid keeps its dashed plans.
+
+**Checked:** unit tests pass. A render of the day with the user's plan (light and dark) and one of a
+made-up weekly plan in progress (filled, ringed). Day opens on today: a plan later in the week shows on
+its own day's page.
+
+## 19 October 2026 (1.6.0-beta.1 published)
+
+**Asked for:** push the update to GitHub.
+
+**Published:** 1.6.0-beta.1, versionCode 8: a minor version, for the new features since 1.5.1-beta.1
+(occurrences in Settings, pinned course sections, weekly plans, the Day cards, Mark my attendance, the
+wheels and the cards that fly out). Before publishing, the tree was grepped for the backups' lecturer
+names and course occurrences, and the new QA entries were read for the user's schedule: five code
+comments that gave the user's own occurrence or a class time as their example were changed first (the
+previous entry). GitHub's `main` got one release commit with `main`'s tree, "UM Timetable
+1.6.0-beta.1" (6c2ad89), on top of 1.5.1-beta.1's, as a fast-forward from the local `public` branch.
+Pre-release `v8`, titled "1.6.0-beta.1", carries `UM-Timetable-1.6.0-beta.1.apk`, built from a clean
+checkout of that commit: versionCode 8, signed with the release key (SHA-256 bf:c0:58…b2:94:20). The
+notes are nine plain lines, and say Mark my attendance is new, to check Spectrum after class.
+
+**Checked:** the APK's version and certificate (aapt2, apksigner); the release lists the APK as its only
+asset. The published APK is on the user's phone (versionCode 8).
+
 ## 19 October 2026 (examples use the made-up student)
 
 **Asked for:** push the update to GitHub (part of the check before publishing).

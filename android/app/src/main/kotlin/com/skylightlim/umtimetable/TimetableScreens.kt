@@ -11,7 +11,6 @@ import android.graphics.drawable.GradientDrawable
 import android.text.Layout
 import android.text.SpannableStringBuilder
 import android.text.Spanned
-import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
 import android.text.StaticLayout
@@ -189,6 +188,15 @@ private fun smallLine(ui: Ui, text: String?) = ui.label(text ?: "Week", ui.p.mut
     }
 }
 
+/**
+ * Where on a plan from [start] to [end] (minutes) a finger at half hour [at] holds it: how far below its
+ * start, in minutes, within the plan (its last half hour at most).
+ */
+internal fun heldAt(at: Int, start: Int, end: Int) = (at - start).coerceIn(0, maxOf(0, end - start - 30))
+
+/** Where a plan held [grab] minutes below its start begins with the finger at half hour [at]: 08:00 to 18:30. */
+internal fun draggedStart(at: Int, grab: Int) = (at - grab).coerceIn(8 * 60, 18 * 60 + 30)
+
 /** Day at a glance: "3 classes · 08:00–19:00", or "No classes". */
 fun dayGlance(list: List<Session>): String =
     if (list.isEmpty()) "No classes" else "${list.size} ${if (list.size == 1) "class" else "classes"} · ${clockText(list.first().start)}–${clockText(list.last().end)}"
@@ -229,7 +237,7 @@ object DayScreen {
                     now.min >= item.start -> "live"
                     else -> ""
                 }))
-                is Plan -> agenda.addView(planSlot(h, item, items))
+                is Plan -> agenda.addView(planSlot(h, item, items, live = isToday && now.min >= item.start && now.min < item.end))
             }
         }
         page.addView(agenda)
@@ -237,28 +245,30 @@ object DayScreen {
     }
 
     /**
-     * One of the user's plans, among the classes: its times, "Plan" (with its reminder) and what it is,
-     * on its colour's tint with a dashed edge, as in the week grid; faded once it's over. A tap opens its
-     * card out of this one.
+     * One of the user's plans, among the classes and set out as one: filled with its colour as a lecture
+     * is with its course's, the times on the left, what it is in bold, then "Plan" and how it repeats and
+     * reminds, where a class has its type and lecturer. Faded once it's over; ringed in the accent while
+     * it's on ([live]), as the class in progress is. A tap opens its card out of this one.
      */
-    private fun planSlot(h: Host, plan: Plan, day: List<Triple<Int, Int, Any>>): View {
+    private fun planSlot(h: Host, plan: Plan, day: List<Triple<Int, Int, Any>>, live: Boolean): View {
         val ui = h.ui
         val p = ui.p
         val over = plan.endsAt <= System.currentTimeMillis()
-        val card = agendaCard(ui, ui.shape(Palette.mix(plan.color, p.surface, 0.24f), 16f, plan.color, 1.5f, dash = 5f)).apply {
+        // The ink a fill of its colour takes: the accent's own on the accent, else the course colours'.
+        val fg = if (plan.color == p.accent) p.accentInk else p.ink
+        val fgMuted = if (plan.color == p.accent) Palette.mix(p.accentInk, p.accent, 0.7f) else p.inkMuted
+        val card = agendaCard(ui, ui.shape(plan.color, 16f)).apply {
             contentDescription = "Plan, ${clockText(plan.start)} to ${clockText(plan.end)}: ${plan.title}"
         }
-        card.addView(times(ui, plan.start, plan.end, p.text))
+        card.addView(times(ui, plan.start, plan.end, fg))
         val remind = plan.remind?.let { r -> Plan.REMINDERS.firstOrNull { it.first == r }?.second }
-        // As a class's card: what it is first, then quieter, "Plan" (in its colour) and how it repeats and reminds.
         val meta = SpannableStringBuilder(if (over) "Plan · done" else "Plan").apply {
             setSpan(TypefaceSpan(ui.f.bodySemi), 0, 4, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            setSpan(ForegroundColorSpan(p.courseText(plan.color)), 0, 4, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             listOfNotNull("every week".takeIf { plan.weekly }, remind?.let { "reminder ${it.lowercase()}" }).forEach { append(" · ").append(it) }
         }
         card.addView(ui.column().apply {
-            addView(title(ui, plan.title, p.text))
-            addView(ui.text(meta, 13.5f, p.muted), ui.wide(top = 4f))
+            addView(title(ui, plan.title, fg))
+            addView(ui.text(meta, 13.5f, fgMuted, lines = 1), ui.wide(top = 4f))
             baselineAlignedChildIndex = 0
         }, ui.grow())
         card.setOnClickListener {
@@ -274,7 +284,12 @@ object DayScreen {
             WeekGrid.landing = null
             Motion.pop(card, 0.85f)
         }
-        return card
+        if (!live) return card
+        return FrameLayout(ui.context).apply {
+            background = ui.shape(Color.TRANSPARENT, 19f, p.accent, 2f)
+            setPadding(ui.dp(3), ui.dp(3), ui.dp(3), ui.dp(3))
+            addView(card)
+        }
     }
 
     /** The class in progress, or the next one, as a big yellow block with its course name. */
@@ -913,6 +928,12 @@ class WeekGrid(
     private var pickStart = -1
     private var pickEnd = 0
     private var pickFree = false
+    /**
+     * How far below the box's start the finger took hold, in minutes (whole half hours): dragged, the box
+     * keeps that much above the finger, so a plan held by its bottom doesn't jump down to put its top
+     * under the finger. 0 for a new plan, whose start is under the finger.
+     */
+    private var grab = 0
     private var lastFree: Pair<Int, Int>? = null
     private val box = RectF()
     private val boxFrom = RectF()
@@ -954,14 +975,25 @@ class WeekGrid(
         return Triple(free, maxEnd, minOf(start + length, maxEnd))
     }
 
-    /** A long press: the box comes up under the finger, for the plan pressed or a new one, and follows it. */
+    /** The box to the half hour [grab] above the one under ([x], [y]): it moves with the finger from where it was taken. */
+    private fun dragTo(x: Float, y: Float) {
+        val (d, at) = halfHourAt(x, y)
+        moveBox(d, draggedStart(at, grab))
+    }
+
+    /**
+     * A long press: the box comes up for the plan pressed, where it is, or for a new one under the finger,
+     * and follows the finger, held where it was pressed.
+     */
     private fun pickUp(x: Float, y: Float) {
         val plan = planBlocks.firstOrNull { it.first.contains(x, y) }?.second ?: run {
             val palette = Plans.palette(Scheme.load(context), p.accent)
             Plan.new(dates[0], startMin, startMin + 60, palette[(plans.size + halfHourAt(x, y).first) % palette.size])
         }
         startPicking(plan, wait = false)
-        val (d, start) = if (plans.any { it.id == plan.id }) plan.date.dayOfWeek.value to plan.start else halfHourAt(x, y)
+        val saved = plans.any { it.id == plan.id }
+        val (d, start) = if (saved) plan.date.dayOfWeek.value to plan.start else halfHourAt(x, y)
+        grab = if (saved) heldAt(halfHourAt(x, y).second, plan.start, plan.end) else 0
         moveBox(d, start, feel = false)
         Haptics.threshold(this, true)
     }
@@ -1122,7 +1154,9 @@ class WeekGrid(
                 if (waiting && picking != null) {
                     dragging = true
                     parent?.requestDisallowInterceptTouchEvent(true)
-                    halfHourAt(e.x, e.y).let { (d, start) -> moveBox(d, start) }
+                    // Taken by the box itself, it moves from where it's held; touched elsewhere, its start comes under the finger.
+                    grab = if (box.contains(e.x, e.y)) heldAt(halfHourAt(e.x, e.y).second, pickStart, pickEnd) else 0
+                    dragTo(e.x, e.y)
                     return true
                 }
                 if (columnAt(e.x) == null) return false
@@ -1130,7 +1164,7 @@ class WeekGrid(
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                if (dragging) halfHourAt(e.x, e.y).let { (d, start) -> moveBox(d, start) }
+                if (dragging) dragTo(e.x, e.y)
                 else if (kotlin.math.hypot(e.x - downX, e.y - downY) > slop) removeCallbacks(longPress)
             }
             MotionEvent.ACTION_UP -> {
