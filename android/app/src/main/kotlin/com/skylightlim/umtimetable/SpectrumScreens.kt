@@ -11,6 +11,7 @@ import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.skylightlim.umtimetable.Motion.spring
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Calendar
@@ -767,17 +768,32 @@ object SpectrumScreens {
             val sectionKey = sec.optInt("id").takeIf { it > 0 }?.toString() ?: "name:${sec.optString("name")}"
             val box = ui.column()
             boxes[sectionKey] = box
-            // Section names as Spectrum writes them ("Course Information (SEM1, 2026/2027)"), bold and dark,
-            // with a pin at the end.
+            // Section names as Spectrum writes them ("Course Information (SEM1, 2026/2027)"), bold and dark. A
+            // long press on one offers to pin it (or unpin it); a pinned one has a pin after its name.
+            val name = sec.optString("name")
+            val mark = ui.icon(R.drawable.ic_pin_on, p.accentText, 16f).apply {
+                visibility = if (sectionKey in pins) View.VISIBLE else View.GONE
+                contentDescription = "Pinned"
+            }
             box.addView(ui.row(gap = 8f).apply {
-                addView(ui.text(sec.optString("name"), 18f, p.text, ui.f.bodyBold), ui.grow())
-                addView(pinButton(ui, sectionKey in pins, sec.optString("name")) { on ->
-                    Motion.resize(holder)
-                    pins.remove(sectionKey)
-                    if (on) pins += sectionKey
-                    SpectrumStore.pinSection(ui.context, id, sectionKey, on)
-                    arrange()
-                })
+                minimumHeight = ui.dp(48)
+                addView(ui.text(name, 18f, p.text, ui.f.bodyBold), ui.grow())
+                addView(mark)
+                contentDescription = "$name${if (sectionKey in pins) ", pinned" else ""}. Long press to ${if (sectionKey in pins) "unpin" else "pin"} it."
+                setOnLongClickListener { heading ->
+                    val pinned = sectionKey in pins
+                    pinMenu(ui, heading, pinned) {
+                        Motion.resize(holder)
+                        pins.remove(sectionKey)
+                        if (!pinned) pins += sectionKey
+                        SpectrumStore.pinSection(ui.context, id, sectionKey, !pinned)
+                        heading.contentDescription = "$name${if (!pinned) ", pinned" else ""}. Long press to ${if (!pinned) "unpin" else "pin"} it."
+                        mark.visibility = if (pinned) View.GONE else View.VISIBLE
+                        if (!pinned) Motion.pop(mark, 0.3f)
+                        arrange()
+                    }
+                    true
+                }
             }, ui.wide(top = 14f, bottom = -2f))
             // Every text in full and at reading size: nothing behind Show more.
             if (hasContent(summary)) box.addView(textBlock(ui, RichText.view(h, summary, "s$id-$si", folder, 0, 16f, expanded = h.expanded)), ui.wide(bottom = 8f))
@@ -828,29 +844,49 @@ object SpectrumScreens {
         return page
     }
 
+    /** [pinMenu]'s card: a pin and "Pin to top", or an outline pin and "Unpin". */
+    fun pinCard(ui: Ui, pinned: Boolean) = ui.row(gap = 10f).apply {
+        background = ui.pressable(ui.shape(ui.p.surface, 14f, ui.p.line), 14f)
+        elevation = ui.dp(10f).toFloat()
+        setPadding(ui.dp(14), ui.dp(12), ui.dp(18), ui.dp(12))
+        addView(ui.icon(if (pinned) R.drawable.ic_pin else R.drawable.ic_pin_on, ui.p.accentText, 18f))
+        addView(ui.text(if (pinned) "Unpin" else "Pin to top", 15f, ui.p.text, ui.f.bodySemi))
+    }
+
     /**
-     * A section's pin: an outline pushpin, or a filled one in the accent when [pinned]. A tap swaps it with
-     * a pop and a tick, then [onToggle] gets the new state.
+     * What a long press on a section's name offers: "Pin to top", or "Unpin" for a pinned one, on a small
+     * card that grows out of the name (anchored where the finger asked), with a vibration as it comes up.
+     * A tap on it runs [toggle]; a tap anywhere else puts it away.
      */
-    private fun pinButton(ui: Ui, pinned: Boolean, name: String, onToggle: (Boolean) -> Unit): View {
-        var on = pinned
-        val icon = ui.icon(if (on) R.drawable.ic_pin_on else R.drawable.ic_pin, if (on) ui.p.accentText else ui.p.faint, 18f)
-        return FrameLayout(ui.context).apply {
-            background = ui.pressable(ui.shape(Color.TRANSPARENT, 99f), 99f)
-            fun describe() { contentDescription = if (on) "Unpin $name" else "Pin $name to the top" }
-            describe()
-            addView(icon, FrameLayout.LayoutParams(ui.dp(18), ui.dp(18), Gravity.CENTER))
-            setOnClickListener {
-                on = !on
-                describe()
-                icon.setImageResource(if (on) R.drawable.ic_pin_on else R.drawable.ic_pin)
-                icon.imageTintList = android.content.res.ColorStateList.valueOf(if (on) ui.p.accentText else ui.p.faint)
-                Haptics.tick(this)
-                Motion.pop(icon, 0.6f)
-                onToggle(on)
-            }
-            layoutParams = LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)).apply { marginEnd = -ui.dp(12) }
+    private fun pinMenu(ui: Ui, heading: View, pinned: Boolean, toggle: () -> Unit) {
+        val card = pinCard(ui, pinned)
+        // Room around the card for its shadow, which the popup's window would otherwise cut.
+        val room = FrameLayout(ui.context).apply {
+            setPadding(ui.dp(12), ui.dp(4), ui.dp(12), ui.dp(16))
+            clipChildren = false
+            addView(card)
         }
+        val popup = android.widget.PopupWindow(room, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            isOutsideTouchable = true
+            elevation = 0f
+            animationStyle = 0
+        }
+        card.setOnClickListener {
+            Haptics.tick(card)
+            popup.dismiss()
+            toggle()
+        }
+        Haptics.threshold(heading, true)
+        popup.showAsDropDown(heading, -ui.dp(12), -ui.dp(6))
+        if (!Motion.enabled) return
+        card.pivotX = 0f
+        card.pivotY = 0f
+        card.scaleX = 0.8f
+        card.scaleY = 0.8f
+        card.alpha = 0f
+        card.animate().scaleX(1f).scaleY(1f).spring(Motion.BOUNCY).start()
+        Motion.fade(card, 0f, 1f, 120)
     }
 
     private fun hasContent(html: String) = html.contains("<img", ignoreCase = true) ||

@@ -18,6 +18,22 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (pin a section with a long press)
+
+**Asked for:** pin by long-pressing a section's title, which brings up an option to pin; the pin icon
+only on pinned sections, not on every section.
+
+**Change:** section headings no longer carry a pin each. A long press on one vibrates and brings up a
+small card under the name, growing out of it on a spring: "Pin to top" with a pin, or "Unpin" on a pinned
+section (`pinMenu`, a `PopupWindow`; a tap anywhere else puts it away). Choosing moves the section as
+before. A pinned section has a filled pin in the accent at the end of its heading, popping in when
+pinned; the others have none. Screen readers hear "pinned" and that a long press pins or unpins it.
+Debug: `--es view pinmenu [--ez pinned true]` draws the card.
+
+**Checked:** unit tests pass. Renders: a course page with one section pinned (its pin shown, none on
+the others) and the card in light ("Pin to top") and dark ("Unpin"). The long press, the card coming up
+and the move need a try by hand.
+
 ## 19 October 2026 (occurrences on a vertical wheel)
 
 **Asked for:** the occurrence chooser as a vertical strip: sideways it was difficult and awkward, with

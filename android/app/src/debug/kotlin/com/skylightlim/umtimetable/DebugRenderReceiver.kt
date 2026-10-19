@@ -38,6 +38,7 @@ import java.io.File
  * (--ez new false: a saved plan's, with Delete; --ei ahead 3: dated 3 days from today, so its reminders show;
  * --ei maxEnd 1140: room until 19:00, so How long's tape runs on).
  * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200).
+ * view pinmenu draws the card a long press on a course page's section name brings up (--ez pinned true: Unpin).
  * view signout draws the Sign out question's card. view settings draws the Settings sheet (--ez signedIn true|false
  * for either Account row); view signin the first-run sign-in poster, at screen height (or --ei height px).
  * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
@@ -74,6 +75,11 @@ class DebugRenderReceiver : BroadcastReceiver() {
                 val dated = if (intent.hasExtra("ahead")) it.copy(date = java.time.LocalDate.now().plusDays(intent.getIntExtra("ahead", 0).toLong())) else it
                 if (intent.getBooleanExtra("new", true)) dated.copy(text = "") else dated
             }, intent.getBooleanExtra("new", true), intent.getIntExtra("maxEnd", 16 * 60 + 30)).card
+            // The card a long press on a course page's section name brings up (--ez pinned true: "Unpin").
+            "pinmenu" -> FrameLayout(c).apply {
+                setPadding(host.ui.dp(16), host.ui.dp(16), host.ui.dp(16), host.ui.dp(24))
+                addView(SpectrumScreens.pinCard(host.ui, intent.getBooleanExtra("pinned", false)), FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+            }
             "due" -> if (intent.getBooleanExtra("sample", false)) sampleDue(context, host) else SpectrumScreens.due(host)
             "news" -> SpectrumScreens.news(host)
             "files" -> SpectrumScreens.courses(host)
