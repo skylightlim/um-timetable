@@ -18,6 +18,22 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (1.6.1-beta.1 published)
+
+**Asked for:** push these updates.
+
+**Published:** 1.6.1-beta.1, versionCode 9: a patch, for the plans on Day as class cards and the drag
+that holds a plan where it's taken. Before publishing, the tree was grepped again for the backups'
+lecturer names and course occurrences (none), and the new QA entries read for the user's schedule
+(none); the drag test's example times, which were the user's own plan's, were changed to made-up ones
+first. GitHub's `main` got one release commit with `main`'s tree, "UM Timetable 1.6.1-beta.1" (0862d75),
+on top of 1.6.0-beta.1's, as a fast-forward from the local `public` branch. Pre-release `v9`, titled
+"1.6.1-beta.1", carries `UM-Timetable-1.6.1-beta.1.apk`, built from a clean checkout of that commit:
+versionCode 9, signed with the release key (SHA-256 bf:c0:58…b2:94:20). The notes are four plain lines.
+
+**Checked:** the APK's version and certificate (aapt2, apksigner); the release lists the APK as its only
+asset. The published APK is on the user's phone (versionCode 9).
+
 ## 19 October 2026 (a held plan drags from where it's held)
 
 **Asked for:** holding and dragging a plan on the week grid should be relative to where it's held:
