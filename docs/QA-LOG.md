@@ -18,6 +18,22 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (a held plan drags from where it's held)
+
+**Asked for:** holding and dragging a plan on the week grid should be relative to where it's held:
+pressed and held at its bottom, it shouldn't jump so the finger is at its top.
+
+**Change:** dragged, the selection box put its start at the half hour under the finger, wherever on the
+plan the finger had taken it. It now keeps how far below its start the plan was taken (`grab`, whole
+half hours, `heldAt`) and starts that far above the finger (`draggedStart`, 08:00 to 18:30), so it moves
+with the finger from where it was held. The same for the box waiting after "Change time" when the touch
+lands on it; a touch elsewhere still brings its start under the finger, as does a long press on free
+time for a new plan.
+
+**Checked:** unit tests pass, with a new one for the offset (taken by its bottom, it stays put until the
+finger moves; half an hour down, it moves half an hour; never above 08:00; a new plan starts under the
+finger). The drag itself needs a try by hand.
+
 ## 19 October 2026 (plans on Day as class cards)
 
 **Asked for:** the plan set on the Week page should appear on the Day tab too, like a class card.

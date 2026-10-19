@@ -188,6 +188,15 @@ private fun smallLine(ui: Ui, text: String?) = ui.label(text ?: "Week", ui.p.mut
     }
 }
 
+/**
+ * Where on a plan from [start] to [end] (minutes) a finger at half hour [at] holds it: how far below its
+ * start, in minutes, within the plan (its last half hour at most).
+ */
+internal fun heldAt(at: Int, start: Int, end: Int) = (at - start).coerceIn(0, maxOf(0, end - start - 30))
+
+/** Where a plan held [grab] minutes below its start begins with the finger at half hour [at]: 08:00 to 18:30. */
+internal fun draggedStart(at: Int, grab: Int) = (at - grab).coerceIn(8 * 60, 18 * 60 + 30)
+
 /** Day at a glance: "3 classes · 08:00–19:00", or "No classes". */
 fun dayGlance(list: List<Session>): String =
     if (list.isEmpty()) "No classes" else "${list.size} ${if (list.size == 1) "class" else "classes"} · ${clockText(list.first().start)}–${clockText(list.last().end)}"
@@ -919,6 +928,12 @@ class WeekGrid(
     private var pickStart = -1
     private var pickEnd = 0
     private var pickFree = false
+    /**
+     * How far below the box's start the finger took hold, in minutes (whole half hours): dragged, the box
+     * keeps that much above the finger, so a plan held by its bottom doesn't jump down to put its top
+     * under the finger. 0 for a new plan, whose start is under the finger.
+     */
+    private var grab = 0
     private var lastFree: Pair<Int, Int>? = null
     private val box = RectF()
     private val boxFrom = RectF()
@@ -960,14 +975,25 @@ class WeekGrid(
         return Triple(free, maxEnd, minOf(start + length, maxEnd))
     }
 
-    /** A long press: the box comes up under the finger, for the plan pressed or a new one, and follows it. */
+    /** The box to the half hour [grab] above the one under ([x], [y]): it moves with the finger from where it was taken. */
+    private fun dragTo(x: Float, y: Float) {
+        val (d, at) = halfHourAt(x, y)
+        moveBox(d, draggedStart(at, grab))
+    }
+
+    /**
+     * A long press: the box comes up for the plan pressed, where it is, or for a new one under the finger,
+     * and follows the finger, held where it was pressed.
+     */
     private fun pickUp(x: Float, y: Float) {
         val plan = planBlocks.firstOrNull { it.first.contains(x, y) }?.second ?: run {
             val palette = Plans.palette(Scheme.load(context), p.accent)
             Plan.new(dates[0], startMin, startMin + 60, palette[(plans.size + halfHourAt(x, y).first) % palette.size])
         }
         startPicking(plan, wait = false)
-        val (d, start) = if (plans.any { it.id == plan.id }) plan.date.dayOfWeek.value to plan.start else halfHourAt(x, y)
+        val saved = plans.any { it.id == plan.id }
+        val (d, start) = if (saved) plan.date.dayOfWeek.value to plan.start else halfHourAt(x, y)
+        grab = if (saved) heldAt(halfHourAt(x, y).second, plan.start, plan.end) else 0
         moveBox(d, start, feel = false)
         Haptics.threshold(this, true)
     }
@@ -1128,7 +1154,9 @@ class WeekGrid(
                 if (waiting && picking != null) {
                     dragging = true
                     parent?.requestDisallowInterceptTouchEvent(true)
-                    halfHourAt(e.x, e.y).let { (d, start) -> moveBox(d, start) }
+                    // Taken by the box itself, it moves from where it's held; touched elsewhere, its start comes under the finger.
+                    grab = if (box.contains(e.x, e.y)) heldAt(halfHourAt(e.x, e.y).second, pickStart, pickEnd) else 0
+                    dragTo(e.x, e.y)
                     return true
                 }
                 if (columnAt(e.x) == null) return false
@@ -1136,7 +1164,7 @@ class WeekGrid(
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                if (dragging) halfHourAt(e.x, e.y).let { (d, start) -> moveBox(d, start) }
+                if (dragging) dragTo(e.x, e.y)
                 else if (kotlin.math.hypot(e.x - downX, e.y - downY) > slop) removeCallbacks(longPress)
             }
             MotionEvent.ACTION_UP -> {
