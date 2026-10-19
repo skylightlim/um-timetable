@@ -18,6 +18,21 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (plans on Day as class cards)
+
+**Asked for:** the plan set on the Week page should appear on the Day tab too, like a class card.
+
+**Change:** plans already showed on their day's page, but as a pale card with a dashed edge (the week
+grid's look), easy to take for something else. Each is now set out as a class card: filled with the
+plan's colour as a lecture is with its course's (in the ink that colour takes, the accent's own on the
+accent), its times on the left, what it is in bold, and under it "Plan" with how it repeats and
+reminds, where a class has its type and lecturer. While it's on it gets the accent ring the class in
+progress has; once over it fades, as before. The week grid keeps its dashed plans.
+
+**Checked:** unit tests pass. A render of the day with the user's plan (light and dark) and one of a
+made-up weekly plan in progress (filled, ringed). Day opens on today: a plan later in the week shows on
+its own day's page.
+
 ## 19 October 2026 (1.6.0-beta.1 published)
 
 **Asked for:** push the update to GitHub.

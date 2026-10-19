@@ -11,7 +11,6 @@ import android.graphics.drawable.GradientDrawable
 import android.text.Layout
 import android.text.SpannableStringBuilder
 import android.text.Spanned
-import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
 import android.text.StaticLayout
@@ -229,7 +228,7 @@ object DayScreen {
                     now.min >= item.start -> "live"
                     else -> ""
                 }))
-                is Plan -> agenda.addView(planSlot(h, item, items))
+                is Plan -> agenda.addView(planSlot(h, item, items, live = isToday && now.min >= item.start && now.min < item.end))
             }
         }
         page.addView(agenda)
@@ -237,28 +236,30 @@ object DayScreen {
     }
 
     /**
-     * One of the user's plans, among the classes: its times, "Plan" (with its reminder) and what it is,
-     * on its colour's tint with a dashed edge, as in the week grid; faded once it's over. A tap opens its
-     * card out of this one.
+     * One of the user's plans, among the classes and set out as one: filled with its colour as a lecture
+     * is with its course's, the times on the left, what it is in bold, then "Plan" and how it repeats and
+     * reminds, where a class has its type and lecturer. Faded once it's over; ringed in the accent while
+     * it's on ([live]), as the class in progress is. A tap opens its card out of this one.
      */
-    private fun planSlot(h: Host, plan: Plan, day: List<Triple<Int, Int, Any>>): View {
+    private fun planSlot(h: Host, plan: Plan, day: List<Triple<Int, Int, Any>>, live: Boolean): View {
         val ui = h.ui
         val p = ui.p
         val over = plan.endsAt <= System.currentTimeMillis()
-        val card = agendaCard(ui, ui.shape(Palette.mix(plan.color, p.surface, 0.24f), 16f, plan.color, 1.5f, dash = 5f)).apply {
+        // The ink a fill of its colour takes: the accent's own on the accent, else the course colours'.
+        val fg = if (plan.color == p.accent) p.accentInk else p.ink
+        val fgMuted = if (plan.color == p.accent) Palette.mix(p.accentInk, p.accent, 0.7f) else p.inkMuted
+        val card = agendaCard(ui, ui.shape(plan.color, 16f)).apply {
             contentDescription = "Plan, ${clockText(plan.start)} to ${clockText(plan.end)}: ${plan.title}"
         }
-        card.addView(times(ui, plan.start, plan.end, p.text))
+        card.addView(times(ui, plan.start, plan.end, fg))
         val remind = plan.remind?.let { r -> Plan.REMINDERS.firstOrNull { it.first == r }?.second }
-        // As a class's card: what it is first, then quieter, "Plan" (in its colour) and how it repeats and reminds.
         val meta = SpannableStringBuilder(if (over) "Plan · done" else "Plan").apply {
             setSpan(TypefaceSpan(ui.f.bodySemi), 0, 4, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            setSpan(ForegroundColorSpan(p.courseText(plan.color)), 0, 4, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             listOfNotNull("every week".takeIf { plan.weekly }, remind?.let { "reminder ${it.lowercase()}" }).forEach { append(" · ").append(it) }
         }
         card.addView(ui.column().apply {
-            addView(title(ui, plan.title, p.text))
-            addView(ui.text(meta, 13.5f, p.muted), ui.wide(top = 4f))
+            addView(title(ui, plan.title, fg))
+            addView(ui.text(meta, 13.5f, fgMuted, lines = 1), ui.wide(top = 4f))
             baselineAlignedChildIndex = 0
         }, ui.grow())
         card.setOnClickListener {
@@ -274,7 +275,12 @@ object DayScreen {
             WeekGrid.landing = null
             Motion.pop(card, 0.85f)
         }
-        return card
+        if (!live) return card
+        return FrameLayout(ui.context).apply {
+            background = ui.shape(Color.TRANSPARENT, 19f, p.accent, 2f)
+            setPadding(ui.dp(3), ui.dp(3), ui.dp(3), ui.dp(3))
+            addView(card)
+        }
     }
 
     /** The class in progress, or the next one, as a big yellow block with its course name. */
