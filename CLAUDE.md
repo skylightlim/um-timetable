@@ -62,7 +62,8 @@ They often have the app open, or are on a video call shown in picture-in-picture
   - `DebugSpectrumReceiver`: sync, attendance and TimeEdit checks, fake sign-in, raw Moodle calls (see
     its KDoc). Delete any raw dumps afterwards.
 - If a debug receiver crashes, check `dumpsys activity processes | grep "Bad process"`. The widget and
-  alarms stop until the user opens the app once; reinstalling doesn't clear it.
+  alarms stop until it's cleared: `adb shell am clear-bad-process com.skylightlim.umtimetable` does it
+  without touching the screen (reinstalling doesn't), and the reinstall then re-arms the alarms.
 
 ## Publishing (public repo: github.com/skylightlim/um-timetable)
 
@@ -127,6 +128,9 @@ snapshot of `main`'s tree instead:
   `WeekGrid` keeps class-name layouts across grids. `Timetable.load` and `SpectrumStore.array` are cached
   already: jank lies elsewhere. `FitText` fits to 98% of the room: at the exact width the last letter
   wrapped.
+- Baselines in a row: `baselineAlignedChildIndex` must be set after the children are added (before, it
+  throws), and a wrap-content LinearLayout measures its children unaligned, cutting off the lowest
+  (Day's cards are a `BaselineRow` for this).
 - Never write to a file you haven't read. Once a script opened a source file for writing before reading
   it and emptied it.
 
