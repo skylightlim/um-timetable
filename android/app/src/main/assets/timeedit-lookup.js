@@ -1,12 +1,12 @@
 // Runs inside TimeEdit's own student page (cloud.timeedit.net/my_um/web/students/), so its
-// requests carry that page's sign-in. The app sends the user's courses as {"WIX1002": 16, …}
+// requests carry that page's sign-in. The app sends the user's courses as {"WIX1002": 10, …}
 // over a message port and gets back the weekly classes of those occurrences, or
 // {error, signedOut}. Each class: code, module (TimeEdit's name), day, start, end, activity,
 // room, weeks (how many weeks it's on in the period), term ("2026/S1") and lecturers. Also, per
 // course, every occurrence TimeEdit lists in those weeks ({"WIX1002": [1, 2, 16]}), to choose from.
 //
 // Per course: search the module by code, list its classes for the next six weeks (a mid-semester
-// break doesn't empty it) and keep those of the occurrence ("WIX1002/2026/S1/16"). One class per
+// break doesn't empty it) and keep those of the occurrence ("WIX1002/2026/S1/10"). One class per
 // weekly slot is then opened: its Lecturer rows point at lecturer objects (data-object="11484.3"),
 // whose info has the title and full name.
 (() => {

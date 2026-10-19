@@ -18,6 +18,18 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (examples use the made-up student)
+
+**Asked for:** push the update to GitHub (part of the check before publishing).
+
+**Change:** five code comments gave the user's own occurrence as their example (`{"WIX1002": …}`, an
+offering `…/2026/S1/…`) or one of their class times (the attendance script's date-and-time example).
+They now use the made-up student's occurrence and a made-up time. The occurrence examples had been
+public since earlier releases; the time was new.
+
+**Checked:** unit tests pass. The tracked files grepped again for the backups' lecturer names, course
+occurrences and that class time: none left.
+
 ## 19 October 2026 (the plan card's colour on a wheel too)
 
 **Asked for:** choose the colour the same way as How long and Reminder, so all three are vertical and

@@ -119,7 +119,7 @@ object SpectrumStore {
     fun read(c: Context, name: String): String? = File(dir(c), "$name.json").takeIf { it.exists() }?.readText()
 
     /**
-     * The user's occurrence in each course ({"WIX1002": 16}): from their Spectrum groups at the last
+     * The user's occurrence in each course ({"WIX1002": 10}): from their Spectrum groups at the last
      * sync, except where they chose another in Settings ([occurrencePicks]).
      */
     fun occurrences(c: Context): JSONObject = spectrumOccurrences(c).also { o -> occurrencePicks(c).let { p -> for (k in p.keys()) o.put(k, p.getInt(k)) } }

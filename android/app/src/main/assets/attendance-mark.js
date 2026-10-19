@@ -69,7 +69,7 @@
 
   /**
    * This page read again, for when Spectrum's words differ: the session's link is gone, and its row (the
-   * one starting with the same date and time, "Mon 19 Oct 2026 12PM - 2PM") says "Self-recorded", as UM's
+   * one starting with the same date and time, "Tue 20 Oct 2026 9AM - 11AM") says "Self-recorded", as UM's
    * marked sessions do.
    */
   async function taken(anchor) {

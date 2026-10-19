@@ -13,7 +13,7 @@ object TimeEditTimetable {
     data class Result(val json: JSONObject, val classes: Int, val courses: Int, val notFound: List<String>, val term: String?)
 
     /**
-     * [answer]: the script's `slots`. [occurrences]: the courses asked for ({"WIX1002": 16}), in
+     * [answer]: the script's `slots`. [occurrences]: the courses asked for ({"WIX1002": 10}), in
      * Spectrum's order. [spectrumNames]: Spectrum's full course names by code. [current]: the app's
      * timetable, whose course names and colours are kept, and whose lecturer is kept for the very
      * same class when TimeEdit lists none. Null when TimeEdit has no weekly class for any course.
@@ -61,7 +61,7 @@ object TimeEditTimetable {
         return Result(json, weekly.size, codes.size, occurrences.keys().asSequence().filter { it !in codes }.toList(), term)
     }
 
-    /** TimeEdit's "2026/S1" (from the offering "WIX1002/2026/S1/16") → "Sem 1 2026/27". */
+    /** TimeEdit's "2026/S1" (from the offering "WIX1002/2026/S1/10") → "Sem 1 2026/27". */
     fun term(values: List<String>): String? {
         val raw = values.filter { it.isNotBlank() }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: return null
         val m = Regex("""^(20\d\d)/S(\d)$""", RegexOption.IGNORE_CASE).find(raw.trim()) ?: return null
