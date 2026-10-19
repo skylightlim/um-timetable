@@ -44,8 +44,28 @@ object PlanSheet {
         var color = 0
         var end = 0
         var remind: Int? = null
-        /** Set by [show]: what the card's buttons (and the keyboard's Done) do: "save", "delete" or "cancel". */
+        var weekly = false
+        /** Set by [show]: what the card's buttons (and the keyboard's Done) do: "save", "delete", "skip" (this week of a weekly plan) or "cancel". */
         var close: (String) -> Unit = {}
+    }
+
+    /** Whether the card's Every week starts on: a weekly plan that goes on after this week (not stopped here). */
+    private fun repeats(plan: Plan) = plan.weekly && (plan.until == null || plan.date < plan.until)
+
+    /**
+     * [plan] as the card leaves it: what's written, its colour, length and reminder, and, when Every week
+     * was switched, repeating from this week to the end of the semester, or (switched off on a later week
+     * of a weekly plan) stopping after this week; switched off on its first week, it's just that day.
+     */
+    fun edited(plan: Plan, editor: Editor): Plan {
+        val base = plan.copy(text = editor.field.text.toString().trim(), color = editor.color, end = editor.end, remind = editor.remind)
+        return when {
+            editor.weekly == repeats(plan) -> base
+            editor.weekly && plan.weekly -> base.copy(until = null)
+            editor.weekly -> base.copy(weekly = true, from = plan.date, until = null, skip = emptySet())
+            plan.date != plan.from -> base.copy(until = plan.date)
+            else -> base.copy(weekly = false)
+        }
     }
 
     /** The card for [plan] ([isNew] if not saved yet), which can run to [maxEnd] at most. */
@@ -123,6 +143,27 @@ object PlanSheet {
             showTime()
         })
 
+        // Every week: the plan comes back on this weekday, at this time, to the end of the semester.
+        val weekday = plan.date.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.UK)
+        val last = (if (plan.weekly) plan.from else plan.date).let { AcademicCalendar.semesterEnd(it) ?: it.plusWeeks(13) }
+        val repeatNote = ui.text("", 12.5f, p.muted)
+        fun showRepeat(on: Boolean) {
+            repeatNote.text = when {
+                on -> "${weekday}s until ${last.dayOfMonth} ${last.month.getDisplayName(TextStyle.SHORT, Locale.UK)}, the semester's end"
+                plan.weekly && plan.date != plan.from -> "Stops after this $weekday"
+                else -> "Just this $weekday"
+            }
+        }
+        editor.weekly = repeats(plan)
+        showRepeat(editor.weekly)
+        body.addView(ui.row(gap = 12f).apply {
+            addView(ui.column().apply {
+                addView(ui.text("Every week", 15f, p.text, ui.f.bodySemi))
+                addView(repeatNote, ui.wide(top = 2f))
+            }, ui.grow())
+            addView(Toggle(ui, editor.weekly) { on -> editor.weekly = on; showRepeat(on) }.apply { contentDescription = "Every week" })
+        }, ui.wide(top = 14f))
+
         // The colour: a dot each, the chosen one ringed; picking one hops it and recolours the band.
         label("Colour")
         val dots = ui.row().apply { clipChildren = false; clipToPadding = false; setPadding(0, ui.dp(8), 0, 0) }
@@ -170,18 +211,35 @@ object PlanSheet {
             if (!Notify.allowed(c)) body.addView(ui.text("Notifications are off for the app: turn them on in Settings for reminders.", 12.5f, p.muted), ui.wide(top = 8f))
         }
 
-        // Delete (a saved plan), then Cancel and Save.
-        body.addView(ui.row(gap = 8f).apply {
+        // Delete (a saved plan), then Cancel and Save. A weekly plan's Delete asks which: this week's alone,
+        // or every week's; the buttons give way to that question in place.
+        val buttons = ui.row(gap = 8f)
+        val which = ui.row(gap = 8f).apply {
+            visibility = View.GONE
+            addView(ui.text("Delete", 15f, p.muted, ui.f.bodySemi).apply { gravity = Gravity.CENTER_VERTICAL; minHeight = ui.dp(48) })
+            addView(ui.space(), ui.spacer())
+            addView(ConfirmDialog.button(ui, "This week", p.surface2, p.text) { editor.close("skip") })
+            addView(ConfirmDialog.button(ui, "Every week", p.surface2, p.text) { editor.close("delete") })
+        }
+        buttons.apply {
             if (!isNew) addView(ui.text("Delete", 15f, p.muted, ui.f.bodySemi).apply {
                 gravity = Gravity.CENTER
                 minHeight = ui.dp(48)
                 setPadding(ui.dp(4), 0, ui.dp(12), 0)
-                setOnClickListener { editor.close("delete") }
+                setOnClickListener {
+                    if (!plan.weekly) return@setOnClickListener editor.close("delete")
+                    Haptics.tick(this)
+                    buttons.visibility = View.GONE
+                    which.visibility = View.VISIBLE
+                    Motion.enter(which, ui.dp(8f).toFloat())
+                }
             })
             addView(ui.space(), ui.spacer())
             addView(ConfirmDialog.button(ui, "Cancel", p.surface2, p.text) { editor.close("cancel") })
             addView(ConfirmDialog.button(ui, "Save", p.accent, p.accentInk) { editor.close("save") })
-        }, ui.wide(top = 22f))
+        }
+        body.addView(buttons, ui.wide(top = 22f))
+        body.addView(which, ui.wide(top = 22f))
         field.setOnEditorActionListener { _, action, _ -> if (action == EditorInfo.IME_ACTION_DONE) { editor.close("save"); true } else false }
         return editor.apply {
             this.color = color
@@ -285,14 +343,15 @@ object PlanSheet {
             (c.getSystemService(InputMethodManager::class.java))?.hideSoftInputFromWindow(field.windowToken, 0)
             when (how) {
                 "save" -> {
-                    Plans.save(c, plan.copy(text = field.text.toString().trim(), color = editor.color, end = editor.end, remind = editor.remind))
+                    Plans.save(c, edited(plan, editor))
                     WeekGrid.landing = plan.id
                     Haptics.tick(card)
                 }
                 "delete" -> { Plans.delete(c, plan.id); Haptics.back(card) }
+                "skip" -> { Plans.skip(c, plan, plan.date); Haptics.back(card) }
             }
             // Change the time: what's been chosen so far goes back to the grid with the box.
-            val draft = plan.copy(text = field.text.toString().trim(), color = editor.color, end = editor.end, remind = editor.remind)
+            val draft = edited(plan, editor)
             fun done() {
                 dialog.dismiss()
                 when (how) {
@@ -304,7 +363,7 @@ object PlanSheet {
             if (!Motion.enabled) return@close done()
             content.animate().alpha(0f).setDuration(90).start()
             Motion.fade(scrim, scrim.alpha, 0f, 240)
-            if (how == "delete") {
+            if (how == "delete" || how == "skip") {
                 // Gone in a spin.
                 card.animate().scaleX(0.2f).scaleY(0.2f).rotation(28f).alpha(0f).setInterpolator(Motion.EXIT).setDuration(260).withEndAction { done() }.start()
                 return@close

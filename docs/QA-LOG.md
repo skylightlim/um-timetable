@@ -18,6 +18,27 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 19 October 2026 (plans that repeat every week)
+
+**Asked for:** a persistent switch on the plan card: switched on, the plan is in the same cell every
+following week for the whole semester.
+
+**Change:** the plan card has an **Every week** row with a switch (`Toggle`, new in Ui.kt: an iOS-style
+track and knob; the knob stretches while held and springs across, with a tick). Its line says what it
+means: "Wednesdays until 7 Feb, the semester's end", "Just this Wednesday", or, switched off on a later
+week, "Stops after this Wednesday". A weekly plan is saved once, dated its first week (`weekly`, plus
+`until` when stopped and `skip` for weeks deleted alone); `Plans.on`/`inWeek` give a copy for each week
+up to the end of that semester (`AcademicCalendar.semesterEnd`: the exams' last Sunday, or the next
+semester's end between semesters). Editing any week's copy edits every week; moving it to another
+weekday moves the whole plan. Delete on a weekly plan asks **This week** (that week is skipped) or **Every
+week**. Day labels it "PLAN · EVERY WEEK"; the week grid draws repeat arrows (`ic_repeat`) in its top
+corner. Reminders go off for each week (`reminderKey` is the plan and the date).
+
+**Checked:** unit tests pass, with new ones for weekly copies (weekday, first and last week, skipped and
+stopped weeks, saving under the first week) and for semester ends. Renders with a made-up weekly plan:
+the card with the switch on, the week grid with the arrows, Day with "EVERY WEEK". Switching, saving,
+deleting one week and the reminders need a try by hand.
+
 ## 19 October 2026 (pinning sections of a course page)
 
 **Asked for:** being able to pin certain sections of a Spectrum course page.

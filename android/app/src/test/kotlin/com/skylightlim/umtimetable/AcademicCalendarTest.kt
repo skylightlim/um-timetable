@@ -25,6 +25,15 @@ class AcademicCalendarTest {
         assertNull(week("2027-02-08")) // semester break
     }
 
+    @Test fun semesterEnd() {
+        fun d(s: String): LocalDate = LocalDate.parse(s)
+        assertEquals(d("2027-02-07"), AcademicCalendar.semesterEnd(d("2026-10-20"))) // semester I's exams end
+        assertEquals(d("2027-02-07"), AcademicCalendar.semesterEnd(d("2027-02-07")))
+        assertEquals(d("2027-07-04"), AcademicCalendar.semesterEnd(d("2027-02-10"))) // between semesters: the next one's
+        assertEquals(d("2027-09-12"), AcademicCalendar.semesterEnd(d("2027-08-01")))
+        assertNull(AcademicCalendar.semesterEnd(d("2027-10-01")))
+    }
+
     @Test fun semesterTwoAndSpecial() {
         assertEquals(Week(Kind.TEACHING, 1, 14), week("2027-03-01"))
         assertEquals(Week(Kind.BREAK), week("2027-04-21"))

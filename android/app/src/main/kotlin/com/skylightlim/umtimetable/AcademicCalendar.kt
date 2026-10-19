@@ -36,6 +36,13 @@ object AcademicCalendar {
         listOf(p(Kind.TEACHING, "2027-07-19", 7), p(Kind.EXAMS, "2027-09-06", 1)),
     )
 
+    /**
+     * The last day of the semester [date] falls in (its exams' last Sunday), or of the next one when
+     * [date] falls between two; null after the calendar's last semester.
+     */
+    fun semesterEnd(date: LocalDate): LocalDate? =
+        SEMESTERS.map { it.last().let { end -> end.start.plusWeeks(end.weeks.toLong()).minusDays(1) } }.firstOrNull { it >= date }
+
     /** The semester week [date] falls in, or null outside the calendar's semesters. */
     fun week(date: LocalDate): Week? {
         val monday = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))

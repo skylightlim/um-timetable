@@ -238,6 +238,84 @@ class SegmentPill(context: Context, private val pill: Drawable, private var at: 
 }
 
 /**
+ * An on/off switch, drawn as iOS draws one: a pill track, the accent when on, with a white knob that
+ * springs across. Held, the knob stretches toward the other side; let go on it, the knob springs over,
+ * the track's colour following, with a tick, and [onChange] gets the new state. 48dp tall to touch,
+ * the track 31dp of it.
+ */
+@android.annotation.SuppressLint("ViewConstructor")
+class Toggle(private val ui: Ui, on: Boolean, private val onChange: (Boolean) -> Unit) : View(ui.context) {
+    var on = on
+        private set
+    /** Where the knob is, 0 (off) to 1 (on), and how stretched, 0 to 1. */
+    private var at = if (on) 1f else 0f
+    private var stretch = 0f
+    private var move: android.animation.ValueAnimator? = null
+    private var hold: android.animation.ValueAnimator? = null
+    private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private val knob = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        setShadowLayer(ui.dp(2f).toFloat(), 0f, ui.dp(1f).toFloat(), 0x40000000)
+    }
+    private val off = Palette.mix(ui.p.text, ui.p.surface, if (ui.p.dark) 0.22f else 0.13f)
+    private val rect = android.graphics.RectF()
+
+    init {
+        isClickable = true
+        stateDescription = if (on) "On" else "Off"
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) = setMeasuredDimension(ui.dp(51), ui.dp(48))
+
+    private fun tween(from: Float, to: Float, spring: Motion.Spring, set: (Float) -> Unit) =
+        if (!Motion.enabled) { set(to); invalidate(); null } else android.animation.ValueAnimator.ofFloat(from, to).apply {
+            interpolator = spring
+            duration = spring.duration
+            addUpdateListener { set(it.animatedValue as Float); invalidate() }
+            start()
+        }
+
+    private fun holdTo(to: Float) {
+        hold?.cancel()
+        hold = tween(stretch, to, Motion.QUICK) { stretch = it }
+    }
+
+    override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
+        when (e.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> holdTo(1f)
+            android.view.MotionEvent.ACTION_CANCEL -> holdTo(0f)
+            android.view.MotionEvent.ACTION_UP -> holdTo(0f)
+        }
+        return super.onTouchEvent(e)
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        on = !on
+        stateDescription = if (on) "On" else "Off"
+        move?.cancel()
+        move = tween(at, if (on) 1f else 0f, Motion.BOUNCY) { at = it }
+        Haptics.tick(this)
+        onChange(on)
+        return true
+    }
+
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        val h = ui.dp(31f).toFloat()
+        val top = (height - h) / 2
+        rect.set(0f, top, width.toFloat(), top + h)
+        paint.color = Palette.mix(ui.p.accent, off, at.coerceIn(0f, 1f))
+        canvas.drawRoundRect(rect, h / 2, h / 2, paint)
+        val inset = ui.dp(2f).toFloat()
+        val size = h - inset * 2
+        val w = size + ui.dp(7f) * stretch
+        val left = inset + (width - inset * 2 - w) * at
+        rect.set(left, top + inset, left + w, top + inset + size)
+        canvas.drawRoundRect(rect, size / 2, size / 2, knob)
+    }
+}
+
+/**
  * A [Ui.tape]: a [SegmentPill] row with more options than fit, on a track that scrolls sideways under it
  * like a tape. A tap chooses an option. The pill can be dragged too: it follows the finger, choosing the
  * option it's nearest, and held near either end the tape runs on under it (faster nearer the edge),

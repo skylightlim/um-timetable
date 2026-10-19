@@ -143,13 +143,13 @@ class DebugRenderReceiver : BroadcastReceiver() {
         save(context, bitmap, "$view${host.openCourse?.let { "-$it" } ?: ""}${if (dark) "-dark" else ""}")
     }
 
-    /** Made-up plans in the week drawn: study, the gym, reading (none of them the user's). */
+    /** Made-up plans in the week drawn: study, the gym (every week), reading (none of them the user's). */
     private fun samplePlans(host: Host): List<Plan> {
         val palette = Plans.palette(Scheme.load(host.ui.context), host.ui.p.accent)
         val monday = host.dateOf(1)
         return listOf(
             Plan("s1", monday.plusDays(1), 10 * 60, 11 * 60, "Group study for the quiz", palette[0], 10),
-            Plan("s2", monday.plusDays(2), 14 * 60, 16 * 60, "Gym", palette[3]),
+            Plan("s2", monday.plusDays(2), 14 * 60, 16 * 60, "Gym", palette[3], weekly = true, from = monday.plusDays(2).minusWeeks(1)),
             Plan("s3", monday.plusDays(4), 11 * 60, 11 * 60 + 30, "Read chapter 3", palette[7], 0),
         )
     }

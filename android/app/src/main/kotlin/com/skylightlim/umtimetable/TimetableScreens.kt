@@ -209,7 +209,7 @@ object DayScreen {
 
         // The day's classes and the user's plans for that date, in time order, with the free time between.
         val date = h.dateOf(day)
-        val plans = (sample ?: Plans.all(ui.context)).filter { it.date == date }
+        val plans = Plans.on(sample ?: Plans.all(ui.context), date)
         val items = (list.map { Triple(it.start, it.end, it as Any) } + plans.map { Triple(it.start, it.end, it as Any) }).sortedBy { it.first }
         val agenda = ui.column(gap = 8f)
         var until: Int? = null
@@ -251,7 +251,7 @@ object DayScreen {
         }, LinearLayout.LayoutParams(ui.dp(52), ViewGroup.LayoutParams.WRAP_CONTENT))
         val remind = plan.remind?.let { r -> Plan.REMINDERS.firstOrNull { it.first == r }?.second }
         card.addView(ui.column().apply {
-            addView(ui.text(listOfNotNull(if (over) "PLAN · DONE" else "PLAN", remind?.let { "REMINDER ${it.uppercase()}" }).joinToString(" · "), 11f, p.courseText(plan.color), ui.f.monoBold))
+            addView(ui.text(listOfNotNull(if (over) "PLAN · DONE" else "PLAN", "EVERY WEEK".takeIf { plan.weekly }, remind?.let { "REMINDER ${it.uppercase()}" }).joinToString(" · "), 11f, p.courseText(plan.color), ui.f.monoBold))
             addView(ui.text(plan.title, 15f, p.text, ui.f.bodySemi), ui.wide(top = 3f))
         }, ui.grow())
         card.setOnClickListener {
@@ -599,6 +599,7 @@ class WeekGrid(
         strokeWidth = ui.dp(1.5f).toFloat()
         pathEffect = android.graphics.DashPathEffect(floatArrayOf(ui.dp(4f).toFloat(), ui.dp(3f).toFloat()), 0f)
     }
+    private val repeatIcon = context.getDrawable(R.drawable.ic_repeat)!!.mutate()
     /** A plan just saved pops into its place ([landing]). */
     private var landId = landing.also { landing = null }
     private var landScale = 1f
@@ -777,6 +778,15 @@ class WeekGrid(
         canvas.clipRect(r)
         codePaint.color = p.courseText(plan.color); codePaint.alpha = alpha
         canvas.drawText(clockText(plan.start), r.left + pad, r.top + pad + codePaint.textSize, codePaint)
+        // A weekly plan: the repeat arrows in its top corner, where the time leaves room.
+        val mark = codePaint.textSize.toInt()
+        if (plan.weekly && r.width() >= pad * 2 + codePaint.measureText(clockText(plan.start)) + ui.dp(3f) + mark) {
+            repeatIcon.setTint(codePaint.color)
+            repeatIcon.alpha = alpha
+            val top = (r.top + pad + codePaint.textSize * 0.12f).toInt()
+            repeatIcon.setBounds((r.right - pad).toInt() - mark, top, (r.right - pad).toInt(), top + mark)
+            repeatIcon.draw(canvas)
+        }
         val nameTop = r.top + pad + codePaint.textSize + ui.dp(3f)
         val lines = ((r.bottom - pad - nameTop) / namePaint.fontSpacing).toInt()
         if (lines >= 1) {
