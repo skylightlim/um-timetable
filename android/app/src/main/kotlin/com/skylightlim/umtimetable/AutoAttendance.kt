@@ -74,9 +74,12 @@ object AutoAttendance {
         schedule(c)
     }
 
-    /** Today's and the coming days' classes to mark on [date]: none on a holiday or in a week without classes. */
+    /**
+     * The classes to mark on [date]: none on a holiday or in a week without classes. A course whose
+     * occurrence the user changed is marked at its Spectrum occurrence's classes ([Timetable.attendance]).
+     */
     private fun classes(c: Context, date: LocalDate): List<Session> =
-        if (Holidays.on(date) != null || weekOff(date) != null) emptyList() else Timetable.load(c).day(date.dayOfWeek.value % 7)
+        if (Holidays.on(date) != null || weekOff(date) != null) emptyList() else Timetable.load(c).attendanceDay(date.dayOfWeek.value % 7)
 
     /** The tries of class [s] on the day starting at [dayStart], as times, all before it ends. */
     private fun tries(dayStart: Long, s: Session) = TRIES.filter { s.start + it < s.end }.map { dayStart + (s.start + it) * 60_000L }

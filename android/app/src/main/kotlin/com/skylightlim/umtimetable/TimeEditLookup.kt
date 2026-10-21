@@ -36,10 +36,21 @@ object TimeEditLookup {
     }
 
     /**
-     * Looks up [courses] ({"WIX1002": 10}) inside TimeEdit's page in [web] and calls [done] once,
-     * with the script's answer or an error message.
+     * Spectrum's occurrence of each course whose occurrence the user chose in Settings ({"GIG1003": 6}):
+     * the lookup brings its classes too, which attendance goes by ([Timetable.attendance]).
      */
-    fun request(web: WebView, courses: JSONObject, timeoutMs: Long, done: (JSONObject?, String?) -> Unit) {
+    fun registered(context: Context): JSONObject {
+        val spectrum = SpectrumStore.spectrumOccurrences(context)
+        val picks = SpectrumStore.occurrencePicks(context)
+        return JSONObject().also { out -> for (code in picks.keys()) spectrum.optInt(code).takeIf { it > 0 }?.let { out.put(code, it) } }
+    }
+
+    /**
+     * Looks up [courses] ({"WIX1002": 10}) inside TimeEdit's page in [web] and calls [done] once,
+     * with the script's answer or an error message. [registered]: other occurrences whose classes to
+     * bring too, marked `registered` ([registered]).
+     */
+    fun request(web: WebView, courses: JSONObject, timeoutMs: Long, registered: JSONObject = JSONObject(), done: (JSONObject?, String?) -> Unit) {
         val (mine, theirs) = web.createWebMessageChannel()
         var answered = false
         lateinit var timeout: Runnable
@@ -69,7 +80,7 @@ object TimeEditLookup {
         main.postDelayed(timeout, timeoutMs)
         web.evaluateJavascript(web.context.assets.open(SCRIPT).bufferedReader().use { it.readText() }) {
             // Only a page from TimeEdit's origin can receive the port, so no other page sees the courses or answers.
-            web.postWebMessage(WebMessage(JSONObject().put("courses", courses).toString(), arrayOf(theirs)), Uri.parse("https://cloud.timeedit.net"))
+            web.postWebMessage(WebMessage(JSONObject().put("courses", courses).put("registered", registered).toString(), arrayOf(theirs)), Uri.parse("https://cloud.timeedit.net"))
         }
     }
 

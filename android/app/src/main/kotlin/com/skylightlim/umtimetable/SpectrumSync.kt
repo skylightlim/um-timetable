@@ -434,9 +434,10 @@ object SpectrumSync {
         val byId = courses.objects().associateBy { it.getInt("id") }
         val idOf = courses.objects().associate { it.getString("code") to it.getInt("id") }
         val timetable = Timetable.load(c)
-        val today = timetable.day(Calendar.getInstance().apply { timeInMillis = now }.get(Calendar.DAY_OF_WEEK) - 1)
+        // The classes attendance is taken at: Spectrum's occurrence's, for a course the user chose another of.
+        val today = timetable.attendanceDay(Calendar.getInstance().apply { timeInMillis = now }.get(Calendar.DAY_OF_WEEK) - 1)
         val activities = attendanceActivities(c, api, today.mapNotNull { idOf[it.course.code] }.toSet() + events.map { it.optInt("courseid") }, fresh)
-        fun classes(courseId: Int) = timetable.sessions.filter { it.course.code == byId[courseId]?.optString("code") }
+        fun classes(courseId: Int) = timetable.attendance.filter { it.course.code == byId[courseId]?.optString("code") }
 
         val sessions = mutableListOf<JSONObject>()
         fun add(id: String, courseId: Int, activity: AttendanceMatch.Activity, start: Long, end: Long, url: String) {
@@ -707,7 +708,7 @@ object AttendanceWatch {
         for (offset in 0..7) {
             val day = Calendar.getInstance().apply { timeInMillis = now; add(Calendar.DAY_OF_MONTH, offset) }
             val dayStart = startOfDay(day.timeInMillis)
-            for (s in timetable.day(day.get(Calendar.DAY_OF_WEEK) - 1)) {
+            for (s in timetable.attendanceDay(day.get(Calendar.DAY_OF_WEEK) - 1)) {
                 val start = dayStart + s.start * 60_000L
                 val end = dayStart + s.end * 60_000L
                 if (now in start until end) candidates += minOf(now + 10 * 60_000L, end)

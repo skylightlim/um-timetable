@@ -18,6 +18,30 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 22 October 2026 (Attendance stays with Spectrum's occurrence)
+
+**Asked for:** even when the user has changed a course's occurrence, its attendance should be marked
+according to their original occurrence.
+
+**Change:** the occurrence in Spectrum (the user's group) is where their attendance is recorded, and its
+sessions belong to that occurrence's classes. So when a course has another occurrence chosen in
+Settings, the TimeEdit lookup now also brings Spectrum's occurrence's weekly classes (the module's
+reservations are read once either way; `timeedit-lookup.js` takes `registered` and marks those slots),
+and the timetable keeps them apart (`registered` in timetable.json, the course's `registered`
+occurrence). `Timetable.attendance` is the classes attendance goes by: Spectrum's occurrence's for such a
+course, everyone else's as shown. Auto attendance (its alarms and tries), the attendance checks and the
+matching of attendance activities (`fetchAttendance`, `AttendanceMatch` with Spectrum's number) all use
+it. Until a TimeEdit lookup has brought those classes (a choice made before this version), the chosen
+classes stand in, matched with Spectrum's occurrence number. The Day and Week pages still show the
+chosen occurrence.
+
+**Checked:** unit tests pass, two new: the TimeEdit build puts the registered slots apart with the
+course's `registered` occurrence (nothing apart when Spectrum's own is chosen), and
+`AttendanceClassesTest`: attendance is taken at Spectrum's occurrence's class (Wednesday) while the page
+shows the chosen one (Tuesday), and with no registered classes yet, the chosen class with Spectrum's
+number. Not tried against the real TimeEdit: the lookup runs in TimeEditActivity with the user there;
+the user currently has no occurrence chosen.
+
 ## 22 October 2026 (Course pages: text you can select and copy)
 
 **Asked for:** the text on a course page (Spectrum's content, from the Courses tab) can be selected

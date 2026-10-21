@@ -55,7 +55,8 @@ class TimeEditActivity : WebScreen() {
         progress.visibility = View.VISIBLE
         status.text = "Reading your ${courses.length()} courses on TimeEdit…"
         val began = System.currentTimeMillis()
-        TimeEditLookup.request(web, courses, 90_000) { answer, error ->
+        val registered = TimeEditLookup.registered(this)
+        TimeEditLookup.request(web, courses, 90_000, registered) { answer, error ->
             running = false
             progress.visibility = View.INVISIBLE
             action.isEnabled = true
@@ -72,7 +73,7 @@ class TimeEditActivity : WebScreen() {
             }
             val current = Timetable.local(this)?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
             val names = SpectrumStore.array(this, "courses").objects().associate { it.optString("code") to it.optString("name") }
-            val result = TimeEditTimetable.build(answer, courses, names, current)
+            val result = TimeEditTimetable.build(answer, courses, names, current, registered)
             Log.i("UMTimetable", "TimeEdit timetable: ${result?.classes ?: 0} classes, ${result?.courses ?: 0} courses, not found ${result?.notFound}, ${result?.term}, in ${System.currentTimeMillis() - began} ms")
             if (result == null) {
                 status.text = "TimeEdit lists no weekly classes for your courses in the next six weeks."
