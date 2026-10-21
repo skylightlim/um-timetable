@@ -18,6 +18,24 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 22 October 2026 (Course pages: text you can select and copy)
+
+**Asked for:** the text on a course page (Spectrum's content, from the Courses tab) can be selected
+and copied.
+
+**Change:** on a course page, the section texts, labels, each activity's description and availability
+note, its dates line and the course's full name under the code take a long press to select a word,
+with handles and Android's Copy (`RichText.view(selectable = true)`, `RichText.selectable`). Links in
+the text still open on a tap: the app's own link handling runs before the selection's. A tap focuses
+the text, and `revealOnFocusHint = false` keeps the page from scrolling a tall block's top into view
+for it. Section names keep their long press for Pin to top; buttons (files, folders, links) aren't
+text to select. News, Grades and the rest are unchanged.
+
+**Checked:** unit tests pass; built. Press feedback (`Motion.Presser`) only sinks views with a click
+listener, so selectable text doesn't sink and nothing under it does. Not tried by hand: selecting and
+copying, and that a swipe or a pull on the text still moves the page, need the user's long press on
+the phone.
+
 ## 22 October 2026 (Auto attendance: at the start of class, trying again while nothing is open)
 
 **Asked for:** don't wait 5 minutes: mark the class's attendance once it starts, and notify when

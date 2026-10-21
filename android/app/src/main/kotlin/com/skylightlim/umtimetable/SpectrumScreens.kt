@@ -735,7 +735,7 @@ object SpectrumScreens {
         page.addView(ui.column().apply {
             setPadding(0, ui.dp(18), 0, ui.dp(14))
             addView(ui.text((code.ifEmpty { "Course" }).uppercase(), 38f, p.courseText(color), ui.f.sign))
-            addView(ui.text(courseName(h, c.optString("name"), code), 20f, p.text, ui.f.bodyBold), ui.wide(top = 6f))
+            addView(ui.text(courseName(h, c.optString("name"), code), 20f, p.text, ui.f.bodyBold).apply { RichText.selectable(this) }, ui.wide(top = 6f))
         })
         h.courseError(id)?.let {
             page.addView(ui.text(it, 13.5f).apply { background = ui.shape(Palette.mix(0xFFF2645F.toInt(), p.surface, 0.14f), 12f); setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10)) })
@@ -796,14 +796,14 @@ object SpectrumScreens {
                     true
                 }
             }, ui.wide(top = 14f, bottom = -2f))
-            // Every text in full and at reading size: nothing behind Show more.
-            if (hasContent(summary)) box.addView(textBlock(ui, RichText.view(h, summary, "s$id-$si", folder, 0, 16f, expanded = h.expanded)), ui.wide(bottom = 8f))
+            // Every text in full and at reading size: nothing behind Show more. A long press selects it to copy.
+            if (hasContent(summary)) box.addView(textBlock(ui, RichText.view(h, summary, "s$id-$si", folder, 0, 16f, expanded = h.expanded, selectable = true)), ui.wide(bottom = 8f))
             val list = ui.column(gap = 8f)
             modules.forEachIndexed { mi, m ->
                 val key = "m$id-$si-$mi"
                 val kind = m.optString("kind")
                 if (kind == "label") {
-                    list.addView(textBlock(ui, RichText.view(h, m.optString("html"), key, folder, 0, 16f, expanded = h.expanded)))
+                    list.addView(textBlock(ui, RichText.view(h, m.optString("html"), key, folder, 0, 16f, expanded = h.expanded, selectable = true)))
                     return@forEachIndexed
                 }
                 val item = ui.column()
@@ -831,11 +831,11 @@ object SpectrumScreens {
                 }
                 val dates = m.optJSONArray("dates")?.objects().orEmpty().filter { it.optLong("time") > 0 }
                     .joinToString(" · ") { "${it.optString("label")} ${dayLabel(it.getLong("time"))} ${hm(it.getLong("time"))}" }
-                if (dates.isNotEmpty()) item.addView(ui.text(dates, 13.5f, p.muted).apply { setPadding(ui.dp(42), ui.dp(4), ui.dp(4), 0) })
+                if (dates.isNotEmpty()) item.addView(ui.text(dates, 13.5f, p.muted).apply { setPadding(ui.dp(42), ui.dp(4), ui.dp(4), 0); RichText.selectable(this) })
                 val html = m.optString("html")
-                if (hasContent(html)) item.addView(RichText.view(h, html, "$key-d", folder, 0, 15f, p.text, h.expanded).apply { setPadding(ui.dp(42), ui.dp(6), ui.dp(4), ui.dp(2)) })
+                if (hasContent(html)) item.addView(RichText.view(h, html, "$key-d", folder, 0, 15f, p.text, h.expanded, selectable = true).apply { setPadding(ui.dp(42), ui.dp(6), ui.dp(4), ui.dp(2)) })
                 val availability = m.optString("availability")
-                if (hasContent(availability)) item.addView(RichText.view(h, availability, "$key-a", folder, 0, 13.5f, p.muted, h.expanded).apply { setPadding(ui.dp(42), ui.dp(4), ui.dp(4), ui.dp(2)) })
+                if (hasContent(availability)) item.addView(RichText.view(h, availability, "$key-a", folder, 0, 13.5f, p.muted, h.expanded, selectable = true).apply { setPadding(ui.dp(42), ui.dp(4), ui.dp(4), ui.dp(2)) })
                 list.addView(item)
             }
             box.addView(list)

@@ -50,12 +50,14 @@ object RichText {
     /**
      * Rich text, clamped to [lines] (0 for no limit) with a Show more toggle when it's long. [expanded] holds the open
      * keys. The toggle changes the text in place: rebuilding the page would lose the scroll position.
+     * [selectable] text takes a long press to select and copy it (a link still opens on a tap).
      */
     @SuppressLint("ClickableViewAccessibility")
-    fun view(h: Host, html: String, key: String, folder: String, lines: Int, size: Float = 14f, color: Int = h.ui.p.text, expanded: MutableSet<String>): View {
+    fun view(h: Host, html: String, key: String, folder: String, lines: Int, size: Float = 14f, color: Int = h.ui.p.text, expanded: MutableSet<String>, selectable: Boolean = false): View {
         val ui = h.ui
         val tv = ui.text("", size, color, ui.f.body).apply { setLineSpacing(0f, 1.35f) }
         tv.setLinkTextColor(ui.p.accentText)
+        if (selectable) selectable(tv)
         tv.text = spanned(h, tv, html, folder)
         // Links are handled by touch position, not LinkMovementMethod, which would break the ellipsis.
         tv.setOnTouchListener { _, e -> linkAt(tv, e)?.let { if (e.action == MotionEvent.ACTION_UP) it.onClick(tv); true } ?: false }
@@ -81,6 +83,15 @@ object RichText {
             addView(tv)
             addView(more, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
+    }
+
+    /**
+     * [tv]'s text selectable: a long press picks a word, with handles and Copy. A tap focuses it, and the
+     * page mustn't scroll a tall block's top into view for that.
+     */
+    fun selectable(tv: TextView) {
+        tv.setTextIsSelectable(true)
+        tv.revealOnFocusHint = false
     }
 
     /** The HTML as styled text with working links. Text without images is converted once and reused. */
