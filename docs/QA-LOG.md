@@ -18,6 +18,23 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 22 October 2026 (Class reminders)
+
+**Asked for:** an option to notify the user of the classes they have to attend.
+
+**Change:** Settings › Notifications has **Class reminders** (Off at first). A tap flies a card out of
+the row with the choices on a wheel: Off, At start, 5, 10, 15 or 30 min before, 1 h before (choose, then
+Choose, like the occurrence card). Chosen, `ClassReminders` posts a notification on a new "Classes"
+channel before each class Day shows: the course's short name and type, then "In 10 min · 08:00–09:00 ·
+room" (the time left as it really is, should the phone sleep past the alarm; nothing once the class is
+over). None on public holidays or in weeks without classes. One exact alarm at a time, re-armed
+wherever the timetable changes, after each sync, and after a reboot or update. Choosing a reminder with
+notifications off asks for them.
+
+**Checked:** unit tests pass. The Settings sheet drawn on the phone (`DebugRenderReceiver --es view
+settings`): the row under "Deadlines, marks and news", saying "Off". The card and a reminder going off
+weren't seen: the user hasn't chosen one, and the choice is theirs.
+
 ## 22 October 2026 (Attendance stays with Spectrum's occurrence)
 
 **Asked for:** even when the user has changed a course's occurrence, its attendance should be marked
