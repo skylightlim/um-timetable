@@ -61,6 +61,10 @@ They often have the app open, or are on a video call shown in picture-in-picture
     yet). A frame at the phone's 120 Hz is 8.3 ms; a week swipe costs about 4.6 ms.
   - `DebugSpectrumReceiver`: sync, attendance and TimeEdit checks, fake sign-in, raw Moodle calls (see
     its KDoc). Delete any raw dumps afterwards.
+- Auto attendance logs every step to a file any build writes and adb reads without `run-as` (any
+  student's phone, plugged in): `adb shell cat /sdcard/Android/data/com.skylightlim.umtimetable/files/attendance-log.txt`.
+  `DebugSpectrumReceiver --es automark alarm --ei cmid N` tries the real path (an exact alarm starts
+  the foreground service, app in the background) as a dry read, logged there too.
 - If a debug receiver crashes, check `dumpsys activity processes | grep "Bad process"`. The widget and
   alarms stop until it's cleared: `adb shell am clear-bad-process com.skylightlim.umtimetable` does it
   without touching the screen (reinstalling doesn't), and the reinstall then re-arms the alarms.
@@ -96,6 +100,10 @@ snapshot of `main`'s tree instead:
   `kotlin.srcDirs`.
 - The page inside `SwipeScrollView` has no background, so anything behind it shows through.
   `PullIndicator` clips itself to the strip the page has uncovered.
+- The user's phone has the app's background data off and is often on mobile data: anything run from
+  an alarm, job or receiver has no network then (a WebView load fails, and a script run on the error
+  page never answers). Auto attendance runs in a short foreground service started by its exact alarm,
+  which Android lets through ("Background started FGS: Allowed … ALARM_MANAGER_WHILE_IDLE").
 - TimeEdit: native `HttpURLConnection` with WebView cookies gets HTTP 412, so lookups run in the
   page (`assets/timeedit-lookup.js` over a WebMessagePort). MAYA has no single sign-on: the user signs
   in themselves, then the app reads the page.
