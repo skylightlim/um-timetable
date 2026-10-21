@@ -175,7 +175,7 @@ object SpectrumSync {
     }
 
     @Suppress("DEPRECATION") // NetworkInfo is still the only per-app view of "blocked"
-    private fun networkBlocked(c: Context): Boolean =
+    fun networkBlocked(c: Context): Boolean =
         c.getSystemService(ConnectivityManager::class.java).activeNetworkInfo?.detailedState == NetworkInfo.DetailedState.BLOCKED
 
     // --- fetching ---------------------------------------------------------------------------
@@ -735,6 +735,7 @@ object Notify {
     const val DUE = "deadlines"
     const val GRADES = "grades"
     const val PLANS = "plans"
+    const val MARKING = "marking"
 
     private fun manager(c: Context) = c.getSystemService(NotificationManager::class.java)
 
@@ -755,6 +756,8 @@ object Notify {
                 .apply { description = "When a lecturer releases a mark on Spectrum" },
             NotificationChannel(PLANS, "Plans", NotificationManager.IMPORTANCE_HIGH)
                 .apply { description = "Reminders you set for your plans on the Week page" },
+            NotificationChannel(MARKING, "Marking attendance", NotificationManager.IMPORTANCE_MIN)
+                .apply { description = "Shown while the app marks your attendance on Spectrum, for a few seconds" },
         ),
     )
 
@@ -831,7 +834,7 @@ class SpectrumAlarmReceiver : BroadcastReceiver() {
                     ACTION_ATTENDANCE -> SpectrumSync.run(c, attendanceOnly = true, background = true)
                     ACTION_REMINDER -> Reminders.fire(c)
                     ACTION_PLAN -> PlanReminders.fire(c)
-                    ACTION_AUTOMARK -> AutoAttendance.fire(c)
+                    ACTION_AUTOMARK -> AutoAttendance.fire(c, intent.getStringExtra(AutoAttendanceService.EXTRA_DRY))
                     Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
                         Reminders.schedule(c)
                         AttendanceWatch.schedule(c)

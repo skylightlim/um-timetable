@@ -3,8 +3,8 @@
 // the page's own "Submit attendance" link does: that link (attendance.php?sessid=…) either records the
 // session's best status at once, or shows a form, where "Present" (else the first status offered) is
 // chosen and sent. The app sends {"dry": true|false} over a message port and gets back {ok, status} or
-// {error, detail}. Dry, it only says what it found on this page and opens nothing: opening the link can
-// already mark the student.
+// {error, detail, rows}. Dry, it only says what it found on this page and opens nothing: opening the link
+// can already mark the student. rows: the page's sessions as text, for the app's log.
 //
 // Errors: notopen (no link: no session open for self-marking), password (the lecturer's password),
 // qr (a rotating QR code), network (only from the campus network), closed, nostatus, failed.
@@ -32,12 +32,7 @@
   async function mark(dry) {
     const anchors = [...document.querySelectorAll('a[href*="/mod/attendance/attendance.php"]')].filter(a => /[?&]sessid=\d+/.test(a.href));
     const links = anchors.map(a => a.href);
-    if (dry) {
-      // The session table's rows, condensed: date, time, what each says (a status, "Submit attendance", "?").
-      const rows = [...document.querySelectorAll('table tbody tr')].slice(0, 8)
-        .map(tr => tr.textContent.replace(/\s+/g, ' ').trim().slice(0, 140));
-      return { ok: false, dry: true, links: links.length, title: document.title, rows };
-    }
+    if (dry) return { ok: false, dry: true, links: links.length, title: document.title, rows: rows() };
     if (!links.length) return { error: 'notopen' };
 
     // The link itself: Spectrum may record the student at once and go back to this page.
@@ -65,6 +60,10 @@
     return trouble(page(sent.html)) || { error: 'failed', detail: 'no confirmation from Spectrum' };
   }
 
+  /** The session table's rows, condensed: date, time, what each says (a status, "Submit attendance", "?"). */
+  const rows = () => [...document.querySelectorAll('table tbody tr')].slice(0, 8)
+    .map(tr => tr.textContent.replace(/\s+/g, ' ').trim().slice(0, 140));
+
   const rowText = el => ((el && el.closest('tr')) || {}).textContent?.replace(/\s+/g, ' ').trim() || '';
 
   /**
@@ -91,8 +90,9 @@
     if (!ask || typeof ask.dry !== 'boolean') return;
     window.removeEventListener('message', handler);
     const port = e.ports[0];
+    // A failure carries the page's sessions too, for the app's log.
     mark(ask.dry).then(
-      answer => port.postMessage(JSON.stringify(answer)),
+      answer => port.postMessage(JSON.stringify(answer.ok || answer.rows ? answer : Object.assign(answer, { rows: rows() }))),
       err => port.postMessage(JSON.stringify({ error: 'failed', detail: String((err && err.message) || err) })),
     );
   });

@@ -1,24 +1,41 @@
 package com.skylightlim.umtimetable
 
+import android.app.ActivityManager
 import android.app.AlarmManager
+import android.app.Notification
+import android.app.PendingIntent
+import android.app.Service
 import android.app.job.JobInfo
 import android.app.job.JobParameters
 import android.app.job.JobScheduler
 import android.app.job.JobService
+import android.app.usage.UsageStatsManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.WebMessage
 import android.webkit.WebMessagePort
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import org.json.JSONObject
+import java.io.File
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Calendar
+import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -31,11 +48,14 @@ import kotlin.concurrent.thread
  * assets/attendance-mark.js there. Marked or not, a notification says so, and what stopped it:
  * a session not open yet, a lecturer's password, a QR code, the campus network only.
  *
+ * The alarm starts a short foreground service ([AutoAttendanceService]) for it: Android lets an app's
+ * foreground service use mobile data even when the user has turned the app's background data off, and
+ * an exact alarm may start one while the app is in the background. Every step goes to [AttendanceLog].
+ *
  * Only for classes whose course has an attendance activity matched to them ([AttendanceMatch]); a
  * class without one has nothing to mark and says nothing. One try per class.
  */
 object AutoAttendance {
-    private const val TAG = "UMTimetable"
     private const val FLAG = "autoAttendance"
     private const val SCRIPT = "attendance-mark.js"
     /** How long into a class it marks. */
@@ -45,6 +65,7 @@ object AutoAttendance {
 
     fun setEnabled(c: Context, on: Boolean) {
         SpectrumStore.setFlag(c, FLAG, on)
+        AttendanceLog.add(c, "turned ${if (on) "on" else "off"}")
         schedule(c)
     }
 
@@ -60,20 +81,39 @@ object AutoAttendance {
             val dayStart = startOfDay(day.timeInMillis)
             val next = timetable.day(day.get(Calendar.DAY_OF_WEEK) - 1)
                 .map { dayStart + (it.start + AFTER_MIN) * 60_000L }.filter { it > now }.minOrNull()
-            if (next != null) return exactAlarm(am, next, pi)
+            if (next != null) {
+                if (next != SpectrumStore.long(c, NEXT)) AttendanceLog.add(c, "next try ${LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(next), java.time.ZoneId.systemDefault()).format(STAMP)}${if (am.canScheduleExactAlarms()) "" else " (inexact: Android may run it late)"}")
+                SpectrumStore.putLong(c, NEXT, next)
+                return exactAlarm(am, next, pi)
+            }
         }
         am.cancel(pi)
     }
 
-    /** The alarm: the marking runs as a job (a hidden page can take longer than an alarm may), then the next alarm is set. */
-    fun fire(c: Context) {
-        c.getSystemService(JobScheduler::class.java).schedule(
-            JobInfo.Builder(JOB_ID, ComponentName(c, AutoAttendanceJob::class.java))
-                .setExpedited(true)
-                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-                .build(),
-        )
-        schedule(c)
+    private const val NEXT = "autoAttendanceNext"
+    private val STAMP = DateTimeFormatter.ofPattern("EEE d MMM HH:mm", Locale.UK)
+
+    /**
+     * The alarm: the marking runs in a short foreground service (a hidden page can take longer than an
+     * alarm may, and only a foreground service gets mobile data with background data off), then the next
+     * alarm is set. [dry] (debug) is a page to only read, through the same service.
+     */
+    fun fire(c: Context, dry: String? = null) {
+        val late = (System.currentTimeMillis() - SpectrumStore.long(c, NEXT)) / 1000
+        if (dry == null) AttendanceLog.add(c, "alarm${if (late in 0..86_400) ", ${late}s after it was due" else ""}")
+        try {
+            c.startForegroundService(Intent(c, AutoAttendanceService::class.java).putExtra(AutoAttendanceService.EXTRA_DRY, dry))
+        } catch (e: Exception) {
+            // ForegroundServiceStartNotAllowedException: Android didn't allow it now. A job still runs, on Wi-Fi at least.
+            AttendanceLog.add(c, "no foreground service (${e.javaClass.simpleName}: ${e.message}), running as a job instead")
+            if (dry == null) c.getSystemService(JobScheduler::class.java).schedule(
+                JobInfo.Builder(JOB_ID, ComponentName(c, AutoAttendanceJob::class.java))
+                    .setExpedited(true)
+                    .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                    .build(),
+            )
+        }
+        if (dry == null) schedule(c)
     }
 
     /**
@@ -90,28 +130,84 @@ object AutoAttendance {
             val start = dayStart + s.start * 60_000L
             now >= start + (AFTER_MIN - 1) * 60_000L && now < dayStart + s.end * 60_000L && key(today, s) !in tried
         }
+        AttendanceLog.add(c, "run: ${due.size} class(es) to mark; ${conditions(c)}")
         if (due.isEmpty()) return
-        SpectrumSync.run(c, attendanceOnly = true, background = true)
+        val error = SpectrumSync.run(c, attendanceOnly = true, background = true)
         val sessions = SpectrumStore.array(c, "attendance").objects()
+        AttendanceLog.add(c, "attendance read${error?.let { " failed: $it (using the last one)" } ?: ""}: " +
+            sessions.joinToString("; ") { "${it.optString("code")} \"${it.optString("name")}\" ${SpectrumStore.hm(it.getLong("start"))}-${SpectrumStore.hm(it.getLong("end"))}${if (it.optBoolean("listed", true)) "" else " (not in the calendar)"}" }.ifEmpty { "none today" })
         for (s in due) {
             tried += key(today, s)
             SpectrumStore.putStringSet(c, TRIED, tried)
+            val what = "${s.course.code} ${s.type.lowercase()} ${clockText(s.start)}"
             val from = dayStart + s.start * 60_000L
             val to = dayStart + s.end * 60_000L
             val session = sessions.firstOrNull { it.optString("code") == s.course.code && it.getLong("start") < to && it.getLong("end") > from }
             if (session == null) {
-                Log.i(TAG, "auto attendance: ${s.course.code} ${s.type}: no attendance activity for this class")
+                AttendanceLog.add(c, "$what: no attendance activity for this class. ${candidates(c, s)}")
                 continue
             }
             val url = session.getString("url")
+            AttendanceLog.add(c, "$what: opening \"${session.optString("name")}\" ($url)")
             val answer = mark(c, url, dry = false)
-            Log.i(TAG, "auto attendance: ${s.course.code} ${s.type}: $answer")
+            AttendanceLog.add(c, "$what: $answer")
             notify(c, s, session.getString("id"), url, answer)
         }
     }
 
     private const val TRIED = "autoAttendanceTried"
     private fun key(day: LocalDate, s: Session) = "$day ${s.start} ${s.course.code}"
+
+    /** For the log: the course's attendance activities, each with how well it fits [s] (x: it can't be). */
+    private fun candidates(c: Context, s: Session): String {
+        val courseId = SpectrumStore.array(c, "courses").objects().firstOrNull { it.optString("code") == s.course.code }?.optInt("id") ?: return "Not a Spectrum course."
+        val list = runCatching { JSONObject(SpectrumStore.read(c, "attendance-activities") ?: "{}") }.getOrDefault(JSONObject()).optJSONArray("$courseId")?.objects().orEmpty()
+        if (list.isEmpty()) return "The course has no attendance activities."
+        return "Occ ${s.course.occ}; its activities: " + list.joinToString("; ") { "\"${it.optString("name")}\" ${AttendanceMatch.score(it.optString("name"), s.course.occ, s) ?: "x"}" }
+    }
+
+    /**
+     * What stands in the way of a background run, for the log: the network, whether Android limits this
+     * app's mobile data in the background (background data off, Data Saver), exact alarms, notifications,
+     * battery limits and the app's standby bucket.
+     */
+    fun conditions(c: Context): String {
+        val cm = c.getSystemService(ConnectivityManager::class.java)
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+        val net = when {
+            caps == null -> "no network"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "mobile data"
+            else -> "other network"
+        }
+        val background = when (cm.restrictBackgroundStatus) {
+            ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED -> "background data limited"
+            ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELISTED -> "Data Saver on, app exempt"
+            else -> "background data allowed"
+        }
+        val battery = when {
+            c.getSystemService(ActivityManager::class.java).isBackgroundRestricted -> "battery Restricted"
+            c.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(c.packageName) -> "battery Unrestricted"
+            else -> "battery Optimised"
+        }
+        val bucket = when (val b = c.getSystemService(UsageStatsManager::class.java).appStandbyBucket) {
+            UsageStatsManager.STANDBY_BUCKET_ACTIVE -> "active"
+            UsageStatsManager.STANDBY_BUCKET_WORKING_SET -> "working set"
+            UsageStatsManager.STANDBY_BUCKET_FREQUENT -> "frequent"
+            UsageStatsManager.STANDBY_BUCKET_RARE -> "rare"
+            UsageStatsManager.STANDBY_BUCKET_RESTRICTED -> "restricted"
+            else -> "bucket $b"
+        }
+        return listOf(
+            "$net${if (cm.isActiveNetworkMetered) " (metered)" else ""}",
+            background,
+            if (SpectrumSync.networkBlocked(c)) "network blocked now" else null,
+            if (c.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()) null else "no exact alarms",
+            if (Notify.allowed(c)) null else "notifications off",
+            battery,
+            "standby $bucket",
+        ).filterNotNull().joinToString(", ")
+    }
 
     /** Says how it went, in the place of the session's "Attendance open" notification. */
     private fun notify(c: Context, s: Session, id: String, url: String, answer: JSONObject) {
@@ -128,21 +224,25 @@ object AutoAttendance {
             "network" -> "Spectrum only takes this session from UM's network: join the campus Wi-Fi."
             "nostatus" -> "Spectrum offered no status to choose."
             "signedout" -> "Spectrum wants you to sign in again."
+            "blocked" -> "Android blocked the app's mobile data in the background."
             "unreachable" -> "Couldn't reach Spectrum."
             else -> "Spectrum didn't confirm it."
         }
+        if (!Notify.allowed(c)) AttendanceLog.add(c, "notifications are off: the user isn't told")
         Notify.post(c, Notify.ATTENDANCE, "att-$id", "Couldn't mark attendance · $what", "$why Tap to mark it yourself.", Notify.openSpectrum(c, url))
     }
 
     /**
      * Opens [url], an attendance activity's page, in a hidden page and runs the script there: marks the
      * user, or ([dry]) only says what the page offers. Blocks (call it off the main thread) until it has
-     * an answer, at most about a minute. Errors of its own: signedout (Microsoft wants the user), unreachable.
+     * an answer, at most about a minute. Errors of its own: signedout (Microsoft wants the user),
+     * blocked (Android cut the app's network), unreachable. The answer lists the pages it went through.
      */
     fun mark(c: Context, url: String, dry: Boolean): JSONObject {
         val main = Handler(Looper.getMainLooper())
         val done = CountDownLatch(1)
         var answer = JSONObject().put("error", "unreachable")
+        val pages = mutableListOf<String>()
         main.post {
             val web = WebView(c).apply {
                 settings.javaScriptEnabled = true
@@ -155,7 +255,7 @@ object AutoAttendance {
             fun finish(a: JSONObject) {
                 if (over) return
                 over = true
-                answer = a
+                answer = a.put("pages", pages.joinToString(" > "))
                 web.destroy()
                 done.countDown()
             }
@@ -164,9 +264,18 @@ object AutoAttendance {
                     if (over) return
                     val u = Uri.parse(page)
                     lastHost = u.host.orEmpty()
+                    pages += "$lastHost${u.path.orEmpty()}"
                     if (asked || lastHost != Uri.parse(Spectrum.SITE).host || u.path != "/mod/attendance/view.php") return
                     asked = true
                     ask(web, dry) { finish(it) }
+                }
+
+                // The page itself didn't load (no network, or Android cut this app off): say so now, rather
+                // than run the script on the error page and wait for an answer that can't come.
+                override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                    if (!request.isForMainFrame || over) return
+                    pages += "${request.url.host}${request.url.path.orEmpty()} (${error.description})"
+                    finish(JSONObject().put("error", if (SpectrumSync.networkBlocked(c)) "blocked" else "unreachable").put("detail", error.description.toString()))
                 }
             }
             web.loadUrl(url)
@@ -197,7 +306,75 @@ object AutoAttendance {
     private const val JOB_ID = 3102
 }
 
-/** The marking itself, off the alarm: a job may run longer than a broadcast. */
+/**
+ * Auto attendance's record, one line a step, kept in the app's folder of shared storage so that any
+ * phone's can be read over USB, release build or not:
+ *   adb shell cat /sdcard/Android/data/com.skylightlim.umtimetable/files/attendance-log.txt
+ * No sign-in, cookies or passwords go in it: only times, classes, activity names and what Spectrum said.
+ */
+object AttendanceLog {
+    private const val FILE = "attendance-log.txt"
+    /** Past this, the older half goes (about a month of school days). */
+    private const val MAX = 256 * 1024
+    private val STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.UK)
+
+    fun file(c: Context): File? = c.getExternalFilesDir(null)?.let { File(it, FILE) }
+
+    @Synchronized
+    fun add(c: Context, line: String) {
+        Log.i("UMTimetable", "auto attendance: $line")
+        val f = file(c) ?: return
+        runCatching {
+            if (f.length() > MAX) f.writeText(f.readText().let { it.substring(it.length / 2).substringAfter('\n') })
+            f.appendText("${STAMP.format(LocalDateTime.now())} $line\n")
+        }
+    }
+}
+
+/**
+ * Auto attendance's run, as a short foreground service with a quiet "Marking your attendance"
+ * notification while it lasts (a minute at most): see [AutoAttendance] for why not a job.
+ */
+class AutoAttendanceService : Service() {
+    override fun onBind(intent: Intent?) = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Notify.channels(this)
+        val n = Notification.Builder(this, Notify.MARKING)
+            .setSmallIcon(R.drawable.ic_notify)
+            .setColor(Scheme.load(this).dark.first)
+            .setContentTitle("Marking your attendance")
+            .setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
+            .build()
+        if (Build.VERSION.SDK_INT >= 34) startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE) else startForeground(ID, n)
+        val dry = intent?.getStringExtra(EXTRA_DRY)
+        val c = applicationContext
+        thread {
+            try {
+                if (dry != null) AttendanceLog.add(c, "dry run: ${AutoAttendance.conditions(c)}; ${AutoAttendance.mark(c, dry, dry = true)}")
+                else AutoAttendance.run(c)
+            } catch (e: Exception) {
+                AttendanceLog.add(c, "run failed: $e")
+            } finally {
+                stopSelf(startId)
+            }
+        }
+        return START_NOT_STICKY
+    }
+
+    /** A short service has about three minutes; the run never takes that long, but if it does, it ends here. */
+    override fun onTimeout(startId: Int) {
+        AttendanceLog.add(applicationContext, "ran out of time")
+        stopSelf()
+    }
+
+    companion object {
+        const val EXTRA_DRY = "dry"
+        private const val ID = 3103
+    }
+}
+
+/** The marking, when Android doesn't allow a foreground service at that moment. */
 class AutoAttendanceJob : JobService() {
     override fun onStartJob(params: JobParameters): Boolean {
         thread {

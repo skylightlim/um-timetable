@@ -18,6 +18,38 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 22 October 2026 (Auto attendance: a log readable over USB, and mobile data in the background)
+
+**Asked for:** improve auto attendance; to debug it, the app logs its marking, readable on another
+user's phone by plugging it in.
+
+**Change:** every step of auto attendance goes to `AttendanceLog`, a text file in the app's folder of
+shared storage, which `adb shell cat /sdcard/Android/data/com.skylightlim.umtimetable/files/attendance-log.txt`
+reads on any phone, release build included (no `run-as`). It records when the next try is set and
+whether exact alarms are allowed, how late each alarm fired, the phone's conditions at each run (Wi-Fi
+or mobile data, background data limited, battery Restricted/Optimised/Unrestricted, standby bucket,
+notifications off), today's attendance sessions read, which activity each class opened (or, with
+none matched, each of the course's activities with its match score), the pages the hidden page went
+through, and Spectrum's answer, with the session table's rows on a failure. No sign-in, cookies or
+passwords go in it; it keeps about 256 KB, dropping the older half past that.
+
+The first log-style check found why marking couldn't work away from Wi-Fi: with the app's background
+data turned off (as on the user's phone) Android cuts its mobile data in the background, the page
+load failed, the script then ran on WebView's error page and the app waited 60 s for an answer that
+couldn't come ("no answer in time"). Now the alarm starts a short foreground service
+(`AutoAttendanceService`, type shortService, with a silent "Marking your attendance" notification on a
+new minimal "Marking attendance" channel): a foreground service keeps mobile data with background data
+off, and an exact alarm may start one from the background. If Android refuses the service, the old
+expedited job runs instead (logged). A page that fails to load now answers at once (`unreachable`, or
+`blocked` when Android cut the network) instead of after a minute.
+
+**Checked:** unit tests pass. On the user's phone (debug build), on mobile data with background data
+off, a dry read through the real path (`DebugSpectrumReceiver --es automark alarm --ei cmid N`: an exact
+alarm 15 s later, app in the background): Android logged "Background started FGS: Allowed …
+ALARM_MANAGER_WHILE_IDLE", and the hidden page read the real attendance page in about 3.5 s (today's
+session listed, not open yet). The same read from a plain broadcast before the change: "no answer in
+time" after 60 s. The log file read over adb without `run-as`.
+
 ## 19 October 2026 (1.6.1-beta.1 published)
 
 **Asked for:** push these updates.
