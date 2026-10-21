@@ -694,7 +694,7 @@ object Reminders {
  */
 object AttendanceWatch {
     fun schedule(c: Context) {
-        AutoAttendance.schedule(c) // its own alarm, five minutes into each class, when it's on
+        AutoAttendance.schedule(c) // its own alarm, at each class start and its tries, when it's on
         val am = c.getSystemService(AlarmManager::class.java)
         val pi = SpectrumAlarmReceiver.intent(c, SpectrumAlarmReceiver.ACTION_ATTENDANCE)
         if (!SpectrumStore.signedIn(c)) {

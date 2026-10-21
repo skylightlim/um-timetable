@@ -193,9 +193,9 @@ object SettingsSheet {
             }) { if (ask) h.enableNotifications() else h.openAppSettings() },
         ))
 
-        // Marking attendance by itself, five minutes into each class (AutoAttendance).
+        // Marking attendance by itself, as each class starts (AutoAttendance).
         if (signedIn) section("Attendance", listOf(
-            row("Mark my attendance", "${AutoAttendance.AFTER_MIN} minutes into each class, the app marks you present on Spectrum. If it can't, a notification says why.",
+            row("Mark my attendance", "As each class starts, the app marks you present on Spectrum, and tries again while no session is open. If it can't, or a password is needed, a notification says why.",
                 Toggle(ui, AutoAttendance.enabled(context)) { on -> AutoAttendance.setEnabled(context, on) }.apply { contentDescription = "Mark my attendance" }, null),
         ))
 

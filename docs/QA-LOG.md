@@ -18,6 +18,28 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 22 October 2026 (Auto attendance: at the start of class, trying again while nothing is open)
+
+**Asked for:** don't wait 5 minutes: mark the class's attendance once it starts, and notify when
+marking is unsuccessful or a password is needed.
+
+**Change:** the first try is at the class's start. When no session is open yet (or Spectrum is out of
+reach) it tries again at 2, 5, 10, 15, 20, 30 and 45 minutes, then every half hour, while the class
+lasts, and only after the last try says "Couldn't mark attendance · No attendance session opened for it
+while the app kept trying". What the user has to act on (the lecturer's password, a QR code, the campus
+network only, signing in again, no status offered, Android blocking the network) is notified at once,
+as before. A session that already has a status (the user or the lecturer marked it) counts as done,
+silently: the script reads today's row ("Thu 22 Oct 2026 …" with no "?" left) instead of trying until
+the class ends. A class with no attendance activity matched is looked for again for 20 minutes (its
+session may be put in the calendar late), then left. Public holidays and weeks without classes
+(break, revision, exams) are skipped. Settings' line says the new timing.
+
+**Checked:** unit tests pass. The script in headless Chromium against stand-in pages: today's row
+marked ("Present … Self-recorded") answers `{ok, already, status: "Present"}`; today's row with "?" and
+no link answers `notopen` with the rows; with a "Submit attendance" link it goes on to open it. On the
+phone: see below for the alarm set at today's first class start. A real class run is the user's next
+class with it on; the log (`attendance-log.txt`) shows each try.
+
 ## 22 October 2026 (Auto attendance: a log readable over USB, and mobile data in the background)
 
 **Asked for:** improve auto attendance; to debug it, the app logs its marking, readable on another

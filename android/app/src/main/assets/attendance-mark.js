@@ -6,6 +6,7 @@
 // {error, detail, rows}. Dry, it only says what it found on this page and opens nothing: opening the link
 // can already mark the student. rows: the page's sessions as text, for the app's log.
 //
+// No link but today's session has a status already: {ok, already, status}.
 // Errors: notopen (no link: no session open for self-marking), password (the lecturer's password),
 // qr (a rotating QR code), network (only from the campus network), closed, nostatus, failed.
 (() => {
@@ -33,7 +34,7 @@
     const anchors = [...document.querySelectorAll('a[href*="/mod/attendance/attendance.php"]')].filter(a => /[?&]sessid=\d+/.test(a.href));
     const links = anchors.map(a => a.href);
     if (dry) return { ok: false, dry: true, links: links.length, title: document.title, rows: rows() };
-    if (!links.length) return { error: 'notopen' };
+    if (!links.length) return already() || { error: 'notopen' };
 
     // The link itself: Spectrum may record the student at once and go back to this page.
     const first = await text(links[0]);
@@ -60,9 +61,24 @@
     return trouble(page(sent.html)) || { error: 'failed', detail: 'no confirmation from Spectrum' };
   }
 
+  /**
+   * Today's session already has a status (the student marked it, or the lecturer did): its row starts
+   * with today's date as Spectrum writes it ("Thu 22 Oct 2026") and has no "?" left. Else null.
+   */
+  function already() {
+    const d = new Date();
+    const today = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()] + ' ' + d.getDate() + ' ' +
+      ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + ' ' + d.getFullYear();
+    const row = allRows().find(t => t.startsWith(today + ' ') && !t.includes('?'));
+    if (!row) return null;
+    return { ok: true, already: true, status: (row.match(/\b(present|late|excused|absent|hadir|lewat|tidak hadir)\b/i) || [''])[0] };
+  }
+
   /** The session table's rows, condensed: date, time, what each says (a status, "Submit attendance", "?"). */
-  const rows = () => [...document.querySelectorAll('table tbody tr')].slice(0, 8)
-    .map(tr => tr.textContent.replace(/\s+/g, ' ').trim().slice(0, 140));
+  const allRows = () => [...document.querySelectorAll('table tbody tr')]
+    .map(tr => [...tr.children].map(td => td.textContent).join(' ').replace(/\s+/g, ' ').trim().slice(0, 140));
+  /** For the log: the last dozen, where the sessions around today and the totals are. */
+  const rows = () => allRows().slice(-12);
 
   const rowText = el => ((el && el.closest('tr')) || {}).textContent?.replace(/\s+/g, ' ').trim() || '';
 

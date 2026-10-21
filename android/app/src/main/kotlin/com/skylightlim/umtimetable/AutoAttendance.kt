@@ -41,7 +41,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
- * Settings' "Mark my attendance": five minutes into each class, the app marks the user present in its
+ * Settings' "Mark my attendance": as each class starts, the app marks the user present in its
  * attendance session on Spectrum, as the session page's own "Submit attendance" link would. Spectrum has
  * no web service for it, so a hidden page opens the class's attendance activity with the user's
  * Spectrum sign-in (Microsoft signs it in again when Spectrum's session has run out) and runs
@@ -52,14 +52,19 @@ import kotlin.concurrent.thread
  * foreground service use mobile data even when the user has turned the app's background data off, and
  * an exact alarm may start one while the app is in the background. Every step goes to [AttendanceLog].
  *
- * Only for classes whose course has an attendance activity matched to them ([AttendanceMatch]); a
- * class without one has nothing to mark and says nothing. One try per class.
+ * No session open yet (or Spectrum out of reach): it tries again at [TRIES] minutes into the class, and
+ * says so only after the last try. What the user must do something about (a password, a QR code, the
+ * campus network, signing in again) is said at once. Only for classes whose course has an attendance
+ * activity matched to them ([AttendanceMatch]); a class without one has nothing to mark and says
+ * nothing. Public holidays and weeks without classes (break, revision, exams) are skipped.
  */
 object AutoAttendance {
     private const val FLAG = "autoAttendance"
     private const val SCRIPT = "attendance-mark.js"
-    /** How long into a class it marks. */
-    const val AFTER_MIN = 5
+    /** The tries, in minutes into a class: at its start, then while no session is open, until it ends. */
+    private val TRIES = listOf(0, 2, 5, 10, 15, 20, 30, 45) + (75..600 step 30)
+    /** Answers no later try can change: the user has to act. */
+    private val FINAL = setOf("password", "qr", "network", "nostatus", "signedout", "blocked")
 
     fun enabled(c: Context) = SpectrumStore.flag(c, FLAG)
 
@@ -69,18 +74,28 @@ object AutoAttendance {
         schedule(c)
     }
 
-    /** An exact alarm five minutes into the next class (today or the coming week), or none when it's off. */
+    /** Today's and the coming days' classes to mark on [date]: none on a holiday or in a week without classes. */
+    private fun classes(c: Context, date: LocalDate): List<Session> =
+        if (Holidays.on(date) != null || weekOff(date) != null) emptyList() else Timetable.load(c).day(date.dayOfWeek.value % 7)
+
+    /** The tries of class [s] on the day starting at [dayStart], as times, all before it ends. */
+    private fun tries(dayStart: Long, s: Session) = TRIES.filter { s.start + it < s.end }.map { dayStart + (s.start + it) * 60_000L }
+
+    /**
+     * An exact alarm at the next try: today's next for a class not done yet, else the next class's start
+     * (in the coming week). None when it's off.
+     */
     fun schedule(c: Context) {
         val am = c.getSystemService(AlarmManager::class.java)
         val pi = SpectrumAlarmReceiver.intent(c, SpectrumAlarmReceiver.ACTION_AUTOMARK)
         if (!enabled(c) || !SpectrumStore.signedIn(c)) return am.cancel(pi)
         val now = System.currentTimeMillis()
-        val timetable = Timetable.load(c)
+        val done = SpectrumStore.stringSet(c, DONE)
         for (offset in 0..7) {
-            val day = Calendar.getInstance().apply { timeInMillis = now; add(Calendar.DAY_OF_MONTH, offset) }
-            val dayStart = startOfDay(day.timeInMillis)
-            val next = timetable.day(day.get(Calendar.DAY_OF_WEEK) - 1)
-                .map { dayStart + (it.start + AFTER_MIN) * 60_000L }.filter { it > now }.minOrNull()
+            val date = LocalDate.now().plusDays(offset.toLong())
+            val dayStart = startOfDay(Calendar.getInstance().apply { timeInMillis = now; add(Calendar.DAY_OF_MONTH, offset) }.timeInMillis)
+            val next = classes(c, date).filter { key(date, it) !in done }
+                .flatMap { tries(dayStart, it) }.filter { it > now }.minOrNull()
             if (next != null) {
                 if (next != SpectrumStore.long(c, NEXT)) AttendanceLog.add(c, "next try ${LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(next), java.time.ZoneId.systemDefault()).format(STAMP)}${if (am.canScheduleExactAlarms()) "" else " (inexact: Android may run it late)"}")
                 SpectrumStore.putLong(c, NEXT, next)
@@ -116,19 +131,29 @@ object AutoAttendance {
         if (dry == null) schedule(c)
     }
 
+    private val running = java.util.concurrent.atomic.AtomicBoolean(false)
+
     /**
-     * Marks every class in progress that's five minutes in and hasn't been tried: Spectrum's attendance
-     * for today is read again first, so a session made since the last sync counts.
+     * Marks every class in progress (started, or starting within the minute) that isn't done: Spectrum's
+     * attendance for today is read again first, so a session made since the last try counts.
      */
     fun run(c: Context) {
-        if (!enabled(c) || !SpectrumStore.signedIn(c)) return
+        if (!enabled(c) || !SpectrumStore.signedIn(c) || !running.compareAndSet(false, true)) return
+        try {
+            markDue(c)
+        } finally {
+            running.set(false)
+            schedule(c)
+        }
+    }
+
+    private fun markDue(c: Context) {
         val now = System.currentTimeMillis()
         val dayStart = startOfDay(now)
         val today = LocalDate.now()
-        val tried = SpectrumStore.stringSet(c, TRIED).filter { it.startsWith("$today ") }.toMutableSet()
-        val due = Timetable.load(c).day(today.dayOfWeek.value % 7).filter { s ->
-            val start = dayStart + s.start * 60_000L
-            now >= start + (AFTER_MIN - 1) * 60_000L && now < dayStart + s.end * 60_000L && key(today, s) !in tried
+        val done = SpectrumStore.stringSet(c, DONE).filter { it.startsWith("$today ") }.toMutableSet()
+        val due = classes(c, today).filter { s ->
+            now >= dayStart + s.start * 60_000L - 60_000 && now < dayStart + s.end * 60_000L && key(today, s) !in done
         }
         AttendanceLog.add(c, "run: ${due.size} class(es) to mark; ${conditions(c)}")
         if (due.isEmpty()) return
@@ -137,25 +162,36 @@ object AutoAttendance {
         AttendanceLog.add(c, "attendance read${error?.let { " failed: $it (using the last one)" } ?: ""}: " +
             sessions.joinToString("; ") { "${it.optString("code")} \"${it.optString("name")}\" ${SpectrumStore.hm(it.getLong("start"))}-${SpectrumStore.hm(it.getLong("end"))}${if (it.optBoolean("listed", true)) "" else " (not in the calendar)"}" }.ifEmpty { "none today" })
         for (s in due) {
-            tried += key(today, s)
-            SpectrumStore.putStringSet(c, TRIED, tried)
             val what = "${s.course.code} ${s.type.lowercase()} ${clockText(s.start)}"
             val from = dayStart + s.start * 60_000L
             val to = dayStart + s.end * 60_000L
+            // The try after this one, if the class lasts that long.
+            val later = tries(dayStart, s).firstOrNull { it > System.currentTimeMillis() + 30_000 }
+            fun finish() {
+                done += key(today, s)
+                SpectrumStore.putStringSet(c, DONE, done)
+            }
             val session = sessions.firstOrNull { it.optString("code") == s.course.code && it.getLong("start") < to && it.getLong("end") > from }
             if (session == null) {
-                AttendanceLog.add(c, "$what: no attendance activity for this class. ${candidates(c, s)}")
+                // Its session may still be put in the calendar; after 20 minutes it's taken that there's none.
+                val giveUp = later == null || later - from > 20 * 60_000L
+                AttendanceLog.add(c, "$what: no attendance activity for this class${if (giveUp) ", last try" else ""}. ${candidates(c, s)}")
+                if (giveUp) finish()
                 continue
             }
             val url = session.getString("url")
             AttendanceLog.add(c, "$what: opening \"${session.optString("name")}\" ($url)")
             val answer = mark(c, url, dry = false)
-            AttendanceLog.add(c, "$what: $answer")
-            notify(c, s, session.getString("id"), url, answer)
+            val last = answer.optBoolean("ok") || answer.optString("error") in FINAL || later == null
+            AttendanceLog.add(c, "$what: $answer${if (last) "" else "; trying again at ${SpectrumStore.hm(later!!)}"}")
+            if (!last) continue
+            finish()
+            // Marked already (by the user, or the lecturer): nothing to tell.
+            if (!answer.optBoolean("already")) notify(c, s, session.getString("id"), url, answer)
         }
     }
 
-    private const val TRIED = "autoAttendanceTried"
+    private const val DONE = "autoAttendanceDone"
     private fun key(day: LocalDate, s: Session) = "$day ${s.start} ${s.course.code}"
 
     /** For the log: the course's attendance activities, each with how well it fits [s] (x: it can't be). */
@@ -218,7 +254,7 @@ object AutoAttendance {
             return
         }
         val why = when (answer.optString("error")) {
-            "notopen", "closed" -> "No attendance session was open for it yet."
+            "notopen", "closed" -> "No attendance session opened for it while the app kept trying."
             "password" -> "The session needs your lecturer's password."
             "qr" -> "The session needs its QR code scanned in class."
             "network" -> "Spectrum only takes this session from UM's network: join the campus Wi-Fi."
