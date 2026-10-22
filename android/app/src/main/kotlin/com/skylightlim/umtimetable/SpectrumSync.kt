@@ -66,7 +66,7 @@ object SpectrumSync {
         var error: String? = null
         var blocked = false
         try {
-            val api = Api(token, SpectrumStore.functions(c), SpectrumStore.userId(c))
+            val api = Api(token, SpectrumStore.userId(c))
             val courses = if (attendanceOnly && SpectrumStore.read(c, "courses") != null) {
                 SpectrumStore.array(c, "courses")
             } else {
@@ -180,25 +180,15 @@ object SpectrumSync {
 
     // --- fetching ---------------------------------------------------------------------------
 
-    private class Api(val token: String, val functions: Set<String>, val userId: Int) {
-        fun has(fn: String) = functions.isEmpty() || fn in functions
+    private class Api(val token: String, val userId: Int) {
         fun call(fn: String, params: Map<String, Any?> = emptyMap()) = Spectrum.call(token, fn, params)
-        /** Retries with [fallback] when this Moodle version rejects an optional parameter. */
-        fun callOr(fn: String, params: Map<String, Any?>, fallback: Map<String, Any?>): Any = try {
-            call(fn, params)
-        } catch (e: Spectrum.Error) {
-            if (e.code == "invalidparameter") call(fn, fallback) else throw e
-        }
     }
 
     private fun fetchCourses(api: Api): JSONArray {
-        var raw: List<JSONObject> = emptyList()
-        if (api.has("core_course_get_enrolled_courses_by_timeline_classification")) {
-            raw = runCatching {
-                (api.call("core_course_get_enrolled_courses_by_timeline_classification", mapOf("classification" to "inprogress")) as JSONObject)
-                    .getJSONArray("courses").objects()
-            }.getOrDefault(emptyList())
-        }
+        var raw = runCatching {
+            (api.call("core_course_get_enrolled_courses_by_timeline_classification", mapOf("classification" to "inprogress")) as JSONObject)
+                .getJSONArray("courses").objects()
+        }.getOrDefault(emptyList())
         if (raw.isEmpty()) {
             val cutoff = System.currentTimeMillis() / 1000 - 30 * 86_400
             raw = (api.call("core_enrol_get_users_courses", mapOf("userid" to api.userId)) as JSONArray).objects()
@@ -392,8 +382,8 @@ object SpectrumSync {
     private fun fetchDue(api: Api, courses: JSONArray): JSONArray {
         val now = System.currentTimeMillis() / 1000
         val codes = courses.objects().associate { it.getInt("id") to it.getString("code") }
-        val params = mapOf("timesortfrom" to now - 14 * 86_400, "timesortto" to now + 120 * 86_400, "limitnum" to 50)
-        val res = api.callOr("core_calendar_get_action_events_by_timesort", params + ("limittononsuspendedevents" to true), params) as JSONObject
+        val params = mapOf("timesortfrom" to now - 14 * 86_400, "timesortto" to now + 120 * 86_400, "limitnum" to 50, "limittononsuspendedevents" to true)
+        val res = api.call("core_calendar_get_action_events_by_timesort", params) as JSONObject
         val out = JSONArray()
         for (e in (res.optJSONArray("events") ?: JSONArray()).objects()) {
             if (e.optString("modulename") == "attendance") continue

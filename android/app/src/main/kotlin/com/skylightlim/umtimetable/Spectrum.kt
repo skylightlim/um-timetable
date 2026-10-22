@@ -82,15 +82,12 @@ object SpectrumStore {
     fun signedIn(c: Context) = SecureStore.has(c, "token")
     fun userId(c: Context) = prefs(c).getInt("userid", 0)
     fun name(c: Context): String = prefs(c).getString("fullname", "") ?: ""
-    fun functions(c: Context): Set<String> = prefs(c).getStringSet("functions", emptySet()) ?: emptySet()
 
     fun saveLogin(c: Context, token: String, siteInfo: JSONObject) {
-        val fns = siteInfo.optJSONArray("functions")?.let { a -> (0 until a.length()).map { a.getJSONObject(it).getString("name") }.toSet() } ?: emptySet()
         SecureStore.put(c, "token", token)
         prefs(c).edit().clear()
             .putInt("userid", siteInfo.getInt("userid"))
             .putString("fullname", siteInfo.optString("fullname"))
-            .putStringSet("functions", fns)
             .apply()
     }
 

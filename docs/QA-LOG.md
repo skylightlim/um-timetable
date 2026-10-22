@@ -18,6 +18,23 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 22 October 2026 (Audit: sync without what only an older Moodle needed)
+
+**Asked for:** the app audit, continued: the ponytail audit's cuts.
+
+**Change:** two things in the Spectrum sync existed for Moodle versions UM doesn't run:
+- the ~600 web-service names Spectrum lists at sign-in were saved (about 27 KB of settings) for one
+  check, whether the course list's newer call exists. The sync now just makes that call; it already
+  fell back to the older one when it fails.
+- the deadlines call retried without `limittononsuspendedevents` when a Moodle refused it. Spectrum
+  takes it (asked directly on 22 October), so the retry is gone.
+
+The names already saved on a phone stay in its settings until the next sign-in or sign-out, which
+clear them; nothing reads them now.
+
+**Checked:** unit tests pass; built. Spectrum answered the deadlines call with the parameter
+(`DebugSpectrumReceiver --es call`, one event; the raw reply deleted).
+
 ## 22 October 2026 (Security: trusted sites matched by whole domain names)
 
 **Asked for:** the app audit, continued (security finding 3).
