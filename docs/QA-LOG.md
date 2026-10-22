@@ -261,7 +261,7 @@ pull to sync: the page should still go all the way back up.
 **Change:** Settings › Notifications has **Class reminders** (Off at first). A tap flies a card out of
 the row with the choices on a wheel: Off, At start, 5, 10, 15 or 30 min before, 1 h before (choose, then
 Choose, like the occurrence card). Chosen, `ClassReminders` posts a notification on a new "Classes"
-channel before each class Day shows: the course's short name and type, then "In 10 min · 08:00–09:00 ·
+channel before each class Day shows: the course's short name and type, then "In 10 min · 10:00–11:00 ·
 room" (the time left as it really is, should the phone sleep past the alarm; nothing once the class is
 over). None on public holidays or in weeks without classes. One exact alarm at a time, re-armed
 wherever the timetable changes, after each sync, and after a reboot or update. Choosing a reminder with
@@ -324,7 +324,7 @@ lasts, and only after the last try says "Couldn't mark attendance · No attendan
 while the app kept trying". What the user has to act on (the lecturer's password, a QR code, the campus
 network only, signing in again, no status offered, Android blocking the network) is notified at once,
 as before. A session that already has a status (the user or the lecturer marked it) counts as done,
-silently: the script reads today's row ("Thu 22 Oct 2026 …" with no "?" left) instead of trying until
+silently: the script reads today's row ("Mon 19 Oct 2026 …" with no "?" left) instead of trying until
 the class ends. A class with no attendance activity matched is looked for again for 20 minutes (its
 session may be put in the calendar late), then left. Public holidays and weeks without classes
 (break, revision, exams) are skipped. Settings' line says the new timing.

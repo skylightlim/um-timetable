@@ -63,7 +63,7 @@
 
   /**
    * Today's session already has a status (the student marked it, or the lecturer did): its row starts
-   * with today's date as Spectrum writes it ("Thu 22 Oct 2026") and has no "?" left. Else null.
+   * with today's date as Spectrum writes it ("Mon 19 Oct 2026") and has no "?" left. Else null.
    */
   function already() {
     const d = new Date();
