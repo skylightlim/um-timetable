@@ -18,6 +18,44 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 23 October 2026 (Course pages arranged as Spectrum shows them in a browser)
+
+**Asked for:** a course page in the app wasn't organised like Spectrum in a laptop browser: check every
+section of every course in a signed-in browser, make the app's pages match, and report how Spectrum
+differs across courses.
+
+**Change:** the report is `docs/SPECTRUM-COURSES.md`. Courses are set up four ways, and the web service
+flattens them all; a course page is now arranged as the browser arranges it (`CourseOutline`):
+- subsections (Moodle 5) sit inside their section, where their link is, under their own name with a line
+  down the side, instead of a plain button there and their content at the bottom of the page;
+- Flexible sections courses nest sections in sections, and a section Spectrum shows as a link is a card
+  (name, summary, "2 activities · 6 sections") opening a page of its own. Which section is in which isn't
+  in the web service (nor offered to the Moodle app), so `CourseLayout` reads it the way Spectrum's page
+  does, `core_courseformat_get_state`, in a hidden page on the app's Spectrum session (about a second;
+  kept a day, read again sooner when a section is new). A section whose parent was deleted isn't shown;
+- a course showing one section per page shows General in full, then a card per section opening its page;
+- section pages: Back returns to the page underneath, scrolled where it was; the Courses tab goes back
+  to the list;
+- another group's sections and activities stay, greyed with a padlock and what they wait for (long
+  lists folded at two lines), and don't open; a hidden section says "Not available"; empty sections show
+  their name. The web service sends an activity's `uservisible` as true/false and the app read it as a
+  number, so another group's activities used to look like any other button;
+- a text that's only a dividing line is a line; the first section's name is left off when Flexible
+  sections hides it.
+The format and one-section-per-page come from `core_course_get_courses_by_field` when a course opens.
+
+**Checked:** unit tests pass, with `CourseOutlineTest` (subsections in place, hidden ones left out,
+Flexible sections nesting, links and orphans, one section per page). Against the browser, on all seven
+courses (a local test run on the real data, not committed): the same sections at the top in the same
+order, and in every section the browser draws, the same activities in the same order. The layout script
+ran in the laptop's signed-in browser on the same small page the hidden page loads: 121 sections, 19 at
+the top as on the course page, 1.3 s. On the user's phone (debug build, the data fed over USB), pages
+drawn off-screen: a one-section-per-page course's cards and a section's page with its two subsections; a
+Flexible sections course's lecturer cards and one lecturer's page (inner sections set in, links as
+cards); a course with a subsection per lecturer, other groups' activities greyed. Not tried: the hidden
+page reading the layout on the phone, opening and leaving section pages by hand, and how a long page of
+greyed sections feels; these wait for the user (the log line `course layout N: read … sections`).
+
 ## 23 October 2026 (Course pages: every link Spectrum offers can be tapped)
 
 **Asked for:** check every section of each course page against Spectrum in a laptop browser, and make

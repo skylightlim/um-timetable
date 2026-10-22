@@ -10,6 +10,8 @@ it a piece at a time.
   Compose, no androidx), minSdk 31. JVM tests in `android/app/src/test/`.
 - Read first: `README.md` (what it is), `docs/FINDINGS.md` (UM's data sources: Spectrum, MAYA, TimeEdit;
   where lecturer names come from), `docs/QA-LOG.md` (every change: asked for / change / checked).
+  `docs/SPECTRUM-COURSES.md`: how Spectrum's course pages differ (formats, subsections, one section per
+  page) and how the app arranges them like a browser.
 - Icons: `android/icon/crest.py` draws the launcher, themed and status-bar icons (see its docstring).
   Don't hand-edit `ic_fg.xml`, `ic_mono.xml` or `ic_notify.xml`.
 

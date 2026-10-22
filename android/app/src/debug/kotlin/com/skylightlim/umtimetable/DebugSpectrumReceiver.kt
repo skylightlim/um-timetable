@@ -204,7 +204,8 @@ class DebugSpectrumReceiver : BroadcastReceiver() {
                     val token = SpectrumStore.token(c) ?: error("not signed in")
                     Spectrum.call(token, "core_course_get_contents", mapOf("courseid" to course)).toString().also { rawFile.writeText(it) }
                 }
-                SpectrumStore.write(c, "contents-$course", SpectrumSync.normalizeContents(org.json.JSONArray(raw)).toString())
+                // The format and Flexible sections' layout aren't in the raw reply: a full fetch (no offline) brings them.
+                SpectrumStore.write(c, "contents-$course", if (intent.getBooleanExtra("offline", false)) SpectrumSync.normalizeContents(org.json.JSONArray(raw)).toString() else SpectrumSync.courseContents(c, course))
                 Log.i("UMTimetable", "debug: course $course raw contents ${raw.length} chars")
             } catch (e: Exception) {
                 Log.w("UMTimetable", "debug: course $course failed: ${e.message}")

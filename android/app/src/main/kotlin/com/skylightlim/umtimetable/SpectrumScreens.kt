@@ -19,10 +19,15 @@ import java.util.Calendar
 interface SpectrumHost : Host {
     val syncing: Boolean
     var openCourse: Int?
+    /** A section of the open course shown as a page of its own (Spectrum shows it as a link or a card), or null. */
+    val openSection: Int?
+    /** Opens section [id]'s page over the page shown now; Back comes back to where it was. */
+    fun showSection(id: Int)
     val expanded: MutableSet<String>
     val seenNews: Set<String>
     val seenGrades: Set<String>
-    fun courseContents(id: Int): JSONArray?
+    /** The course page as [SpectrumSync.courseContents] gives it, for [CourseOutline]. */
+    fun courseContents(id: Int): JSONObject?
     fun courseError(id: Int): String?
     fun signIn()
     /** Sign out's question, its card flying out of [from] (the Sign out button) when there is one. */
@@ -709,6 +714,11 @@ object SpectrumScreens {
     fun accountName(c: android.content.Context): String =
         SpectrumStore.name(c).replace(TRAILING_DOT, "").let { if (it == it.uppercase()) MayaImport.titleCase(it) else it }
 
+    /**
+     * A course page, arranged as Spectrum's own page is in a browser ([CourseOutline]): the sections in
+     * order, subsections and Flexible sections' inner sections set in where they sit, and a section Spectrum
+     * shows as a link or a card (one section per page) as a card opening a page of its own ([SpectrumHost.openSection]).
+     */
     private fun coursePage(h: SpectrumHost, c: JSONObject): View {
         val ui = h.ui
         val p = ui.p
@@ -716,6 +726,19 @@ object SpectrumScreens {
         val code = c.optString("code")
         val color = colorOf(h, code)
         val page = ui.column()
+        val course = h.courseContents(id)
+        val top = course?.let(CourseOutline::build).orEmpty()
+        val folder = code.ifEmpty { "Spectrum" }
+        h.openSection?.let { CourseOutline.find(top, it) }?.let { node ->
+            // A section's own page: the course code over its name, then all of it.
+            page.addView(ui.column().apply {
+                setPadding(0, ui.dp(18), 0, ui.dp(12))
+                addView(ui.text((code.ifEmpty { "Course" }).uppercase(), 15f, p.courseText(color), ui.f.monoBold))
+                addView(ui.text(node.name, 26f, p.text, ui.f.bodyBold).apply { RichText.selectable(this) }, ui.wide(top = 4f))
+            })
+            page.addView(sectionBody(h, node, folder, 0, "p${node.id}"))
+            return page
+        }
         page.addView(ui.column().apply {
             setPadding(0, ui.dp(18), 0, ui.dp(14))
             addView(ui.text((code.ifEmpty { "Course" }).uppercase(), 38f, p.courseText(color), ui.f.sign))
@@ -725,12 +748,11 @@ object SpectrumScreens {
             page.addView(ui.text(it, 13.5f).apply { background = ui.shape(Palette.mix(0xFFF2645F.toInt(), p.surface, 0.14f), 12f); setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10)) })
             return page
         }
-        val sections = h.courseContents(id) ?: run {
+        if (course == null) {
             page.addView(loading(ui, "Loading the course page…"))
             return page
         }
-        val folder = code.ifEmpty { "Spectrum" }
-        // Each section in a box of its own, so a pin can move it to the top: pinned ones come first (in
+        // Each top section in a box of its own, so a pin can move it to the top: pinned ones come first (in
         // the order pinned), under "Pinned", then the rest in Spectrum's order.
         val boxes = LinkedHashMap<String, LinearLayout>()
         val pins = SpectrumStore.pinnedSections(ui.context, id).toMutableList()
@@ -745,88 +767,198 @@ object SpectrumScreens {
             if (pinned.isNotEmpty() && boxes.size > pinned.size) holder.addView(restLabel, ui.wide(top = 30f, bottom = -12f))
             for ((k, box) in boxes) if (k !in pinned) holder.addView(box)
         }
-        sections.objects().forEachIndexed { si, sec ->
-            val modules = sec.optJSONArray("modules")?.objects().orEmpty().filter { it.optString("kind") != "label" || hasContent(it.optString("html")) }
-            val summary = sec.optString("summary")
-            if (modules.isEmpty() && !hasContent(summary)) return@forEachIndexed
-            // Spectrum's section id; a page cached before ids were kept goes by the name.
-            val sectionKey = sec.optInt("id").takeIf { it > 0 }?.toString() ?: "name:${sec.optString("name")}"
+        for (node in top) {
+            val sectionKey = node.id.toString()
             val box = ui.column()
             boxes[sectionKey] = box
-            // Section names as Spectrum writes them ("Course Information (SEM1, 2026/2027)"), bold and dark. A
-            // long press on one offers to pin it (or unpin it); a pinned one has a pin after its name.
-            val name = sec.optString("name")
+            val name = node.name
             val mark = ui.icon(R.drawable.ic_pin_on, p.accentText, 16f).apply {
                 visibility = if (sectionKey in pins) View.VISIBLE else View.GONE
                 contentDescription = "Pinned"
             }
-            box.addView(ui.row(gap = 8f).apply {
-                minimumHeight = ui.dp(48)
-                addView(ui.text(name, 18f, p.text, ui.f.bodyBold), ui.grow())
-                addView(mark)
-                contentDescription = "$name${if (sectionKey in pins) ", pinned" else ""}. Long press to ${if (sectionKey in pins) "unpin" else "pin"} it."
-                setOnLongClickListener { heading ->
-                    val pinned = sectionKey in pins
-                    pinMenu(ui, heading, pinned) {
-                        Motion.resize(holder)
-                        pins.remove(sectionKey)
-                        if (!pinned) pins += sectionKey
-                        SpectrumStore.pinSection(ui.context, id, sectionKey, !pinned)
-                        heading.contentDescription = "$name${if (!pinned) ", pinned" else ""}. Long press to ${if (!pinned) "unpin" else "pin"} it."
-                        mark.visibility = if (pinned) View.GONE else View.VISIBLE
-                        if (!pinned) Motion.pop(mark, 0.3f)
-                        arrange()
-                    }
-                    true
+            // A long press on a section's name (or its card) offers to pin it, or unpin it; a pinned one has a pin.
+            fun pinnable(head: View) = head.setOnLongClickListener { at ->
+                val pinned = sectionKey in pins
+                pinMenu(ui, at, pinned) {
+                    Motion.resize(holder)
+                    pins.remove(sectionKey)
+                    if (!pinned) pins += sectionKey
+                    SpectrumStore.pinSection(ui.context, id, sectionKey, !pinned)
+                    mark.visibility = if (pinned) View.GONE else View.VISIBLE
+                    if (!pinned) Motion.pop(mark, 0.3f)
+                    arrange()
                 }
-            }, ui.wide(top = 14f, bottom = -2f))
-            // Every text in full and at reading size: nothing behind Show more. A long press selects it to copy.
-            if (hasContent(summary)) box.addView(textBlock(ui, RichText.view(h, summary, "s$id-$si", folder, 0, 16f, expanded = h.expanded, selectable = true)), ui.wide(bottom = 8f))
-            val list = ui.column(gap = 8f)
-            modules.forEachIndexed { mi, m ->
-                val key = "m$id-$si-$mi"
-                val kind = m.optString("kind")
-                if (kind == "label") {
-                    list.addView(textBlock(ui, RichText.view(h, m.optString("html"), key, folder, 0, 16f, expanded = h.expanded, selectable = true)))
-                    return@forEachIndexed
-                }
-                val item = ui.column()
-                val files = m.optJSONArray("files")?.objects().orEmpty()
-                when {
-                    kind == "file" && files.size == 1 -> item.addView(fileButton(h, files[0], code, label = m.optString("name")))
-                    kind == "folder" || kind == "file" -> {
-                        // Opens in place; rebuilding the page would lose the scroll position.
-                        val sub = ui.column(gap = 6f).apply { setPadding(ui.dp(14), ui.dp(6), 0, ui.dp(2)) }
-                        for (f in files) sub.addView(fileButton(h, f, code))
-                        val chevron = Motion.chevron(ui, "$key-files" in h.expanded)
-                        sub.visibility = if ("$key-files" in h.expanded) View.VISIBLE else View.GONE
-                        lateinit var button: LinearLayout
-                        button = moduleButton(ui, R.drawable.ic_tab_courses, m.optString("name"), "${files.size} files") {
-                            Motion.resize(button)
-                            val open = h.expanded.add("$key-files") || !h.expanded.remove("$key-files")
-                            sub.visibility = if (open) View.VISIBLE else View.GONE
-                            Motion.turn(chevron, open)
-                        }
-                        button.addView(chevron, LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)))
-                        item.addView(button)
-                        item.addView(sub)
-                    }
-                    else -> item.addView(moduleButton(ui, if (kind == "url") R.drawable.ic_link else R.drawable.ic_module, m.optString("name"), m.optString("label")) { h.openUrl(m.optString("url")) })
-                }
-                val dates = m.optJSONArray("dates")?.objects().orEmpty().filter { it.optLong("time") > 0 }
-                    .joinToString(" · ") { "${it.optString("label")} ${dayLabel(it.getLong("time"))} ${hm(it.getLong("time"))}" }
-                if (dates.isNotEmpty()) item.addView(ui.text(dates, 13.5f, p.muted).apply { setPadding(ui.dp(42), ui.dp(4), ui.dp(4), 0); RichText.selectable(this) })
-                val html = m.optString("html")
-                if (hasContent(html)) item.addView(RichText.view(h, html, "$key-d", folder, 0, 15f, p.text, h.expanded, selectable = true).apply { setPadding(ui.dp(42), ui.dp(6), ui.dp(4), ui.dp(2)) })
-                val availability = m.optString("availability")
-                if (hasContent(availability)) item.addView(RichText.view(h, availability, "$key-a", folder, 0, 13.5f, p.muted, h.expanded, selectable = true).apply { setPadding(ui.dp(42), ui.dp(4), ui.dp(4), ui.dp(2)) })
-                list.addView(item)
+                true
             }
-            box.addView(list)
+            if (node.link) {
+                box.addView(sectionCard(h, node, folder, mark = mark).also(::pinnable), ui.wide(top = 10f))
+                continue
+            }
+            // Flexible sections leaves the first section's name off unless the course shows it.
+            if (node.number > 0 || course.optBoolean("section0title", true)) {
+                box.addView(sectionName(ui, node, 0).apply {
+                    minimumHeight = ui.dp(48)
+                    addView(mark)
+                    contentDescription = "$name. Long press to pin or unpin it."
+                    pinnable(this)
+                }, ui.wide(top = 14f, bottom = -2f))
+            }
+            box.addView(sectionBody(h, node, folder, 0, "s$id-${node.id}"))
         }
         arrange()
         page.addView(holder)
         return page
+    }
+
+    /** A section's name as a heading: bold, smaller set in; greyed, with a lock when it isn't open to this student. */
+    private fun sectionName(ui: Ui, node: CourseOutline.Node, depth: Int) = ui.row(gap = 8f).apply {
+        val closed = node.restricted || node.hidden
+        addView(ui.text(node.name, if (depth == 0) 18f else 16f, if (closed) ui.p.muted else ui.p.text, ui.f.bodyBold), ui.grow())
+        if (node.restricted) addView(ui.icon(R.drawable.ic_lock, ui.p.muted, 16f).apply { contentDescription = "Not available to you" })
+    }
+
+    /**
+     * What a section holds, as on Spectrum's page: what it waits for (another group's), its summary, its
+     * activities and texts with its subsections where they sit, then the sections in it. A hidden one shows
+     * only "Not available". Every text in full and at reading size: nothing behind Show more. A long press
+     * selects it to copy.
+     */
+    private fun sectionBody(h: SpectrumHost, node: CourseOutline.Node, folder: String, depth: Int, key: String): LinearLayout {
+        val ui = h.ui
+        val p = ui.p
+        val body = ui.column()
+        if (node.hidden) {
+            body.addView(ui.text("Not available", 14f, p.muted), ui.wide(bottom = 6f))
+            return body
+        }
+        val availability = node.section.optString("availability")
+        if (hasContent(availability)) body.addView(RichText.view(h, availability, "$key-a", folder, 2, 13.5f, p.muted, h.expanded, selectable = true), ui.wide(bottom = 8f))
+        val summary = node.section.optString("summary")
+        if (hasContent(summary)) body.addView(textBlock(ui, RichText.view(h, summary, "$key-s", folder, 0, 16f, expanded = h.expanded, selectable = true)), ui.wide(bottom = 8f))
+        val list = ui.column(gap = 8f)
+        node.items.forEachIndexed { mi, item ->
+            val sub = item.sub
+            if (sub != null) list.addView(nested(h, sub, folder, depth + 1, "$key-$mi"))
+            else moduleView(h, item.module, folder, "$key-$mi")?.let(list::addView)
+        }
+        for ((ci, child) in node.children.withIndex()) {
+            list.addView(if (child.link) sectionCard(h, child, folder) else nested(h, child, folder, depth + 1, "$key-c$ci"))
+        }
+        if (list.childCount > 0) body.addView(list)
+        return body
+    }
+
+    /** A section inside a section (a subsection, or one of Flexible sections' inner ones): set in, with a line down its side. */
+    private fun nested(h: SpectrumHost, node: CourseOutline.Node, folder: String, depth: Int, key: String): View {
+        val ui = h.ui
+        return ui.row(gap = 12f).apply {
+            setPadding(0, ui.dp(6), 0, ui.dp(2))
+            addView(View(ui.context).apply { background = ui.shape(ui.p.line, 2f) }, LinearLayout.LayoutParams(ui.dp(3), ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(ui.column().apply {
+                addView(sectionName(ui, node, depth), ui.wide(bottom = 6f))
+                addView(sectionBody(h, node, folder, depth, key))
+            }, ui.grow())
+        }
+    }
+
+    /**
+     * A section Spectrum shows as a link to a page of its own (or as a card, when a course shows one
+     * section per page): its name, how much is in it and its summary, as Spectrum shows them (a lecturer's
+     * card under their name), and a tap opens its page. One that isn't open to this student is greyed and
+     * says why, and doesn't open.
+     */
+    private fun sectionCard(h: SpectrumHost, node: CourseOutline.Node, folder: String, mark: View? = null): LinearLayout {
+        val ui = h.ui
+        val p = ui.p
+        val closed = node.restricted || node.hidden
+        val card = ui.column().apply {
+            background = if (closed) ui.shape(Color.TRANSPARENT, 12f, p.line) else ui.pressable(ui.shape(p.surface, 12f, p.line), 12f)
+            setPadding(ui.dp(14), ui.dp(12), ui.dp(12), ui.dp(12))
+        }
+        val inside = listOfNotNull(
+            node.activities.takeIf { it > 0 }?.let { "$it ${if (it == 1) "activity" else "activities"}" },
+            node.children.size.takeIf { it > 0 }?.let { "$it ${if (it == 1) "section" else "sections"}" },
+        ).joinToString(" · ").ifEmpty { if (node.hidden) "Not available" else "" }
+        card.addView(ui.row(gap = 10f).apply {
+            minimumHeight = ui.dp(24)
+            addView(ui.column().apply {
+                addView(ui.text(node.name, 16.5f, if (closed) p.muted else p.text, ui.f.bodyBold))
+                if (inside.isNotEmpty()) addView(ui.text(inside, 11f, p.muted, ui.f.mono), ui.wide(top = 3f))
+            }, ui.grow())
+            mark?.let(::addView)
+            if (node.restricted) addView(ui.icon(R.drawable.ic_lock, p.muted, 16f).apply { contentDescription = "Not available to you" })
+            if (!closed) addView(ui.icon(R.drawable.ic_chevron, p.faint), LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)))
+        })
+        val availability = node.section.optString("availability")
+        if (node.restricted && hasContent(availability)) card.addView(RichText.view(h, availability, "c${node.id}-a", folder, 2, 13.5f, p.muted, h.expanded), ui.wide(top = 6f))
+        val summary = node.section.optString("summary")
+        if (!node.hidden && hasContent(summary)) card.addView(RichText.view(h, summary, "c${node.id}-s", folder, 0, 15f, p.text, h.expanded, selectable = true), ui.wide(top = 8f))
+        if (!closed) card.setOnClickListener { h.showSection(node.id) }
+        card.contentDescription = listOf(node.name, inside, if (closed) "not available" else "opens its page").filter { it.isNotEmpty() }.joinToString(", ")
+        return card
+    }
+
+    /**
+     * One activity or text on a course page: a text block (a lone dividing line as a line), a file, a folder
+     * opening in place, a link or any other activity opening in the app's Spectrum view, with its dates, its
+     * description and what it waits for under it. One that isn't open to this student (another group's) is
+     * greyed with a lock and doesn't open, as on Spectrum's page. Null for an empty text.
+     */
+    private fun moduleView(h: SpectrumHost, m: JSONObject, folder: String, key: String): View? {
+        val ui = h.ui
+        val p = ui.p
+        val kind = m.optString("kind")
+        val restricted = m.optBoolean("restricted")
+        val availability = m.optString("availability")
+        if (kind == "label") {
+            val html = m.optString("html")
+            return when {
+                restricted -> if (hasContent(availability)) RichText.view(h, availability, "$key-a", folder, 2, 13.5f, p.muted, h.expanded, selectable = true) else null
+                SpectrumHtml.isRule(html) -> rule(ui)
+                hasContent(html) -> textBlock(ui, RichText.view(h, html, key, folder, 0, 16f, expanded = h.expanded, selectable = true))
+                else -> null
+            }
+        }
+        val item = ui.column()
+        val files = m.optJSONArray("files")?.objects().orEmpty()
+        when {
+            restricted -> item.addView(ui.row(gap = 10f).apply {
+                background = ui.shape(Color.TRANSPARENT, 12f, p.line)
+                minimumHeight = ui.dp(48)
+                setPadding(ui.dp(12), ui.dp(11), ui.dp(12), ui.dp(11))
+                addView(ui.icon(R.drawable.ic_lock, p.faint, 18f))
+                addView(ui.text(m.optString("name"), 15.5f, p.muted, ui.f.bodySemi), ui.grow())
+                m.optString("label").takeIf { it.isNotEmpty() }?.let { addView(ui.text(it, 11f, p.faint, ui.f.mono)) }
+                contentDescription = "${m.optString("name")}, not available to you"
+            })
+            kind == "file" && files.size == 1 -> item.addView(fileButton(h, files[0], folder, label = m.optString("name")))
+            kind == "folder" || kind == "file" -> {
+                // Opens in place; rebuilding the page would lose the scroll position.
+                val sub = ui.column(gap = 6f).apply { setPadding(ui.dp(14), ui.dp(6), 0, ui.dp(2)) }
+                for (f in files) sub.addView(fileButton(h, f, folder))
+                val chevron = Motion.chevron(ui, "$key-files" in h.expanded)
+                sub.visibility = if ("$key-files" in h.expanded) View.VISIBLE else View.GONE
+                lateinit var button: LinearLayout
+                button = moduleButton(ui, R.drawable.ic_tab_courses, m.optString("name"), "${files.size} files") {
+                    Motion.resize(button)
+                    val open = h.expanded.add("$key-files") || !h.expanded.remove("$key-files")
+                    sub.visibility = if (open) View.VISIBLE else View.GONE
+                    Motion.turn(chevron, open)
+                }
+                button.addView(chevron, LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)))
+                item.addView(button)
+                item.addView(sub)
+            }
+            else -> item.addView(moduleButton(ui, if (kind == "url") R.drawable.ic_link else R.drawable.ic_module, m.optString("name"), m.optString("label")) { h.openUrl(m.optString("url")) })
+        }
+        val dates = m.optJSONArray("dates")?.objects().orEmpty().filter { it.optLong("time") > 0 }
+            .joinToString(" · ") { "${it.optString("label")} ${dayLabel(it.getLong("time"))} ${hm(it.getLong("time"))}" }
+        if (!restricted && dates.isNotEmpty()) item.addView(ui.text(dates, 13.5f, p.muted).apply { setPadding(ui.dp(42), ui.dp(4), ui.dp(4), 0); RichText.selectable(this) })
+        val html = m.optString("html")
+        if (!restricted && hasContent(html)) item.addView(RichText.view(h, html, "$key-d", folder, 0, 15f, p.text, h.expanded, selectable = true).apply { setPadding(ui.dp(42), ui.dp(6), ui.dp(4), ui.dp(2)) })
+        // A long list of conditions folds under Show more, as on Spectrum's page.
+        if (hasContent(availability)) item.addView(RichText.view(h, availability, "$key-a", folder, 2, 13.5f, p.muted, h.expanded, selectable = true).apply { setPadding(ui.dp(42), ui.dp(4), ui.dp(4), ui.dp(2)) })
+        return item
     }
 
     /** [pinMenu]'s card: a pin and "Pin to top", or an outline pin and "Unpin". */

@@ -121,26 +121,45 @@ object SpectrumSync {
         return error
     }
 
-    /** One course page, flattened for the Courses tab and cached for offline use. */
+    /**
+     * One course page for the Courses tab, cached for offline use: its sections ([normalizeContents]),
+     * its format and whether it shows one section per page, and for Flexible sections which section
+     * sits in which ([CourseLayout]). [CourseOutline] arranges them as Spectrum's own page does.
+     */
     fun courseContents(c: Context, courseId: Int): String {
         val token = SpectrumStore.token(c) ?: return JSONObject().put("error", "Not signed in.").toString()
         val cacheName = "contents-$courseId"
         return try {
-            val sections = Spectrum.call(token, "core_course_get_contents", mapOf("courseid" to courseId)) as JSONArray
-            normalizeContents(sections).toString().also { SpectrumStore.write(c, cacheName, it) }
+            val course = normalizeContents(Spectrum.call(token, "core_course_get_contents", mapOf("courseid" to courseId)) as JSONArray)
+            runCatching {
+                val info = (Spectrum.call(token, "core_course_get_courses_by_field", mapOf("field" to "id", "value" to courseId)) as JSONObject)
+                    .getJSONArray("courses").getJSONObject(0)
+                val options = info.optJSONArray("courseformatoptions")?.objects().orEmpty().associate { it.optString("name") to it.optString("value") }
+                course.put("format", info.optString("format")).put("display", options["coursedisplay"]?.toIntOrNull() ?: 0)
+                    // Flexible sections hides the first section's name unless the course says otherwise.
+                    .put("section0title", if (info.optString("format") == "flexsections") options["showsection0title"] == "1" else true)
+            }.onFailure { Log.w(TAG, "course format failed: ${it.message}") }
+            if (course.optString("format") == "flexsections") CourseLayout.get(c, courseId, course)?.let { course.put("layout", it) }
+            course.toString().also { SpectrumStore.write(c, cacheName, it) }
         } catch (e: Exception) {
             Log.w(TAG, "course contents failed: ${e.message}")
-            SpectrumStore.read(c, cacheName) ?: JSONObject().put("error", "Couldn't load this course from Spectrum.").toString()
+            // A page cached before this layout (a bare list of sections) is read as one without it.
+            SpectrumStore.read(c, cacheName)?.let { if (it.startsWith("[")) JSONObject().put("sections", JSONArray(it)).toString() else it }
+                ?: JSONObject().put("error", "Couldn't load this course from Spectrum.").toString()
         }
     }
 
-    /** core_course_get_contents → [{ id, name, summary, modules: [{ kind, name, label, url, files, html, dates, availability }] }] */
-    fun normalizeContents(sections: JSONArray): JSONArray {
+    /**
+     * core_course_get_contents → { sections: [{ id, number, name, summary, component, itemid, visible,
+     * uservisible, availability, modules: [{ kind, name, label, url, files, html, dates, availability,
+     * restricted, cmid, instance }] }] }. Nothing Spectrum's page shows is left out: restricted sections
+     * and activities (another group's) stay, marked, and so do empty and hidden sections.
+     */
+    fun normalizeContents(sections: JSONArray): JSONObject {
         val out = JSONArray()
         for (s in sections.objects()) {
             val modules = JSONArray()
             for (m in (s.optJSONArray("modules") ?: JSONArray()).objects()) {
-                if (m.optInt("uservisible", 1) == 0) continue
                 val modname = m.optString("modname")
                 val files = JSONArray()
                 val contents = m.optJSONArray("contents") ?: JSONArray()
@@ -154,6 +173,7 @@ object SpectrumSync {
                     "folder" -> "folder"
                     "url" -> "url"
                     "label" -> "label"
+                    "subsection" -> "subsection"
                     else -> "other"
                 }
                 val url = if (kind == "url") contents.optJSONObject(0)?.optString("fileurl")?.takeIf { it.isNotBlank() } ?: m.optString("url") else m.optString("url")
@@ -165,15 +185,23 @@ object SpectrumSync {
                     JSONObject().put("kind", kind).put("name", plain(m.optString("name"))).put("label", moduleLabel(modname))
                         .put("url", url).put("files", files).put("html", html).put("dates", dates)
                         // Spectrum's access rules under an activity ("Not available unless: …"), as HTML.
-                        .put("availability", m.optString("availabilityinfo")),
+                        .put("availability", m.optString("availabilityinfo"))
+                        // Shown on the page but not open to this student: greyed, with its rules, as in a browser.
+                        .put("restricted", !m.optBoolean("uservisible", true))
+                        .put("cmid", m.optInt("id")).put("instance", m.optInt("instance")),
                 )
             }
-            val summary = s.optString("summary")
-            if (modules.length() > 0 || plain(summary).isNotEmpty()) {
-                out.put(JSONObject().put("id", s.optInt("id")).put("name", plain(s.optString("name")).ifBlank { "General" }).put("summary", summary).put("modules", modules))
-            }
+            out.put(
+                JSONObject().put("id", s.optInt("id")).put("number", s.optInt("section"))
+                    .put("name", plain(s.optString("name")).ifBlank { if (s.optInt("section") == 0) "General" else "" })
+                    .put("summary", s.optString("summary")).put("modules", modules)
+                    // A subsection's own section (mod_subsection, itemid = the subsection), shown where its link is.
+                    .put("component", if (s.isNull("component")) "" else s.optString("component")).put("itemid", s.optInt("itemid"))
+                    .put("visible", s.optInt("visible", 1) != 0).put("uservisible", s.optBoolean("uservisible", true))
+                    .put("availability", s.optString("availabilityinfo")),
+            )
         }
-        return out
+        return JSONObject().put("sections", out)
     }
 
     @Suppress("DEPRECATION") // NetworkInfo is still the only per-app view of "blocked"
