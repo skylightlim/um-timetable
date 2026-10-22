@@ -320,7 +320,7 @@ object AutoAttendance {
             web.loadUrl(url)
             // Still on Microsoft's sign-in by then: it wants the user. Not a word at all: Spectrum is out of reach.
             main.postDelayed({
-                if (!asked) finish(JSONObject().put("error", if (lastHost.endsWith("microsoftonline.com") || lastHost.endsWith("live.com")) "signedout" else "unreachable"))
+                if (!asked) finish(JSONObject().put("error", if (hostIn(lastHost, "microsoftonline.com", "live.com")) "signedout" else "unreachable"))
             }, 30_000)
             main.postDelayed({ finish(JSONObject().put("error", "unreachable").put("detail", "no answer in time")) }, 60_000)
         }

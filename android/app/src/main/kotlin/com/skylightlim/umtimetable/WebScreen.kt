@@ -34,6 +34,12 @@ import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import com.skylightlim.umtimetable.Motion.spring
 
+/** Whether [host] is one of [domains] or under one: microsoft.com and login.microsoft.com are, evilmicrosoft.com isn't. */
+fun hostIn(host: String?, vararg domains: String): Boolean {
+    val h = host?.lowercase()?.trimEnd('.') ?: return false
+    return domains.any { h == it || h.endsWith(".$it") }
+}
+
 /**
  * The shared frame of the app's web screens (Spectrum sign-in and pages, MAYA, TimeEdit), in the app's
  * own look and theme: a top bar like the main screen's (the site small in the accent, the title in Big

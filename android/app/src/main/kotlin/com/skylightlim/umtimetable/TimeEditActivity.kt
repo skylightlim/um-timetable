@@ -37,7 +37,7 @@ class TimeEditActivity : WebScreen() {
 
     override fun pageFinished(url: String) {
         signIn.pageFinished(url)
-        if (Uri.parse(url).host.orEmpty().endsWith("microsoftonline.com")) {
+        if (hostIn(Uri.parse(url).host, "microsoftonline.com")) {
             status.text = "Microsoft wants you to sign in: use your SiswaMail. Your password goes only to Microsoft; this app never sees it."
         }
     }

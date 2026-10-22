@@ -110,7 +110,7 @@ object RichText {
             text.setSpan(object : ClickableSpan() {
                 override fun onClick(widget: View) {
                     val host = widget.context as? Host ?: return
-                    if (url.startsWith(Spectrum.SITE) && "/pluginfile.php/" in url) {
+                    if (url.startsWith("${Spectrum.SITE}/") && "/pluginfile.php/" in url) {
                         val name = Uri.decode(url.substringBefore('?').substringAfterLast('/')).ifBlank { "file" }
                         host.openFile(JSONObject().put("url", url).put("name", name).put("mime", "").put("size", 0), folder)
                     } else {
@@ -155,7 +155,7 @@ object RichText {
     private class ImageGetter(val context: Context, val tv: TextView) : Html.ImageGetter {
         override fun getDrawable(source: String?): Drawable {
             val slot = Slot().apply { setBounds(0, 0, 0, 0) }
-            if (source == null || !source.startsWith(Spectrum.SITE)) return slot
+            if (source == null || !source.startsWith("${Spectrum.SITE}/")) return slot
             // Already decoded: sized now, so the text is laid out once, with the image in place.
             bitmaps.get(source)?.let { fit(slot, it); return slot }
             loader.execute {

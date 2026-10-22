@@ -18,6 +18,22 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 22 October 2026 (Security: trusted sites matched by whole domain names)
+
+**Asked for:** the app audit, continued (security finding 3).
+
+**Change:** the in-app Spectrum view kept any site whose name merely ended in one it trusts, so
+`evilmicrosoft.com` passed for `microsoft.com` and could have posed as the in-app sign-in; course
+links went in-app the same way. All such checks now go through `hostIn`: the domain itself or a name
+under it (`login.microsoftonline.com`), nothing else. Also TimeEdit's "your password goes only to
+Microsoft" line and auto attendance's signed-out check use it, and a course page treats a link or
+image as Spectrum's own only when its address is Spectrum's followed by a slash
+(`spectrum.um.edu.my.example.com` isn't Spectrum). The sign-in itself was never at risk this way: the
+token is only ever added to Spectrum's own file address, matched exactly, and that stays as it was.
+
+**Checked:** unit tests pass, with a new `HostInTest` (the domains and their subdomains pass; look-alikes,
+a blank and a missing host don't). Built.
+
 ## 22 October 2026 (Security: links from web pages open only what a browser could)
 
 **Asked for:** the app audit, continued (security finding 2).
