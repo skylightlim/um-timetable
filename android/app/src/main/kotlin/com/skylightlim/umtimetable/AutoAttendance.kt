@@ -34,7 +34,6 @@ import java.io.File
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.Calendar
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -94,9 +93,9 @@ object AutoAttendance {
         if (!enabled(c) || !SpectrumStore.signedIn(c)) return am.cancel(pi)
         val now = System.currentTimeMillis()
         val done = SpectrumStore.stringSet(c, DONE)
-        for (offset in 0..7) {
-            val date = LocalDate.now().plusDays(offset.toLong())
-            val dayStart = startOfDay(Calendar.getInstance().apply { timeInMillis = now; add(Calendar.DAY_OF_MONTH, offset) }.timeInMillis)
+        for (offset in 0..7L) {
+            val date = LocalDate.now().plusDays(offset)
+            val dayStart = startOfDay(date)
             val next = classes(c, date).filter { key(date, it) !in done }
                 .flatMap { tries(dayStart, it) }.filter { it > now }.minOrNull()
             if (next != null) {
@@ -152,8 +151,8 @@ object AutoAttendance {
 
     private fun markDue(c: Context) {
         val now = System.currentTimeMillis()
-        val dayStart = startOfDay(now)
         val today = LocalDate.now()
+        val dayStart = startOfDay(today)
         val done = SpectrumStore.stringSet(c, DONE).filter { it.startsWith("$today ") }.toMutableSet()
         val due = classes(c, today).filter { s ->
             now >= dayStart + s.start * 60_000L - 60_000 && now < dayStart + s.end * 60_000L && key(today, s) !in done

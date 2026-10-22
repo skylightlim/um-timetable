@@ -23,7 +23,9 @@ import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
-import java.util.Calendar
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
@@ -414,8 +416,8 @@ object SpectrumSync {
      * whose own session isn't listed gets its activity's page, marked `listed: false`.
      */
     private fun fetchAttendance(c: Context, api: Api, courses: JSONArray, fresh: Boolean): JSONArray {
-        val now = System.currentTimeMillis()
-        val dayStart = startOfDay(now)
+        val date = LocalDate.now()
+        val dayStart = startOfDay(date)
         val res = api.call(
             "core_calendar_get_calendar_events",
             mapOf("events" to mapOf("courseids" to courses.objects().map { it.getInt("id") }), "options" to mapOf("userevents" to false, "siteevents" to false, "timestart" to dayStart / 1000, "timeend" to dayStart / 1000 + 86_400)),
@@ -425,7 +427,7 @@ object SpectrumSync {
         val idOf = courses.objects().associate { it.getString("code") to it.getInt("id") }
         val timetable = Timetable.load(c)
         // The classes attendance is taken at: Spectrum's occurrence's, for a course the user chose another of.
-        val today = timetable.attendanceDay(Calendar.getInstance().apply { timeInMillis = now }.get(Calendar.DAY_OF_WEEK) - 1)
+        val today = timetable.attendanceDay(date.dayOfWeek.value % 7)
         val activities = attendanceActivities(c, api, today.mapNotNull { idOf[it.course.code] }.toSet() + events.map { it.optInt("courseid") }, fresh)
         fun classes(courseId: Int) = timetable.attendance.filter { it.course.code == byId[courseId]?.optString("code") }
 
@@ -631,10 +633,11 @@ object SpectrumSync {
 
 internal fun JSONArray.objects(): List<JSONObject> = (0 until length()).mapNotNull { optJSONObject(it) }
 
-internal fun startOfDay(ms: Long): Long = Calendar.getInstance().apply {
-    timeInMillis = ms
-    set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-}.timeInMillis
+/** Midnight at the start of [ms]'s day, on the phone's clock. */
+internal fun startOfDay(ms: Long): Long = startOfDay(Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).toLocalDate())
+
+/** Midnight at the start of [date], on the phone's clock. */
+internal fun startOfDay(date: LocalDate): Long = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
 /** Reminders 24 h and 2 h before each deadline, driven by one exact alarm at a time. */
 object Reminders {
@@ -651,7 +654,7 @@ object Reminders {
             .flatMap { d -> OFFSETS.map { (off, _) -> d.getLong("due") - off to "${d.getInt("id")}:$off" } }
             .filter { (at, key) -> at > now && key !in fired }
             .minOfOrNull { it.first }
-        if (next == null) am.cancel(pi) else exactAlarm(am, next, pi)
+        exactAlarm(am, next, pi)
     }
 
     fun fire(c: Context) {
@@ -696,10 +699,10 @@ object AttendanceWatch {
         val now = System.currentTimeMillis()
         val candidates = mutableListOf<Long>()
         val timetable = Timetable.load(c)
-        for (offset in 0..7) {
-            val day = Calendar.getInstance().apply { timeInMillis = now; add(Calendar.DAY_OF_MONTH, offset) }
-            val dayStart = startOfDay(day.timeInMillis)
-            for (s in timetable.attendanceDay(day.get(Calendar.DAY_OF_WEEK) - 1)) {
+        for (offset in 0..7L) {
+            val date = LocalDate.now().plusDays(offset)
+            val dayStart = startOfDay(date)
+            for (s in timetable.attendanceDay(date.dayOfWeek.value % 7)) {
                 val start = dayStart + s.start * 60_000L
                 val end = dayStart + s.end * 60_000L
                 if (now in start until end) candidates += minOf(now + 10 * 60_000L, end)
@@ -712,12 +715,14 @@ object AttendanceWatch {
             if (start > now && a.optBoolean("listed", true)) candidates += start + 30_000L
         }
         val next = candidates.minOrNull()
-        if (next == null) am.cancel(pi) else exactAlarm(am, next, pi)
+        exactAlarm(am, next, pi)
     }
 }
 
-internal fun exactAlarm(am: AlarmManager, at: Long, pi: PendingIntent) {
-    if (am.canScheduleExactAlarms()) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+/** The alarm [pi] at [at]: exact when Android allows it (else it may run a little late), and none when [at] is null. */
+internal fun exactAlarm(am: AlarmManager, at: Long?, pi: PendingIntent) {
+    if (at == null) am.cancel(pi)
+    else if (am.canScheduleExactAlarms()) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
     else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
 }
 

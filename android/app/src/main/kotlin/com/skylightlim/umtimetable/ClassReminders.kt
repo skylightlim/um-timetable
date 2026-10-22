@@ -3,7 +3,6 @@ package com.skylightlim.umtimetable
 import android.app.AlarmManager
 import android.content.Context
 import java.time.LocalDate
-import java.time.ZoneId
 
 /**
  * Settings' "Class reminders": a notification some minutes before each class the user goes to (the
@@ -39,7 +38,7 @@ object ClassReminders {
         return (0..7L).flatMap { k ->
             val date = LocalDate.now().plusDays(k)
             if (Holidays.on(date) != null || weekOff(date) != null) return@flatMap emptyList()
-            val midnight = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val midnight = startOfDay(date)
             timetable.day(date.dayOfWeek.value % 7).map { s ->
                 val start = midnight + s.start * 60_000L
                 Due(start - before * 60_000L, start, midnight + s.end * 60_000L, "$date ${s.start} ${s.course.code}", s)
@@ -54,7 +53,7 @@ object ClassReminders {
         val now = System.currentTimeMillis()
         val fired = prefs(c).getStringSet(FIRED, emptySet()).orEmpty()
         val next = ahead(c, before).filter { it.key !in fired && it.at > now }.minOfOrNull { it.at }
-        if (next == null) am.cancel(pi) else exactAlarm(am, next, pi)
+        exactAlarm(am, next, pi)
     }
 
     fun fire(c: Context) {

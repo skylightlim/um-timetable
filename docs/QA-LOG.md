@@ -18,6 +18,21 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 22 October 2026 (Audit: alarm scheduling, shorter)
+
+**Asked for:** the app audit, continued: the ponytail audit's cuts.
+
+**Change:** the five alarm schedulers (deadline, plan and class reminders, attendance checks, auto
+attendance) each ended "no next time: cancel, else set the alarm"; `exactAlarm` now takes no time as
+cancel. The days they walk through are `LocalDate`s with `startOfDay(date)` instead of `Calendar`
+arithmetic, and the weekday comes from `date.dayOfWeek` (Sunday 0 … Saturday 6, as before). Auto
+attendance read the clock twice for the same day (once for the date, once for its midnight); it now
+reads it once. No times change.
+
+**Checked:** unit tests pass, with a new `StartOfDayTest`: for 400 days from 20 October 2026, in Kuala
+Lumpur's time and in London's (days of 23 and 25 hours), the new midnight and weekday equal what the
+old `Calendar` code gave. Built.
+
 ## 22 October 2026 (Audit: sync without what only an older Moodle needed)
 
 **Asked for:** the app audit, continued: the ponytail audit's cuts.

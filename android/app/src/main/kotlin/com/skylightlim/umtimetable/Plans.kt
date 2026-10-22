@@ -163,7 +163,7 @@ object PlanReminders {
         val now = System.currentTimeMillis()
         val fired = SpectrumStore.stringSet(c, "planReminded")
         val next = ahead(c).filter { it.reminderKey !in fired }.mapNotNull(::at).filter { it > now }.minOrNull()
-        if (next == null) am.cancel(pi) else exactAlarm(am, next, pi)
+        exactAlarm(am, next, pi)
     }
 
     fun fire(c: Context) {
