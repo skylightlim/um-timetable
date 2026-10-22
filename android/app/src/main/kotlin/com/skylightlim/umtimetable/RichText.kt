@@ -30,9 +30,10 @@ import java.util.concurrent.Executors
 
 /**
  * Spectrum HTML (announcements, course text) shown natively. Android's HTML renderer runs no
- * scripts; script/style blocks are dropped first so their text doesn't show. Links open in the
- * app's Spectrum view or the browser, Spectrum file links download, and Spectrum images load
- * through the native side with the token (cached on the phone).
+ * scripts; script/style blocks are dropped first so their text doesn't show, and players, frames and
+ * tables are made into what it can show ([SpectrumHtml]). Links open in the app's Spectrum view, the
+ * browser or the mail or phone app, Spectrum file links download, and Spectrum images load through the
+ * native side with the token (cached on the phone).
  */
 object RichText {
     private val DROP = Regex("""(?is)<(script|style|iframe|object|embed|noscript|template|svg|math|form|select|textarea|button|video|audio|canvas)\b.*?</\1\s*>""")
@@ -98,14 +99,19 @@ object RichText {
     fun spanned(h: Host, tv: TextView, html: String, folder: String): CharSequence {
         val images = IMG.containsMatchIn(html)
         if (!images) texts.get("$folder\u0000$html")?.let { return it }
-        val source = Html.fromHtml(html.replace(DROP, ""), Html.FROM_HTML_MODE_COMPACT, if (images) ImageGetter(h.ui.context, tv) else null, null)
+        val source = Html.fromHtml(SpectrumHtml.prepare(html).replace(DROP, ""), Html.FROM_HTML_MODE_COMPACT, if (images) ImageGetter(h.ui.context, tv) else null, null)
         val text = SpannableStringBuilder(source)
+        // An address typed in without a link becomes one, like those that were.
+        val linked = text.getSpans(0, text.length, URLSpan::class.java).map { text.getSpanStart(it) until text.getSpanEnd(it) }
+        for (r in SpectrumHtml.bareLinks(text)) {
+            if (linked.none { r.first in it || r.last in it }) text.setSpan(URLSpan(text.substring(r.first, r.last + 1)), r.first, r.last + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         for (span in text.getSpans(0, text.length, URLSpan::class.java)) {
             val start = text.getSpanStart(span)
             val end = text.getSpanEnd(span)
-            val url = span.url
             text.removeSpan(span)
-            if (!url.startsWith("http://") && !url.startsWith("https://")) continue
+            // Web, email and phone links; a mistyped one ("Join: https://…") goes to the address inside it.
+            val url = SpectrumHtml.address(span.url) ?: continue
             // The span outlives this page (it's cached), so it finds the screen through the view it's in.
             text.setSpan(object : ClickableSpan() {
                 override fun onClick(widget: View) {

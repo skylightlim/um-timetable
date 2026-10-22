@@ -18,6 +18,29 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 23 October 2026 (Course pages: every link Spectrum offers can be tapped)
+
+**Asked for:** check every section of each course page against Spectrum in a laptop browser, and make
+sure every link can be tapped.
+
+**Change:** links the app's text dropped or couldn't open, found by going through all seven courses'
+pages (`docs/SPECTRUM-COURSES.md`), now work (`SpectrumHtml`, used by `RichText`):
+- email links (`mailto:`) and phone links open the mail or phone app (only web links were kept);
+- a link whose address a lecturer pasted with its label (`Join: https://teams…`, dead in a browser) opens
+  the meeting inside it;
+- an audio player (a podcast in a text) was dropped, its address left as plain text: it's a "▶ Listen"
+  link now; video players and embedded pages become "▶ Watch" and "Open" links the same way;
+- a web address pasted into the text without a link (WhatsApp groups) becomes a link; in a browser it's
+  only text;
+- a table's rows are lines, cells joined by " · " (Android ran them together).
+
+**Checked:** unit tests pass, with `SpectrumHtmlTest` (players and frames to links, table rows, mistyped,
+email and phone addresses, bare addresses, a lone dividing line). On the user's phone (debug build, the
+courses' data fed over USB from the laptop's reading, nothing fetched by the phone), pages drawn
+off-screen: a course's table reads row by row with its Telegram links, the podcast shows "▶ Listen:
+PODCAST: Java Class", the mistyped Teams links and a pasted WhatsApp address are links. Across the seven
+courses, every link in a summary, text, description or restriction (142) is tappable.
+
 ## 22 October 2026 (Audit: one name for the app's own settings)
 
 **Asked for:** the app audit, continued: the ponytail audit's cuts.
