@@ -4,7 +4,7 @@
 // {error, signedOut}. Each class: code, module (TimeEdit's name), day, start, end, activity,
 // room, weeks (how many weeks it's on in the period), term ("2026/S1") and lecturers. Also, per
 // course, every occurrence TimeEdit lists in those weeks ({"WIX1002": [1, 2, 16]}), to choose from.
-// With {"registered": {"GIG1003": 6}} too, that occurrence's classes come as well, marked registered
+// With {"registered": {"GIG1003": 11}} too, that occurrence's classes come as well, marked registered
 // (the user chose another occurrence; attendance stays with Spectrum's).
 //
 // Per course: search the module by code, list its classes for the next six weeks (a mid-semester

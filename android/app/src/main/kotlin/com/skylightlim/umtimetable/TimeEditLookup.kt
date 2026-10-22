@@ -36,7 +36,7 @@ object TimeEditLookup {
     }
 
     /**
-     * Spectrum's occurrence of each course whose occurrence the user chose in Settings ({"GIG1003": 6}):
+     * Spectrum's occurrence of each course whose occurrence the user chose in Settings ({"GIG1003": 11}):
      * the lookup brings its classes too, which attendance goes by ([Timetable.attendance]).
      */
     fun registered(context: Context): JSONObject {
