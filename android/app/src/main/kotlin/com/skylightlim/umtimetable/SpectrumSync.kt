@@ -23,7 +23,9 @@ import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
-import java.util.Calendar
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
@@ -66,7 +68,7 @@ object SpectrumSync {
         var error: String? = null
         var blocked = false
         try {
-            val api = Api(token, SpectrumStore.functions(c), SpectrumStore.userId(c))
+            val api = Api(token, SpectrumStore.userId(c))
             val courses = if (attendanceOnly && SpectrumStore.read(c, "courses") != null) {
                 SpectrumStore.array(c, "courses")
             } else {
@@ -119,26 +121,50 @@ object SpectrumSync {
         return error
     }
 
-    /** One course page, flattened for the Courses tab and cached for offline use. */
+    /**
+     * One course page for the Courses tab, cached for offline use: its sections ([normalizeContents]),
+     * its format and whether it shows one section per page, and Spectrum's layout of the page
+     * ([CourseLayout]): the one kept, or for a format the web service's order doesn't give, read now the
+     * first time. A kept one that's out of date is marked `layoutStale` for the caller to read again
+     * after showing the page. [CourseOutline] arranges them as Spectrum's own page does.
+     */
     fun courseContents(c: Context, courseId: Int): String {
         val token = SpectrumStore.token(c) ?: return JSONObject().put("error", "Not signed in.").toString()
         val cacheName = "contents-$courseId"
         return try {
-            val sections = Spectrum.call(token, "core_course_get_contents", mapOf("courseid" to courseId)) as JSONArray
-            normalizeContents(sections).toString().also { SpectrumStore.write(c, cacheName, it) }
+            val course = normalizeContents(Spectrum.call(token, "core_course_get_contents", mapOf("courseid" to courseId)) as JSONArray)
+            runCatching {
+                val info = (Spectrum.call(token, "core_course_get_courses_by_field", mapOf("field" to "id", "value" to courseId)) as JSONObject)
+                    .getJSONArray("courses").getJSONObject(0)
+                val options = info.optJSONArray("courseformatoptions")?.objects().orEmpty().associate { it.optString("name") to it.optString("value") }
+                course.put("format", info.optString("format")).put("display", options["coursedisplay"]?.toIntOrNull() ?: 0)
+                    // Flexible sections hides the first section's name unless the course says otherwise.
+                    .put("section0title", if (info.optString("format") == "flexsections") options["showsection0title"] == "1" else true)
+            }.onFailure { Log.w(TAG, "course format failed: ${it.message}") }
+            val kept = CourseLayout.kept(c, courseId)
+            val readNow = kept == null && course.optString("format") !in CourseLayout.PLAIN
+            (if (readNow) CourseLayout.refresh(c, courseId) else kept)?.let { course.put("layout", it) }
+            if (!readNow && CourseLayout.stale(c, courseId, course)) course.put("layoutStale", true)
+            course.toString().also { SpectrumStore.write(c, cacheName, it) }
         } catch (e: Exception) {
             Log.w(TAG, "course contents failed: ${e.message}")
-            SpectrumStore.read(c, cacheName) ?: JSONObject().put("error", "Couldn't load this course from Spectrum.").toString()
+            // A page cached before this layout (a bare list of sections) is read as one without it.
+            SpectrumStore.read(c, cacheName)?.let { if (it.startsWith("[")) JSONObject().put("sections", JSONArray(it)).toString() else it }
+                ?: JSONObject().put("error", "Couldn't load this course from Spectrum.").toString()
         }
     }
 
-    /** core_course_get_contents → [{ id, name, summary, modules: [{ kind, name, label, url, files, html, dates, availability }] }] */
-    fun normalizeContents(sections: JSONArray): JSONArray {
+    /**
+     * core_course_get_contents → { sections: [{ id, number, name, summary, component, itemid, visible,
+     * uservisible, availability, orphan, modules: [{ kind, name, label, url, files, html, dates,
+     * availability, restricted, onpage, cmid, instance }] }] }. Nothing Spectrum's page shows is left out: restricted sections
+     * and activities (another group's) stay, marked, and so do empty and hidden sections.
+     */
+    fun normalizeContents(sections: JSONArray): JSONObject {
         val out = JSONArray()
         for (s in sections.objects()) {
             val modules = JSONArray()
             for (m in (s.optJSONArray("modules") ?: JSONArray()).objects()) {
-                if (m.optInt("uservisible", 1) == 0) continue
                 val modname = m.optString("modname")
                 val files = JSONArray()
                 val contents = m.optJSONArray("contents") ?: JSONArray()
@@ -152,6 +178,7 @@ object SpectrumSync {
                     "folder" -> "folder"
                     "url" -> "url"
                     "label" -> "label"
+                    "subsection" -> "subsection"
                     else -> "other"
                 }
                 val url = if (kind == "url") contents.optJSONObject(0)?.optString("fileurl")?.takeIf { it.isNotBlank() } ?: m.optString("url") else m.optString("url")
@@ -163,42 +190,44 @@ object SpectrumSync {
                     JSONObject().put("kind", kind).put("name", plain(m.optString("name"))).put("label", moduleLabel(modname))
                         .put("url", url).put("files", files).put("html", html).put("dates", dates)
                         // Spectrum's access rules under an activity ("Not available unless: …"), as HTML.
-                        .put("availability", m.optString("availabilityinfo")),
+                        .put("availability", m.optString("availabilityinfo"))
+                        // Shown on the page but not open to this student: greyed, with its rules, as in a browser.
+                        .put("restricted", !m.optBoolean("uservisible", true))
+                        // Open by its link but not listed on the course page ("stealth"): left off the page.
+                        .put("onpage", m.optInt("visibleoncoursepage", 1) != 0)
+                        .put("cmid", m.optInt("id")).put("instance", m.optInt("instance")),
                 )
             }
-            val summary = s.optString("summary")
-            if (modules.length() > 0 || plain(summary).isNotEmpty()) {
-                out.put(JSONObject().put("id", s.optInt("id")).put("name", plain(s.optString("name")).ifBlank { "General" }).put("summary", summary).put("modules", modules))
-            }
+            out.put(
+                JSONObject().put("id", s.optInt("id")).put("number", s.optInt("section"))
+                    .put("name", plain(s.optString("name")).ifBlank { if (s.optInt("section") == 0) "General" else "" })
+                    .put("summary", s.optString("summary")).put("modules", modules)
+                    // A subsection's own section (mod_subsection, itemid = the subsection), shown where its link is.
+                    .put("component", if (s.isNull("component")) "" else s.optString("component")).put("itemid", s.optInt("itemid"))
+                    .put("visible", s.optInt("visible", 1) != 0).put("uservisible", s.optBoolean("uservisible", true))
+                    .put("availability", s.optString("availabilityinfo"))
+                    // Beyond the course's number of sections (an old setting): not on the page.
+                    .put("orphan", s.optInt("hiddenbynumsections") != 0),
+            )
         }
-        return out
+        return JSONObject().put("sections", out)
     }
 
     @Suppress("DEPRECATION") // NetworkInfo is still the only per-app view of "blocked"
-    private fun networkBlocked(c: Context): Boolean =
+    fun networkBlocked(c: Context): Boolean =
         c.getSystemService(ConnectivityManager::class.java).activeNetworkInfo?.detailedState == NetworkInfo.DetailedState.BLOCKED
 
     // --- fetching ---------------------------------------------------------------------------
 
-    private class Api(val token: String, val functions: Set<String>, val userId: Int) {
-        fun has(fn: String) = functions.isEmpty() || fn in functions
+    private class Api(val token: String, val userId: Int) {
         fun call(fn: String, params: Map<String, Any?> = emptyMap()) = Spectrum.call(token, fn, params)
-        /** Retries with [fallback] when this Moodle version rejects an optional parameter. */
-        fun callOr(fn: String, params: Map<String, Any?>, fallback: Map<String, Any?>): Any = try {
-            call(fn, params)
-        } catch (e: Spectrum.Error) {
-            if (e.code == "invalidparameter") call(fn, fallback) else throw e
-        }
     }
 
     private fun fetchCourses(api: Api): JSONArray {
-        var raw: List<JSONObject> = emptyList()
-        if (api.has("core_course_get_enrolled_courses_by_timeline_classification")) {
-            raw = runCatching {
-                (api.call("core_course_get_enrolled_courses_by_timeline_classification", mapOf("classification" to "inprogress")) as JSONObject)
-                    .getJSONArray("courses").objects()
-            }.getOrDefault(emptyList())
-        }
+        var raw = runCatching {
+            (api.call("core_course_get_enrolled_courses_by_timeline_classification", mapOf("classification" to "inprogress")) as JSONObject)
+                .getJSONArray("courses").objects()
+        }.getOrDefault(emptyList())
         if (raw.isEmpty()) {
             val cutoff = System.currentTimeMillis() / 1000 - 30 * 86_400
             raw = (api.call("core_enrol_get_users_courses", mapOf("userid" to api.userId)) as JSONArray).objects()
@@ -392,8 +421,8 @@ object SpectrumSync {
     private fun fetchDue(api: Api, courses: JSONArray): JSONArray {
         val now = System.currentTimeMillis() / 1000
         val codes = courses.objects().associate { it.getInt("id") to it.getString("code") }
-        val params = mapOf("timesortfrom" to now - 14 * 86_400, "timesortto" to now + 120 * 86_400, "limitnum" to 50)
-        val res = api.callOr("core_calendar_get_action_events_by_timesort", params + ("limittononsuspendedevents" to true), params) as JSONObject
+        val params = mapOf("timesortfrom" to now - 14 * 86_400, "timesortto" to now + 120 * 86_400, "limitnum" to 50, "limittononsuspendedevents" to true)
+        val res = api.call("core_calendar_get_action_events_by_timesort", params) as JSONObject
         val out = JSONArray()
         for (e in (res.optJSONArray("events") ?: JSONArray()).objects()) {
             if (e.optString("modulename") == "attendance") continue
@@ -424,8 +453,8 @@ object SpectrumSync {
      * whose own session isn't listed gets its activity's page, marked `listed: false`.
      */
     private fun fetchAttendance(c: Context, api: Api, courses: JSONArray, fresh: Boolean): JSONArray {
-        val now = System.currentTimeMillis()
-        val dayStart = startOfDay(now)
+        val date = LocalDate.now()
+        val dayStart = startOfDay(date)
         val res = api.call(
             "core_calendar_get_calendar_events",
             mapOf("events" to mapOf("courseids" to courses.objects().map { it.getInt("id") }), "options" to mapOf("userevents" to false, "siteevents" to false, "timestart" to dayStart / 1000, "timeend" to dayStart / 1000 + 86_400)),
@@ -434,9 +463,10 @@ object SpectrumSync {
         val byId = courses.objects().associateBy { it.getInt("id") }
         val idOf = courses.objects().associate { it.getString("code") to it.getInt("id") }
         val timetable = Timetable.load(c)
-        val today = timetable.day(Calendar.getInstance().apply { timeInMillis = now }.get(Calendar.DAY_OF_WEEK) - 1)
+        // The classes attendance is taken at: Spectrum's occurrence's, for a course the user chose another of.
+        val today = timetable.attendanceDay(date.dayOfWeek.value % 7)
         val activities = attendanceActivities(c, api, today.mapNotNull { idOf[it.course.code] }.toSet() + events.map { it.optInt("courseid") }, fresh)
-        fun classes(courseId: Int) = timetable.sessions.filter { it.course.code == byId[courseId]?.optString("code") }
+        fun classes(courseId: Int) = timetable.attendance.filter { it.course.code == byId[courseId]?.optString("code") }
 
         val sessions = mutableListOf<JSONObject>()
         fun add(id: String, courseId: Int, activity: AttendanceMatch.Activity, start: Long, end: Long, url: String) {
@@ -640,10 +670,11 @@ object SpectrumSync {
 
 internal fun JSONArray.objects(): List<JSONObject> = (0 until length()).mapNotNull { optJSONObject(it) }
 
-internal fun startOfDay(ms: Long): Long = Calendar.getInstance().apply {
-    timeInMillis = ms
-    set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-}.timeInMillis
+/** Midnight at the start of [ms]'s day, on the phone's clock. */
+internal fun startOfDay(ms: Long): Long = startOfDay(Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).toLocalDate())
+
+/** Midnight at the start of [date], on the phone's clock. */
+internal fun startOfDay(date: LocalDate): Long = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
 /** Reminders 24 h and 2 h before each deadline, driven by one exact alarm at a time. */
 object Reminders {
@@ -660,7 +691,7 @@ object Reminders {
             .flatMap { d -> OFFSETS.map { (off, _) -> d.getLong("due") - off to "${d.getInt("id")}:$off" } }
             .filter { (at, key) -> at > now && key !in fired }
             .minOfOrNull { it.first }
-        if (next == null) am.cancel(pi) else exactAlarm(am, next, pi)
+        exactAlarm(am, next, pi)
     }
 
     fun fire(c: Context) {
@@ -694,7 +725,8 @@ object Reminders {
  */
 object AttendanceWatch {
     fun schedule(c: Context) {
-        AutoAttendance.schedule(c) // its own alarm, five minutes into each class, when it's on
+        AutoAttendance.schedule(c) // its own alarm, at each class start and its tries, when it's on
+        ClassReminders.schedule(c) // also by the timetable, and wherever it changes: its own alarm, when chosen
         val am = c.getSystemService(AlarmManager::class.java)
         val pi = SpectrumAlarmReceiver.intent(c, SpectrumAlarmReceiver.ACTION_ATTENDANCE)
         if (!SpectrumStore.signedIn(c)) {
@@ -704,10 +736,10 @@ object AttendanceWatch {
         val now = System.currentTimeMillis()
         val candidates = mutableListOf<Long>()
         val timetable = Timetable.load(c)
-        for (offset in 0..7) {
-            val day = Calendar.getInstance().apply { timeInMillis = now; add(Calendar.DAY_OF_MONTH, offset) }
-            val dayStart = startOfDay(day.timeInMillis)
-            for (s in timetable.day(day.get(Calendar.DAY_OF_WEEK) - 1)) {
+        for (offset in 0..7L) {
+            val date = LocalDate.now().plusDays(offset)
+            val dayStart = startOfDay(date)
+            for (s in timetable.attendanceDay(date.dayOfWeek.value % 7)) {
                 val start = dayStart + s.start * 60_000L
                 val end = dayStart + s.end * 60_000L
                 if (now in start until end) candidates += minOf(now + 10 * 60_000L, end)
@@ -720,12 +752,14 @@ object AttendanceWatch {
             if (start > now && a.optBoolean("listed", true)) candidates += start + 30_000L
         }
         val next = candidates.minOrNull()
-        if (next == null) am.cancel(pi) else exactAlarm(am, next, pi)
+        exactAlarm(am, next, pi)
     }
 }
 
-internal fun exactAlarm(am: AlarmManager, at: Long, pi: PendingIntent) {
-    if (am.canScheduleExactAlarms()) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+/** The alarm [pi] at [at]: exact when Android allows it (else it may run a little late), and none when [at] is null. */
+internal fun exactAlarm(am: AlarmManager, at: Long?, pi: PendingIntent) {
+    if (at == null) am.cancel(pi)
+    else if (am.canScheduleExactAlarms()) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
     else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
 }
 
@@ -735,6 +769,8 @@ object Notify {
     const val DUE = "deadlines"
     const val GRADES = "grades"
     const val PLANS = "plans"
+    const val MARKING = "marking"
+    const val CLASSES = "classes"
 
     private fun manager(c: Context) = c.getSystemService(NotificationManager::class.java)
 
@@ -755,6 +791,10 @@ object Notify {
                 .apply { description = "When a lecturer releases a mark on Spectrum" },
             NotificationChannel(PLANS, "Plans", NotificationManager.IMPORTANCE_HIGH)
                 .apply { description = "Reminders you set for your plans on the Week page" },
+            NotificationChannel(CLASSES, "Classes", NotificationManager.IMPORTANCE_HIGH)
+                .apply { description = "Reminders before each of your classes, when you turn them on in Settings" },
+            NotificationChannel(MARKING, "Marking attendance", NotificationManager.IMPORTANCE_MIN)
+                .apply { description = "Shown while the app marks your attendance on Spectrum, for a few seconds" },
         ),
     )
 
@@ -820,7 +860,7 @@ class SpectrumSyncJob : JobService() {
     }
 }
 
-/** Attendance checks, deadline and plan reminders, and re-arming them after a reboot or update. */
+/** Attendance checks, deadline, plan and class reminders, and re-arming them after a reboot or update. */
 class SpectrumAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val c = context.applicationContext
@@ -831,7 +871,8 @@ class SpectrumAlarmReceiver : BroadcastReceiver() {
                     ACTION_ATTENDANCE -> SpectrumSync.run(c, attendanceOnly = true, background = true)
                     ACTION_REMINDER -> Reminders.fire(c)
                     ACTION_PLAN -> PlanReminders.fire(c)
-                    ACTION_AUTOMARK -> AutoAttendance.fire(c)
+                    ACTION_CLASS -> ClassReminders.fire(c)
+                    ACTION_AUTOMARK -> AutoAttendance.fire(c, intent.getStringExtra(AutoAttendanceService.EXTRA_DRY))
                     Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
                         Reminders.schedule(c)
                         AttendanceWatch.schedule(c)
@@ -849,6 +890,7 @@ class SpectrumAlarmReceiver : BroadcastReceiver() {
         const val ACTION_REMINDER = "com.skylightlim.umtimetable.DEADLINE_REMINDER"
         const val ACTION_PLAN = "com.skylightlim.umtimetable.PLAN_REMINDER"
         const val ACTION_AUTOMARK = "com.skylightlim.umtimetable.AUTO_ATTENDANCE"
+        const val ACTION_CLASS = "com.skylightlim.umtimetable.CLASS_REMINDER"
 
         fun intent(c: Context, action: String): PendingIntent = PendingIntent.getBroadcast(
             c, action.hashCode(),

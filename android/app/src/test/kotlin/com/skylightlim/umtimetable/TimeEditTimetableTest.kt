@@ -62,6 +62,22 @@ class TimeEditTimetableTest {
         assertEquals("#a586e8", courses.getJSONObject("WIX1001").getString("color"))
     }
 
+    /** GIG1003 chosen as occurrence 4 while Spectrum has the student in 11: occurrence 11's class comes apart, under `registered`. */
+    @Test fun registered() {
+        val answer = JSONObject(answer.toString())
+        answer.getJSONArray("slots").put(slot("GIG1003", 3, "08:00", "10:00", "LECTURE", "ONLINE LECTURE", 6, "DR." to "LEE MEI LING").put("registered", true))
+        val chosen = JSONObject(occurrences.toString()).put("GIG1003", 4)
+        val result = TimeEditTimetable.build(answer, chosen, spectrum, current, JSONObject().put("GIG1003", 11))!!
+        assertEquals(4, result.classes)
+        val gig = result.json.getJSONObject("courses").getJSONObject("GIG1003")
+        assertEquals(4, gig.getInt("occ"))
+        assertEquals(11, gig.getInt("registered"))
+        assertEquals(listOf("GIG1003 3 08:00 Dr. Lee Mei Ling"), result.json.getJSONArray("registered").objects().map { "${it.getString("code")} ${it.getInt("day")} ${it.getString("start")} ${it.getString("lecturer")}" })
+        // Spectrum's own occurrence chosen: nothing apart.
+        val same = TimeEditTimetable.build(answer, occurrences, spectrum, current, JSONObject().put("GIG1003", 11))!!.json
+        assertTrue(!same.has("registered") && !same.getJSONObject("courses").getJSONObject("GIG1003").has("registered"))
+    }
+
     @Test fun nothingWeekly() {
         assertNull(TimeEditTimetable.build(JSONObject().put("slots", JSONArray()), occurrences, spectrum, current))
     }

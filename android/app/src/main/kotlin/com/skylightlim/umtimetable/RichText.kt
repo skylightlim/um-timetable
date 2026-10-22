@@ -30,9 +30,10 @@ import java.util.concurrent.Executors
 
 /**
  * Spectrum HTML (announcements, course text) shown natively. Android's HTML renderer runs no
- * scripts; script/style blocks are dropped first so their text doesn't show. Links open in the
- * app's Spectrum view or the browser, Spectrum file links download, and Spectrum images load
- * through the native side with the token (cached on the phone).
+ * scripts; script/style blocks are dropped first so their text doesn't show, and players, frames and
+ * tables are made into what it can show ([SpectrumHtml]). Links open in the app's Spectrum view, the
+ * browser or the mail or phone app, Spectrum file links download, and Spectrum images load through the
+ * native side with the token (cached on the phone).
  */
 object RichText {
     private val DROP = Regex("""(?is)<(script|style|iframe|object|embed|noscript|template|svg|math|form|select|textarea|button|video|audio|canvas)\b.*?</\1\s*>""")
@@ -50,12 +51,14 @@ object RichText {
     /**
      * Rich text, clamped to [lines] (0 for no limit) with a Show more toggle when it's long. [expanded] holds the open
      * keys. The toggle changes the text in place: rebuilding the page would lose the scroll position.
+     * [selectable] text takes a long press to select and copy it (a link still opens on a tap).
      */
     @SuppressLint("ClickableViewAccessibility")
-    fun view(h: Host, html: String, key: String, folder: String, lines: Int, size: Float = 14f, color: Int = h.ui.p.text, expanded: MutableSet<String>): View {
+    fun view(h: Host, html: String, key: String, folder: String, lines: Int, size: Float = 14f, color: Int = h.ui.p.text, expanded: MutableSet<String>, selectable: Boolean = false): View {
         val ui = h.ui
         val tv = ui.text("", size, color, ui.f.body).apply { setLineSpacing(0f, 1.35f) }
         tv.setLinkTextColor(ui.p.accentText)
+        if (selectable) selectable(tv)
         tv.text = spanned(h, tv, html, folder)
         // Links are handled by touch position, not LinkMovementMethod, which would break the ellipsis.
         tv.setOnTouchListener { _, e -> linkAt(tv, e)?.let { if (e.action == MotionEvent.ACTION_UP) it.onClick(tv); true } ?: false }
@@ -83,23 +86,37 @@ object RichText {
         }
     }
 
+    /**
+     * [tv]'s text selectable: a long press picks a word, with handles and Copy. A tap focuses it, and the
+     * page mustn't scroll a tall block's top into view for that.
+     */
+    fun selectable(tv: TextView) {
+        tv.setTextIsSelectable(true)
+        tv.revealOnFocusHint = false
+    }
+
     /** The HTML as styled text with working links. Text without images is converted once and reused. */
     fun spanned(h: Host, tv: TextView, html: String, folder: String): CharSequence {
         val images = IMG.containsMatchIn(html)
         if (!images) texts.get("$folder\u0000$html")?.let { return it }
-        val source = Html.fromHtml(html.replace(DROP, ""), Html.FROM_HTML_MODE_COMPACT, if (images) ImageGetter(h.ui.context, tv) else null, null)
+        val source = Html.fromHtml(SpectrumHtml.prepare(html).replace(DROP, ""), Html.FROM_HTML_MODE_COMPACT, if (images) ImageGetter(h.ui.context, tv) else null, null)
         val text = SpannableStringBuilder(source)
+        // An address typed in without a link becomes one, like those that were.
+        val linked = text.getSpans(0, text.length, URLSpan::class.java).map { text.getSpanStart(it) until text.getSpanEnd(it) }
+        for (r in SpectrumHtml.bareLinks(text)) {
+            if (linked.none { r.first in it || r.last in it }) text.setSpan(URLSpan(text.substring(r.first, r.last + 1)), r.first, r.last + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         for (span in text.getSpans(0, text.length, URLSpan::class.java)) {
             val start = text.getSpanStart(span)
             val end = text.getSpanEnd(span)
-            val url = span.url
             text.removeSpan(span)
-            if (!url.startsWith("http://") && !url.startsWith("https://")) continue
+            // Web, email and phone links; a mistyped one ("Join: https://…") goes to the address inside it.
+            val url = SpectrumHtml.address(span.url) ?: continue
             // The span outlives this page (it's cached), so it finds the screen through the view it's in.
             text.setSpan(object : ClickableSpan() {
                 override fun onClick(widget: View) {
                     val host = widget.context as? Host ?: return
-                    if (url.startsWith(Spectrum.SITE) && "/pluginfile.php/" in url) {
+                    if (url.startsWith("${Spectrum.SITE}/") && "/pluginfile.php/" in url) {
                         val name = Uri.decode(url.substringBefore('?').substringAfterLast('/')).ifBlank { "file" }
                         host.openFile(JSONObject().put("url", url).put("name", name).put("mime", "").put("size", 0), folder)
                     } else {
@@ -144,7 +161,7 @@ object RichText {
     private class ImageGetter(val context: Context, val tv: TextView) : Html.ImageGetter {
         override fun getDrawable(source: String?): Drawable {
             val slot = Slot().apply { setBounds(0, 0, 0, 0) }
-            if (source == null || !source.startsWith(Spectrum.SITE)) return slot
+            if (source == null || !source.startsWith("${Spectrum.SITE}/")) return slot
             // Already decoded: sized now, so the text is laid out once, with the image in place.
             bitmaps.get(source)?.let { fit(slot, it); return slot }
             loader.execute {

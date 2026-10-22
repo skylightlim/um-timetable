@@ -185,6 +185,7 @@ class BottomSheet(context: Context, private var content: View, darkSheet: Boolea
                     val dy = e.rawY - downY
                     if (!closing && dy > slop && dy > abs(e.rawX - downX) && !body.canScrollVertically(-1) && onBody(e)) {
                         dragging = true
+                        body.animate().cancel() // the finger takes over from the entrance spring
                         return true
                     }
                 }

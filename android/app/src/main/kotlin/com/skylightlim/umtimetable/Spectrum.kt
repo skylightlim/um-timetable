@@ -82,15 +82,12 @@ object SpectrumStore {
     fun signedIn(c: Context) = SecureStore.has(c, "token")
     fun userId(c: Context) = prefs(c).getInt("userid", 0)
     fun name(c: Context): String = prefs(c).getString("fullname", "") ?: ""
-    fun functions(c: Context): Set<String> = prefs(c).getStringSet("functions", emptySet()) ?: emptySet()
 
     fun saveLogin(c: Context, token: String, siteInfo: JSONObject) {
-        val fns = siteInfo.optJSONArray("functions")?.let { a -> (0 until a.length()).map { a.getJSONObject(it).getString("name") }.toSet() } ?: emptySet()
         SecureStore.put(c, "token", token)
         prefs(c).edit().clear()
             .putInt("userid", siteInfo.getInt("userid"))
             .putString("fullname", siteInfo.optString("fullname"))
-            .putStringSet("functions", fns)
             .apply()
     }
 
@@ -182,6 +179,8 @@ object SpectrumStore {
     fun stringSet(c: Context, name: String): MutableSet<String> = (prefs(c).getStringSet(name, emptySet()) ?: emptySet()).toMutableSet()
     fun putStringSet(c: Context, name: String, value: Set<String>) = prefs(c).edit().putStringSet(name, value).apply()
     fun flag(c: Context, name: String) = prefs(c).getBoolean(name, false)
+    fun long(c: Context, name: String) = prefs(c).getLong(name, 0)
+    fun putLong(c: Context, name: String, v: Long) = prefs(c).edit().putLong(name, v).apply()
     fun setFlag(c: Context, name: String, v: Boolean) = prefs(c).edit().putBoolean(name, v).apply()
     fun cmid(c: Context, attendanceId: Int) = prefs(c).getInt("cmid-$attendanceId", 0)
     fun putCmid(c: Context, attendanceId: Int, cmid: Int) = prefs(c).edit().putInt("cmid-$attendanceId", cmid).apply()

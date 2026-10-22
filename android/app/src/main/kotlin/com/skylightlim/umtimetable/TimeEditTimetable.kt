@@ -16,14 +16,17 @@ object TimeEditTimetable {
      * [answer]: the script's `slots`. [occurrences]: the courses asked for ({"WIX1002": 10}), in
      * Spectrum's order. [spectrumNames]: Spectrum's full course names by code. [current]: the app's
      * timetable, whose course names and colours are kept, and whose lecturer is kept for the very
-     * same class when TimeEdit lists none. Null when TimeEdit has no weekly class for any course.
+     * same class when TimeEdit lists none. [registered]: Spectrum's occurrence of each course the user
+     * chose another of; its classes (slots marked `registered`) go apart, under `registered`, for
+     * attendance ([Timetable.attendance]). Null when TimeEdit has no weekly class for any course.
      */
-    fun build(answer: JSONObject, occurrences: JSONObject, spectrumNames: Map<String, String>, current: JSONObject): Result? {
+    fun build(answer: JSONObject, occurrences: JSONObject, spectrumNames: Map<String, String>, current: JSONObject, registered: JSONObject = JSONObject()): Result? {
         val slots = (answer.optJSONArray("slots") ?: JSONArray()).objects()
         // A class on in two or more of the six weeks is weekly; a one-off (a replacement class) isn't.
         val need = if (slots.any { it.optInt("weeks", 1) >= 2 }) 2 else 1
-        val weekly = slots.filter { it.optInt("weeks", 1) >= need && it.optInt("day") in 1..5 }
+        val (theirs, weekly) = slots.filter { it.optInt("weeks", 1) >= need && it.optInt("day") in 1..5 }
             .sortedWith(compareBy({ it.optInt("day") }, { it.optString("start") }))
+            .partition { it.optBoolean("registered") }
         if (weekly.isEmpty()) return null
 
         val known = current.optJSONObject("courses") ?: JSONObject()
@@ -32,14 +35,15 @@ object TimeEditTimetable {
         codes.forEachIndexed { i, code ->
             // TimeEdit's own name is Malay ("ASAS-ASAS PENGATURCARAAN"): only when Spectrum has none.
             val module = weekly.first { it.optString("code") == code }.optString("module").takeIf { it.isNotBlank() }?.let(MayaImport::titleCase)
-            courses.put(code, MayaImport.course(code, occurrences.getInt(code), i, known.optJSONObject(code), spectrumNames[code], module))
+            val course = MayaImport.course(code, occurrences.getInt(code), i, known.optJSONObject(code), spectrumNames[code], module)
+            registered.optInt(code).takeIf { it > 0 && it != occurrences.getInt(code) }?.let { course.put("registered", it) }
+            courses.put(code, course)
         }
 
         val keptLecturers = (current.optJSONArray("sessions") ?: JSONArray()).objects()
             .filter { !it.isNull("lecturer") && it.optString("lecturer").isNotBlank() }
             .associate { key(it) to it.getString("lecturer") }
-        val sessions = JSONArray()
-        for (s in weekly) {
+        fun session(s: JSONObject): JSONObject {
             val room = s.optString("room").trim()
             val session = JSONObject()
                 .put("day", s.optInt("day"))
@@ -51,12 +55,14 @@ object TimeEditTimetable {
                 .put("roomName", if (room.isEmpty()) "Online (TimeEdit lists no room)" else MayaImport.roomName(room))
             val lecturers = (s.optJSONArray("lecturers") ?: JSONArray()).objects()
                 .map { TimeEditLookup.displayName(it.optString("title"), it.optString("name")) }.filter { it.isNotBlank() }
-            session.put("lecturer", lecturers.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: keptLecturers[key(session)] ?: JSONObject.NULL)
-            sessions.put(session)
+            return session.put("lecturer", lecturers.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: keptLecturers[key(session)] ?: JSONObject.NULL)
         }
+        val sessions = JSONArray(weekly.map(::session))
 
         val term = term(weekly.map { it.optString("term") }) ?: current.optString("term").ifBlank { null }
         val json = JSONObject().put("courses", courses).put("sessions", sessions)
+        theirs.filter { courses.optJSONObject(it.optString("code"))?.has("registered") == true }.takeIf { it.isNotEmpty() }
+            ?.let { json.put("registered", JSONArray(it.map(::session))) }
         if (term != null) json.put("term", term)
         return Result(json, weekly.size, codes.size, occurrences.keys().asSequence().filter { it !in codes }.toList(), term)
     }

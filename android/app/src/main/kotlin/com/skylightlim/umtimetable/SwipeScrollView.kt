@@ -67,6 +67,10 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     /** The drag is past the point where letting go moves on (vibrates on crossing it either way). */
     private var past = false
     private var velocity: VelocityTracker? = null
+    /** The page's fade home after a settle; cancelled when the finger takes the page back. */
+    private var settleFade: android.animation.Animator? = null
+    /** This swipe has taken the page from the animations moving it. */
+    private var grabbed = false
 
     private val page: View? get() = getChildAt(0)
 
@@ -117,7 +121,23 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
         pulling = false
         pullingUp = false
         past = false
+        grabbed = false
         atEnd = !canScrollVertically(1)
+    }
+
+    /**
+     * A swipe takes hold of [v]: the finger takes over from a spring still moving it sideways (the last
+     * swipe's settle or slide in), which would otherwise fight it frame by frame. Cancelling stops every
+     * property, so a pull's spring up or down the page was on starts again from where it stopped.
+     */
+    private fun grab(v: View) {
+        grabbed = true
+        v.animate().cancel()
+        settleFade?.cancel()
+        settleFade = null
+        if (v !== page) return
+        val rest = if (held) pullIndicator?.height?.toFloat() ?: pullDistance else 0f
+        if (v.translationY != rest) lower(rest)
     }
 
     override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
@@ -149,6 +169,7 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
         val dx = e.x - downX
         when (e.actionMasked) {
             MotionEvent.ACTION_MOVE -> dragged?.apply {
+                if (!grabbed) grab(this)
                 // Follows the finger from where the swipe was recognised, a touch slower.
                 translationX = (dx - sign(dx) * slop) * 0.9f
                 alpha = 1f - (abs(translationX) / width.coerceAtLeast(1)) * 0.5f
@@ -271,7 +292,8 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     private fun settle(pxPerSecond: Float) {
         val page = dragged ?: return
         page.animate().translationX(0f).spring(Motion.BOUNCY.toward(page.translationX, 0f, pxPerSecond)).start()
-        Motion.fade(page, page.alpha, 1f)
+        settleFade?.cancel()
+        settleFade = Motion.fade(page, page.alpha, 1f)
     }
 
     override fun onDetachedFromWindow() {

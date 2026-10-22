@@ -25,8 +25,7 @@ class SpectrumWebActivity : WebScreen() {
     /** Spectrum and Microsoft's SiswaMail sign-in stay here; anything else opens in the browser. */
     override fun leaves(url: Uri): Boolean {
         if (url.scheme == "https" || url.scheme == "http") {
-            val host = url.host.orEmpty()
-            if (listOf("um.edu.my", "microsoftonline.com", "microsoft.com", "live.com", "msauth.net", "msftauth.net").any { host.endsWith(it) }) return false
+            if (hostIn(url.host, "um.edu.my", "microsoftonline.com", "microsoft.com", "live.com", "msauth.net", "msftauth.net")) return false
         }
         runCatching { startActivity(Intent(Intent.ACTION_VIEW, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         return true
@@ -41,7 +40,7 @@ class SpectrumWebActivity : WebScreen() {
 
         fun open(activity: Activity, url: String) {
             val uri = Uri.parse(url)
-            if (uri.host?.endsWith("um.edu.my") == true) {
+            if (hostIn(uri.host, "um.edu.my")) {
                 activity.startActivity(Intent(activity, SpectrumWebActivity::class.java).putExtra(EXTRA_URL, url))
             } else {
                 runCatching { activity.startActivity(Intent(Intent.ACTION_VIEW, uri)) }

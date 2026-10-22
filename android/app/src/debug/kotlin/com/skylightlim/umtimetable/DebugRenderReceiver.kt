@@ -9,7 +9,6 @@ import android.util.Log
 import android.view.ContextThemeWrapper
 import android.view.View
 import android.widget.FrameLayout
-import org.json.JSONArray
 import java.io.File
 
 /**
@@ -18,10 +17,11 @@ import java.io.File
  * full width, from cached data.
  *
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugRenderReceiver \
- *     --es view files [--ei course 151] [--ei day 1] [--ez dark true] [--ei width 1280] [--ei dow 2 --ei min 700]
+ *     --es view files [--ei course 151 [--ei section 491688]] [--ei day 1] [--ez dark true] [--ei width 1280] [--ei dow 2 --ei min 700]
  *   adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.png
  *
- * view: day, week, due, news, files (the Courses tab); course opens one course page from its cache.
+ * view: day, week, due, news, files (the Courses tab); course opens one course page from its cache, and
+ * section (a Spectrum section id) that section's own page, as a card or a linked section opens.
  * view icon draws the launcher icon with the phone's mask (icon.png) and its themed layer (icon-mono.png).
  * dow (0 Sunday … 6 Saturday) and min (minutes after midnight) pretend it's another time of the week.
  * view grades with --ez sample true draws made-up marks for the timetable's first courses instead of the
@@ -67,6 +67,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val scheme = forced ?: Scheme.load(context)
         val host = Host(c, Ui(c, scheme.applyTo(if (dark) Palette.DARK else Palette.LIGHT), Fonts(c)), now, forced).apply {
             openCourse = intent.getIntExtra("course", 0).takeIf { it > 0 }
+            openSection = intent.getIntExtra("section", 0).takeIf { it > 0 }
             weekShift = intent.getIntExtra("weekShift", 0)
             if (intent.getBooleanExtra("open", false)) expanded = object : HashSet<String>() { override fun contains(element: String) = true }
         }
@@ -480,10 +481,12 @@ class DebugRenderReceiver : BroadcastReceiver() {
         override fun setScheme(scheme: Scheme) = Unit
         override val syncing = false
         override var openCourse: Int? = null
+        override var openSection: Int? = null
+        override fun showSection(id: Int) = Unit
         override var expanded: MutableSet<String> = mutableSetOf()
         override val seenNews: Set<String> = context.getSharedPreferences("ui", Context.MODE_PRIVATE).getStringSet("newsSeen", emptySet()) ?: emptySet()
         override val seenGrades: Set<String> = context.getSharedPreferences("ui", Context.MODE_PRIVATE).getStringSet("gradesSeen", emptySet()) ?: emptySet()
-        override fun courseContents(id: Int): JSONArray? = SpectrumStore.read(context, "contents-$id")?.let { runCatching { JSONArray(it) }.getOrNull() }
+        override fun courseContents(id: Int): org.json.JSONObject? = SpectrumStore.read(context, "contents-$id")?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
         override fun courseError(id: Int): String? = null
         override fun signIn() = Unit
         override fun signOut(from: View?) = Unit

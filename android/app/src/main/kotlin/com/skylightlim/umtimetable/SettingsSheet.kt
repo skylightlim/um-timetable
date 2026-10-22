@@ -191,11 +191,12 @@ object SettingsSheet {
                 addView(ui.text(if (allowed) "On" else "Off", 14f, if (allowed) p.accentText else p.muted, ui.f.bodySemi))
                 addView(chevron())
             }) { if (ask) h.enableNotifications() else h.openAppSettings() },
+            classReminders(ui, context, ::row, ::chevron) { if (ask) h.enableNotifications() },
         ))
 
-        // Marking attendance by itself, five minutes into each class (AutoAttendance).
+        // Marking attendance by itself, as each class starts (AutoAttendance).
         if (signedIn) section("Attendance", listOf(
-            row("Mark my attendance", "${AutoAttendance.AFTER_MIN} minutes into each class, the app marks you present on Spectrum. If it can't, a notification says why.",
+            row("Mark my attendance", "As each class starts, the app marks you present on Spectrum, and tries again while no session is open. If it can't, or a password is needed, a notification says why.",
                 Toggle(ui, AutoAttendance.enabled(context)) { on -> AutoAttendance.setEnabled(context, on) }.apply { contentDescription = "Mark my attendance" }, null),
         ))
 
@@ -217,6 +218,55 @@ object SettingsSheet {
             },
         ))
         return sheet
+    }
+
+    /**
+     * Class reminders ([ClassReminders]): the row says how long before; a tap flies a card out of it with
+     * the choices on a wheel. Choosing one with notifications off asks for them ([allow]).
+     */
+    private fun classReminders(
+        ui: Ui,
+        context: Context,
+        row: (String, String?, View?, (() -> Unit)?) -> LinearLayout,
+        chevron: () -> View,
+        allow: () -> Unit,
+    ): View {
+        val p = ui.p
+        val value = ui.text(ClassReminders.label(context), 14f, if (ClassReminders.before(context) != null) p.accentText else p.muted, ui.f.bodySemi)
+        lateinit var line: LinearLayout
+        line = row("Class reminders", "Before each class, with its time and room", ui.row(gap = 10f).apply {
+            addView(value)
+            addView(chevron())
+        }) {
+            val choices = ClassReminders.CHOICES
+            var pick = choices.indexOfFirst { it.first == ClassReminders.before(context) }.coerceAtLeast(0)
+            lateinit var close: (then: (() -> Unit)?) -> Unit
+            val card = ConfirmDialog.frame(ui).apply {
+                addView(ui.text("Class reminders", 30f, p.text, ui.f.sign))
+                addView(ui.text("A notification before each of your classes, with its time and room. None on holidays or in the break.", 15f, p.muted), ui.wide(top = 2f))
+                addView(ui.column().apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    addView(ui.wheel(choices.map { it.second }, pick, rows = 5) { pick = it }.apply { name = "Class reminders" },
+                        LinearLayout.LayoutParams(ui.dp(180), LinearLayout.LayoutParams.WRAP_CONTENT))
+                }, ui.wide(top = 18f))
+                addView(ui.row(gap = 8f).apply {
+                    addView(ConfirmDialog.button(ui, "Cancel", p.surface2, p.text) { close(null) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                    addView(ConfirmDialog.button(ui, "Choose", p.accent, p.accentInk) {
+                        val minutes = choices[pick].first
+                        if (minutes == ClassReminders.before(context)) return@button close(null)
+                        ClassReminders.setBefore(context, minutes)
+                        value.text = choices[pick].second
+                        value.setTextColor(if (minutes != null) p.accentText else p.muted)
+                        close {
+                            Motion.pop(value, 0.6f)
+                            if (minutes != null && !Notify.allowed(context)) allow()
+                        }
+                    }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                }, ui.wide(top = 20f))
+            }
+            close = ConfirmDialog.present(ui, card, from = Motion.onScreen(line), backAlways = true)
+        }
+        return line
     }
 
     /** Whether the Occurrences fold is open: it stays so when the sheet is redrawn (back from TimeEdit). */

@@ -544,7 +544,6 @@ class DuelScene(private val view: DuelView) {
         /** How far apart they stand en garde, each from where the blades would cross. */
         const val REST_GAP = 11f
 
-        val linear: (Float) -> Float = { it }
         /** Easing in (speeding up: into a strike), out (slowing: a landing, a stop) and both. */
         val easeIn: (Float) -> Float = { it * it * it }
         val easeOut: (Float) -> Float = { 1 - (1 - it) * (1 - it) * (1 - it) }

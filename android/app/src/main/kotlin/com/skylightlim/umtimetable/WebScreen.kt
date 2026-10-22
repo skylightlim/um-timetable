@@ -34,6 +34,12 @@ import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import com.skylightlim.umtimetable.Motion.spring
 
+/** Whether [host] is one of [domains] or under one: microsoft.com and login.microsoft.com are, evilmicrosoft.com isn't. */
+fun hostIn(host: String?, vararg domains: String): Boolean {
+    val h = host?.lowercase()?.trimEnd('.') ?: return false
+    return domains.any { h == it || h.endsWith(".$it") }
+}
+
 /**
  * The shared frame of the app's web screens (Spectrum sign-in and pages, MAYA, TimeEdit), in the app's
  * own look and theme: a top bar like the main screen's (the site small in the accent, the title in Big
@@ -115,11 +121,21 @@ abstract class WebScreen : Activity() {
 
     /**
      * Whether [url] leaves the page. Web pages stay; other schemes (e.g. the Microsoft
-     * Authenticator app during SiswaMail sign-in) go to the app that handles them.
+     * Authenticator app during SiswaMail sign-in) go to the app that handles them, as Chrome
+     * sends them: only to screens open to links from a browser, and never to a named one. A page's
+     * `intent:` link could otherwise open any screen of this app, private ones included.
      */
     protected open fun leaves(url: Uri): Boolean {
         if (url.scheme == "https" || url.scheme == "http") return false
-        runCatching { startActivity(Intent.parseUri(url.toString(), Intent.URI_INTENT_SCHEME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        runCatching {
+            val intent = Intent.parseUri(url.toString(), Intent.URI_INTENT_SCHEME).apply {
+                addCategory(Intent.CATEGORY_BROWSABLE)
+                component = null
+                selector = null
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        }
         return true
     }
 

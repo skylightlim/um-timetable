@@ -11,7 +11,8 @@ val DAY_NAMES = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "
 val DAY_SHORT = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 val MONTHS = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
-data class Course(val code: String, val name: String, val short: String, val occ: Int, val color: Int)
+/** [registered]: Spectrum's occurrence, when the user chose another ([occ]) in Settings; else 0. */
+data class Course(val code: String, val name: String, val short: String, val occ: Int, val color: Int, val registered: Int = 0)
 
 /** One weekly class. [day] is 1 = Monday … 5 = Friday; [start] and [end] are minutes after midnight. */
 data class Session(
@@ -61,11 +62,30 @@ data class Status(
 
 /**
  * [courses] keeps the order of the data's course list. [term] labels
- * the semester the classes belong to, e.g. "Sem 1 2026/27"; the MAYA import sets it.
+ * the semester the classes belong to, e.g. "Sem 1 2026/27"; the MAYA import sets it. [registered]: the
+ * classes of Spectrum's occurrence of each course the user chose another occurrence of (see [attendance]).
  */
-class Timetable(val sessions: List<Session>, val courses: List<Course> = sessions.map { it.course }.distinct(), val term: String? = null) {
+class Timetable(
+    val sessions: List<Session>,
+    val courses: List<Course> = sessions.map { it.course }.distinct(),
+    val term: String? = null,
+    val registered: List<Session> = emptyList(),
+) {
 
     fun day(d: Int): List<Session> = sessions.filter { it.day == d }.sortedBy { it.start }
+
+    /**
+     * The classes the user's attendance is taken at. A course whose occurrence the user changed in
+     * Settings is still theirs in Spectrum's occurrence, whose attendance sessions belong to that
+     * occurrence's classes: those ([registered], from TimeEdit) stand in for the chosen ones, or, before
+     * TimeEdit has given them, the chosen classes with Spectrum's occurrence number.
+     */
+    val attendance: List<Session> by lazy {
+        sessions.filter { s -> registered.none { it.course.code == s.course.code } }
+            .map { s -> if (s.course.registered > 0) s.copy(course = s.course.copy(occ = s.course.registered)) else s } + registered
+    }
+
+    fun attendanceDay(d: Int): List<Session> = attendance.filter { it.day == d }.sortedBy { it.start }
 
     /**
      * This timetable with each course in [scheme]'s colour for its slot: the place of its colour in the
@@ -75,7 +95,11 @@ class Timetable(val sessions: List<Session>, val courses: List<Course> = session
         val palette = scheme.courses ?: return this
         val defaults = MayaImport.PALETTE.map { Color.parseColor(it) }
         val now = courses.withIndex().associate { (i, c) -> c to c.copy(color = palette[(defaults.indexOf(c.color).takeIf { it >= 0 } ?: i) % palette.size]) }
-        return Timetable(sessions.map { s -> s.copy(course = now[s.course] ?: s.course) }, courses.map { now.getValue(it) }, term)
+        val byCode = now.values.associateBy { it.code }
+        return Timetable(
+            sessions.map { s -> s.copy(course = now[s.course] ?: s.course) }, courses.map { now.getValue(it) }, term,
+            registered.map { s -> s.copy(course = s.course.copy(color = byCode[s.course.code]?.color ?: s.course.color)) },
+        )
     }
 
     /** Null only when the timetable has no classes at all. */
@@ -131,28 +155,31 @@ class Timetable(val sessions: List<Session>, val courses: List<Course> = session
             return runCatching { parse(json(context)) }.getOrElse { Timetable(emptyList()) }.recolored(scheme).also { cached = scheme to it }
         }
 
-        /** `{term, courses: {code: {name, short, occ, color}}, sessions: [{day, start, end, code, type, room, roomName, lecturer}]}` */
+        /**
+         * `{term, courses: {code: {name, short, occ, color, registered?}}, sessions: [{day, start, end, code, type,
+         * room, roomName, lecturer}], registered?: [same as sessions]}`
+         */
         fun parse(root: JSONObject): Timetable {
             val cj = root.getJSONObject("courses")
             val courses = cj.keys().asSequence().associateWith { code ->
                 val c = cj.getJSONObject(code)
-                Course(code, c.getString("name"), c.optString("short").ifBlank { c.getString("name") }, c.getInt("occ"), Color.parseColor(c.getString("color")))
+                Course(code, c.getString("name"), c.optString("short").ifBlank { c.getString("name") }, c.getInt("occ"), Color.parseColor(c.getString("color")), c.optInt("registered"))
             }
-            val sj = root.getJSONArray("sessions")
-            val sessions = (0 until sj.length()).map { i ->
-                val s = sj.getJSONObject(i)
-                Session(
-                    day = s.getInt("day"),
-                    start = toMinutes(s.getString("start")),
-                    end = toMinutes(s.getString("end")),
-                    type = s.getString("type"),
-                    room = s.getString("room"),
-                    lecturer = if (s.isNull("lecturer")) null else s.getString("lecturer"),
-                    course = courses.getValue(s.getString("code")),
-                    roomName = s.optString("roomName").takeIf { it.isNotBlank() },
-                )
+            fun session(s: JSONObject, course: Course) = Session(
+                day = s.getInt("day"),
+                start = toMinutes(s.getString("start")),
+                end = toMinutes(s.getString("end")),
+                type = s.getString("type"),
+                room = s.getString("room"),
+                lecturer = if (s.isNull("lecturer")) null else s.getString("lecturer"),
+                course = course,
+                roomName = s.optString("roomName").takeIf { it.isNotBlank() },
+            )
+            val sessions = root.getJSONArray("sessions").objects().map { session(it, courses.getValue(it.getString("code"))) }
+            val registered = root.optJSONArray("registered")?.objects().orEmpty().mapNotNull { s ->
+                courses[s.getString("code")]?.takeIf { it.registered > 0 }?.let { session(s, it.copy(occ = it.registered)) }
             }
-            return Timetable(sessions, courses.values.filter { c -> sessions.any { it.course == c } }, root.optString("term").takeIf { it.isNotBlank() })
+            return Timetable(sessions, courses.values.filter { c -> sessions.any { it.course == c } }, root.optString("term").takeIf { it.isNotBlank() }, registered)
         }
 
         private fun toMinutes(t: String) = t.split(":").let { it[0].toInt() * 60 + it[1].toInt() }

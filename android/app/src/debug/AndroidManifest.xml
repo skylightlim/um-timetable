@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application android:networkSecurityConfig="@xml/network_security_config">
+        <!-- Each debug component is exported for adb, behind android.permission.DUMP: the shell holds it,
+             other apps can't get it. Without it, any app on the phone could make Spectrum calls as the user. -->
         <!-- Debug only: renders the widget at a chosen size, time and theme.
              Force-stop first, or Android may resume an older preview with old extras:
              adb shell am force-stop com.skylightlim.umtimetable
@@ -9,17 +11,21 @@
              dow: 0 = Sunday … 6 = Saturday; min: minutes after midnight. -->
         <activity
             android:name=".WidgetPreviewActivity"
-            android:exported="true" />
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
         <activity
             android:name=".DebugSpectrumCallActivity"
             android:exported="true"
+            android:permission="android.permission.DUMP"
             android:excludeFromRecents="true" />
         <receiver
             android:name=".DebugSpectrumReceiver"
-            android:exported="true" />
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
         <!-- Debug only: draws a page into cache/render/<view>.png without showing it. -->
         <receiver
             android:name=".DebugRenderReceiver"
-            android:exported="true" />
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
     </application>
 </manifest>

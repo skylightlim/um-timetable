@@ -33,7 +33,6 @@ import android.widget.TextView
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import com.skylightlim.umtimetable.Motion.spring
-import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
 import java.util.Calendar
@@ -67,6 +66,13 @@ class MainActivity : Activity(), SpectrumHost {
     /** Weeks from the strip's own week to the one shown, moved by swiping on Week; back to 0 off Day and Week. */
     override var weekShift = 0
     override var openCourse: Int? = null
+        set(value) {
+            if (value != field) sectionPages.clear()
+            field = value
+        }
+    /** The section pages open over the course page, innermost last, each with the scroll of the page it covers. */
+    private val sectionPages = ArrayList<Pair<Int, Int>>()
+    override val openSection get() = sectionPages.lastOrNull()?.first
     override var syncing = false
 
     /** Set by the first Spectrum sign-in: once it has synced, a new app gets its timetable from TimeEdit. */
@@ -74,7 +80,7 @@ class MainActivity : Activity(), SpectrumHost {
     override val expanded = mutableSetOf<String>()
     override var seenNews: Set<String> = emptySet()
     override var seenGrades: Set<String> = emptySet()
-    private val contents = mutableMapOf<Int, JSONArray>()
+    private val contents = mutableMapOf<Int, JSONObject>()
     private val contentErrors = mutableMapOf<Int, String>()
     private val loading = mutableSetOf<Int>()
 
@@ -142,11 +148,11 @@ class MainActivity : Activity(), SpectrumHost {
         fonts = Fonts(this)
         look = Look.load(this)
         scheme = Scheme.load(this)
-        seenNews = prefs().getStringSet("newsSeen", emptySet()) ?: emptySet()
-        seenGrades = prefs().getStringSet("gradesSeen", emptySet()) ?: emptySet()
+        seenNews = uiPrefs(this).getStringSet("newsSeen", emptySet()) ?: emptySet()
+        seenGrades = uiPrefs(this).getStringSet("gradesSeen", emptySet()) ?: emptySet()
         sel = homeDay(timetable, now())
         view = intent.getStringExtra(EXTRA_VIEW)?.takeIf { it in VIEWS }
-            ?: prefs().getString("view", "day")?.takeIf { it in VIEWS } ?: "day"
+            ?: uiPrefs(this).getString("view", "day")?.takeIf { it in VIEWS } ?: "day"
         intent.getIntExtra(EXTRA_COURSE, 0).takeIf { it > 0 }?.let { view = "files"; openCourse = it }
         buildShell()
         render()
@@ -193,8 +199,6 @@ class MainActivity : Activity(), SpectrumHost {
         settings = null
         super.onDestroy()
     }
-
-    private fun prefs() = getSharedPreferences("ui", MODE_PRIVATE)
 
     /** Every touch goes past the press feedback first; it never takes one. */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
@@ -722,7 +726,7 @@ class MainActivity : Activity(), SpectrumHost {
             val ids = SpectrumStore.array(this, "news").objects().map { it.getInt("id").toString() }
             if (ids.all { it in seenNews }) return@postDelayed
             seenNews = (seenNews + ids).toList().takeLast(500).toSet()
-            prefs().edit().putStringSet("newsSeen", seenNews).apply()
+            uiPrefs(this).edit().putStringSet("newsSeen", seenNews).apply()
             renderTabs() // the dots on the cards stay until the next redraw, so they're seen first
         }, 1500)
     }
@@ -732,7 +736,7 @@ class MainActivity : Activity(), SpectrumHost {
             val keys = SpectrumStore.array(this, "grades").objects().filter { !it.isNull("raw") }.map { SpectrumSync.gradeKey(it) }
             if (keys.all { it in seenGrades }) return@postDelayed
             seenGrades = (seenGrades + keys).toList().takeLast(500).toSet()
-            prefs().edit().putStringSet("gradesSeen", seenGrades).apply()
+            uiPrefs(this).edit().putStringSet("gradesSeen", seenGrades).apply()
             renderTabs() // the dots on the marks stay until the next redraw, so they're seen first
         }, 1500)
     }
@@ -749,7 +753,7 @@ class MainActivity : Activity(), SpectrumHost {
         // Another tab: Day and Week start again from the strip's own week.
         if (view != "day" && view != "week") weekShift = 0
         this.view = view
-        prefs().edit().putString("view", view).apply()
+        uiPrefs(this).edit().putString("view", view).apply()
         if (changed) feel?.invoke(shell)
         render(keepScroll = false, enter = changed)
     }
@@ -850,6 +854,7 @@ class MainActivity : Activity(), SpectrumHost {
 
     // Back: leave a course page, then return to Day; on Day (false), Android's own back leaves the app.
     private fun stepBack(): Boolean {
+        if (view == "files" && openCourse != null && sectionBack()) return true
         if (view == "files" && openCourse != null) {
             Haptics.back(shell)
             openCourse = null
@@ -929,6 +934,33 @@ class MainActivity : Activity(), SpectrumHost {
     }
 
     override fun courseContents(id: Int) = contents[id]
+
+    /** Reads a course's layout again behind its page, and redraws the page if it changed. */
+    private fun refreshLayout(id: Int) = thread {
+        val fresh = CourseLayout.refresh(applicationContext, id) ?: return@thread
+        runOnUiThread {
+            val course = contents[id] ?: return@runOnUiThread
+            course.remove("layoutStale")
+            if (course.optJSONObject("layout")?.toString() == fresh.toString()) return@runOnUiThread
+            course.put("layout", fresh)
+            if (view == "files" && openCourse == id) render(keepScroll = true)
+        }
+    }
+
+    override fun showSection(id: Int) {
+        Haptics.tick(shell)
+        sectionPages += id to scroll.scrollY
+        render()
+    }
+
+    /** Back from a section page to the page it covered, where it was scrolled to. False when none is open. */
+    private fun sectionBack(): Boolean {
+        val (_, y) = sectionPages.removeLastOrNull() ?: return false
+        Haptics.back(shell)
+        render()
+        scroll.post { scroll.scrollTo(0, y) }
+        return true
+    }
     override fun courseError(id: Int) = contentErrors[id]
 
     private fun loadCourse(id: Int) {
@@ -937,10 +969,11 @@ class MainActivity : Activity(), SpectrumHost {
             val json = SpectrumSync.courseContents(applicationContext, id)
             runOnUiThread {
                 loading.remove(id)
-                runCatching { JSONArray(json) }
-                    .onSuccess { contents[id] = it }
-                    .onFailure { contentErrors[id] = runCatching { JSONObject(json).optString("error") }.getOrNull() ?: "Couldn't read this course." }
+                val course = runCatching { JSONObject(json) }.getOrNull()
+                if (course != null && course.has("sections")) contents[id] = course
+                else contentErrors[id] = course?.optString("error")?.ifEmpty { null } ?: "Couldn't read this course."
                 if (view == "files" && openCourse == id) render(keepScroll = true)
+                if (course?.optBoolean("layoutStale") == true) refreshLayout(id)
             }
         }
     }

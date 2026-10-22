@@ -18,6 +18,371 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 23 October 2026 (Course pages laid out from Spectrum's own layout, for any course)
+
+**Asked for:** not only these courses: anyone using the app, with any course, should see its page laid
+out as Spectrum shows it.
+
+**Change:** every course's page now follows the description Moodle builds the course page from,
+whatever the format (`core_courseformat_get_state`, read in the hidden page on the app's Spectrum
+session, `CourseLayout`; before, only Flexible sections courses had it): which section sits in which,
+which opens as a page of its own, and which activities each section lists, in its order, so an activity
+hidden from the course page stays off it. A Topics or Weekly course's page shows at once from the web
+service and its layout follows behind it (redrawn only if it changes); any other format, one not seen
+yet included, waits for it the first time. Kept a day per course. Tiles, Grid and One Topic courses
+(sections as tiles or tabs) show their sections as cards opening a page each. Without the layout (signed
+out of Microsoft, no network), the web service's order stands in, less activities hidden from the course
+page and sections beyond the course's number of sections.
+
+**Checked:** unit tests pass, with three more in `CourseOutlineTest` (the layout's lists and order,
+what stays off without it, tiles and tabs). On the real data of all seven courses, arranged with
+Moodle's layout as the laptop's browser read it (a local run, not committed): the same sections at the
+top as the browser, and every section the browser draws has the same activities in the same order.
+Without the layout: the same on six; the Flexible sections course with linked pages loses its nesting.
+Not tried: the hidden page reading a layout on the phone (logged `course layout N: read … sections in … ms`).
+
+## 23 October 2026 (Course pages arranged as Spectrum shows them in a browser)
+
+**Asked for:** a course page in the app wasn't organised like Spectrum in a laptop browser: check every
+section of every course in a signed-in browser, make the app's pages match, and report how Spectrum
+differs across courses.
+
+**Change:** the report is `docs/SPECTRUM-COURSES.md`. Courses are set up four ways, and the web service
+flattens them all; a course page is now arranged as the browser arranges it (`CourseOutline`):
+- subsections (Moodle 5) sit inside their section, where their link is, under their own name with a line
+  down the side, instead of a plain button there and their content at the bottom of the page;
+- Flexible sections courses nest sections in sections, and a section Spectrum shows as a link is a card
+  (name, summary, "2 activities · 6 sections") opening a page of its own. Which section is in which isn't
+  in the web service (nor offered to the Moodle app), so `CourseLayout` reads it the way Spectrum's page
+  does, `core_courseformat_get_state`, in a hidden page on the app's Spectrum session (about a second;
+  kept a day, read again sooner when a section is new). A section whose parent was deleted isn't shown;
+- a course showing one section per page shows General in full, then a card per section opening its page;
+- section pages: Back returns to the page underneath, scrolled where it was; the Courses tab goes back
+  to the list;
+- another group's sections and activities stay, greyed with a padlock and what they wait for (long
+  lists folded at two lines), and don't open; a hidden section says "Not available"; empty sections show
+  their name. The web service sends an activity's `uservisible` as true/false and the app read it as a
+  number, so another group's activities used to look like any other button;
+- a text that's only a dividing line is a line; the first section's name is left off when Flexible
+  sections hides it.
+The format and one-section-per-page come from `core_course_get_courses_by_field` when a course opens.
+
+**Checked:** unit tests pass, with `CourseOutlineTest` (subsections in place, hidden ones left out,
+Flexible sections nesting, links and orphans, one section per page). Against the browser, on all seven
+courses (a local test run on the real data, not committed): the same sections at the top in the same
+order, and in every section the browser draws, the same activities in the same order. The layout script
+ran in the laptop's signed-in browser on the same small page the hidden page loads: 121 sections, 19 at
+the top as on the course page, 1.3 s. On the user's phone (debug build, the data fed over USB), pages
+drawn off-screen: a one-section-per-page course's cards and a section's page with its two subsections; a
+Flexible sections course's lecturer cards and one lecturer's page (inner sections set in, links as
+cards); a course with a subsection per lecturer, other groups' activities greyed. Not tried: the hidden
+page reading the layout on the phone, opening and leaving section pages by hand, and how a long page of
+greyed sections feels; these wait for the user (the log line `course layout N: read … sections`).
+
+## 23 October 2026 (Course pages: every link Spectrum offers can be tapped)
+
+**Asked for:** check every section of each course page against Spectrum in a laptop browser, and make
+sure every link can be tapped.
+
+**Change:** links the app's text dropped or couldn't open, found by going through all seven courses'
+pages (`docs/SPECTRUM-COURSES.md`), now work (`SpectrumHtml`, used by `RichText`):
+- email links (`mailto:`) and phone links open the mail or phone app (only web links were kept);
+- a link whose address a lecturer pasted with its label (`Join: https://teams…`, dead in a browser) opens
+  the meeting inside it;
+- an audio player (a podcast in a text) was dropped, its address left as plain text: it's a "▶ Listen"
+  link now; video players and embedded pages become "▶ Watch" and "Open" links the same way;
+- a web address pasted into the text without a link (WhatsApp groups) becomes a link; in a browser it's
+  only text;
+- a table's rows are lines, cells joined by " · " (Android ran them together).
+
+**Checked:** unit tests pass, with `SpectrumHtmlTest` (players and frames to links, table rows, mistyped,
+email and phone addresses, bare addresses, a lone dividing line). On the user's phone (debug build, the
+courses' data fed over USB from the laptop's reading, nothing fetched by the phone), pages drawn
+off-screen: a course's table reads row by row with its Telegram links, the podcast shows "▶ Listen:
+PODCAST: Java Class", the mistyped Teams links and a pasted WhatsApp address are links. Across the seven
+courses, every link in a summary, text, description or restriction (142) is tappable.
+
+## 22 October 2026 (Audit: one name for the app's own settings)
+
+**Asked for:** the app audit, continued: the ponytail audit's cuts.
+
+**Change:** seven places each opened the app's own settings file (`"ui"`: the look, scheme, vibration,
+class reminders, update choice, the page last open) with their own copy of the call; they now share
+`uiPrefs(context)` (Ui.kt). Nothing stored changes.
+
+**Checked:** unit tests pass; the debug and release builds build.
+
+## 22 October 2026 (Audit: alarm scheduling, shorter)
+
+**Asked for:** the app audit, continued: the ponytail audit's cuts.
+
+**Change:** the five alarm schedulers (deadline, plan and class reminders, attendance checks, auto
+attendance) each ended "no next time: cancel, else set the alarm"; `exactAlarm` now takes no time as
+cancel. The days they walk through are `LocalDate`s with `startOfDay(date)` instead of `Calendar`
+arithmetic, and the weekday comes from `date.dayOfWeek` (Sunday 0 … Saturday 6, as before). Auto
+attendance read the clock twice for the same day (once for the date, once for its midnight); it now
+reads it once. No times change.
+
+**Checked:** unit tests pass, with a new `StartOfDayTest`: for 400 days from 20 October 2026, in Kuala
+Lumpur's time and in London's (days of 23 and 25 hours), the new midnight and weekday equal what the
+old `Calendar` code gave. Built. On the user's phone, the app's alarms after the debug install and a
+full sync were the ones set before it, to the second (`dumpsys alarm`: deadline reminder, auto
+attendance at the next class's start, the attendance check a minute later).
+
+## 22 October 2026 (Audit: sync without what only an older Moodle needed)
+
+**Asked for:** the app audit, continued: the ponytail audit's cuts.
+
+**Change:** two things in the Spectrum sync existed for Moodle versions UM doesn't run:
+- the ~600 web-service names Spectrum lists at sign-in were saved (about 27 KB of settings) for one
+  check, whether the course list's newer call exists. The sync now just makes that call; it already
+  fell back to the older one when it fails.
+- the deadlines call retried without `limittononsuspendedevents` when a Moodle refused it. Spectrum
+  takes it (asked directly on 22 October), so the retry is gone.
+
+The names already saved on a phone stay in its settings until the next sign-in or sign-out, which
+clear them; nothing reads them now.
+
+**Checked:** unit tests pass; built. Spectrum answered the deadlines call with the parameter
+(`DebugSpectrumReceiver --es call`, one event; the raw reply deleted). On the user's phone (debug build),
+a full sync (`--es sync full`) came back ok in 1.6 s with all the courses, today's attendance sessions,
+grades and news, and Due rewritten with the same items as before.
+
+## 22 October 2026 (Security: trusted sites matched by whole domain names)
+
+**Asked for:** the app audit, continued (security finding 3).
+
+**Change:** the in-app Spectrum view kept any site whose name merely ended in one it trusts, so
+`evilmicrosoft.com` passed for `microsoft.com` and could have posed as the in-app sign-in; course
+links went in-app the same way. All such checks now go through `hostIn`: the domain itself or a name
+under it (`login.microsoftonline.com`), nothing else. Also TimeEdit's "your password goes only to
+Microsoft" line and auto attendance's signed-out check use it, and a course page treats a link or
+image as Spectrum's own only when its address is Spectrum's followed by a slash
+(`spectrum.um.edu.my.example.com` isn't Spectrum). The sign-in itself was never at risk this way: the
+token is only ever added to Spectrum's own file address, matched exactly, and that stays as it was.
+
+**Checked:** unit tests pass, with a new `HostInTest` (the domains and their subdomains pass; look-alikes,
+a blank and a missing host don't). Built.
+
+## 22 October 2026 (Security: links from web pages open only what a browser could)
+
+**Asked for:** the app audit, continued (security finding 2).
+
+**Change:** on the sign-in, MAYA and TimeEdit pages, a link that isn't a web page (an `intent:` link,
+or another app's scheme such as the Microsoft Authenticator's) went to `Intent.parseUri` and was
+started as it came, so a page there could have opened any screen of this app, private ones included.
+It's now sent the way Chrome sends one: only to screens that take links from a browser
+(`CATEGORY_BROWSABLE`), with any named screen and selector dropped. (The in-app Spectrum view already
+sent such links on as plain links.)
+
+**Checked:** unit tests pass; built. On the user's phone, the Microsoft Authenticator's sign-in links
+(`microsoft-authenticator://`, `ms-msa://`, `authapp://`) still resolve to it with the browser category
+(`pm query-activities -c android.intent.category.BROWSABLE`). A real hand-off to it during a sign-in
+wasn't tried: the user is signed in.
+
+## 22 October 2026 (Security: debug tools only for adb)
+
+**Asked for:** the app audit, continued: fix the security findings of 22 October (checked with
+Google's `android-intent-security` skill and by reading the web and network code).
+
+**Change:** the debug build's four tools (`DebugSpectrumReceiver`, `DebugRenderReceiver`,
+`DebugSpectrumCallActivity`, `WidgetPreviewActivity`) were open to every app on the phone, so while a
+debug build was installed any app could have made Spectrum calls as the user (posting, messaging,
+submitting) through `DebugSpectrumReceiver --es call`. Each now needs `android.permission.DUMP`, which
+adb's shell holds and other apps can't be given. Release builds never had them.
+
+**Checked:** debug build installed on the user's phone: its manifest (`aapt2 dump xmltree`) has the
+permission on all four, and `am broadcast` from adb still reaches `DebugRenderReceiver` (it drew the
+Settings page). Another app being refused couldn't be shown: `am` run as another app fails its own
+package check before it gets that far.
+
+## 22 October 2026 (Audit: dead code deleted)
+
+**Asked for:** the app audit, continued: the dead code of `docs/audit.md` §4, and what the ponytail
+audit of 22 October found unused.
+
+**Change:** deleted, about 450 lines, none of it used anywhere:
+- the sideways `Tape` picker and `Ui.tape()`: the wheels replaced them on 19 October;
+- `SpectrumScreens.courseDot` (the rows draw their own dot now), `DuelScene.linear`, `Look.next` and
+  `Haptics.next` (both from the days of the cycling buttons), and `ic_refresh.xml`;
+- the debug `SsoProbe` and its `--es sso probe` branch: its question (can the app sign in to MAYA
+  and TimeEdit on its own?) was answered on 13 October, as `FINDINGS.md` records. It stays in git's
+  history.
+
+**Checked:** each name has no hits left in the source; unit tests pass; the release and debug builds
+build. Nothing on screen changes.
+
+## 22 October 2026 (Audit: dragging a sheet down while it's still arriving)
+
+**Asked for:** the app audit, continued (`docs/audit.md` §3).
+
+**Change:** a bottom sheet (Settings, a class's sheet) rises on a spring, and a drag that started
+during it set the sheet's position while the spring did too, so it shook. The drag now cancels the
+entrance spring when it takes hold. (The scrim's short entrance fade can still overlap a drag: the
+audit left it unless a flicker shows.)
+
+**Checked:** unit tests pass; built. The user's to try: open a sheet and pull it down the moment it
+appears; it should follow the finger from the first move.
+
+## 22 October 2026 (Audit: a switch's labels settling in the wrong colour)
+
+**Asked for:** the app audit, continued (`docs/audit.md` §2).
+
+**Change:** `Motion.tint` started a new colour animation without stopping the one already running on
+that label or icon. Two choices within about a fifth of a second left two animations writing the
+colour, and the older, longer one could write last, so a label ended in the colour it should have
+left. Now each label or icon has at most one tint animation: a new one cancels the old. That covers
+the segmented switches (For me / All, the look, Vibration) and the day strip's chips.
+
+**Checked:** unit tests pass; built. The user's to try: tap a switch's options back and forth
+quickly; every label should end in its proper colour, never a faded in-between.
+
+## 22 October 2026 (Audit: a swipe taking hold of a page still settling)
+
+**Asked for:** carry on with the app audit: the motion fixes of the 17 October audit (`docs/audit.md`
+§1) were never made.
+
+**Change:** a page follows the finger by setting its position and opacity itself, while the last
+swipe's spring back (or the next page's slide in) could still be running on it: both wrote each frame,
+so a quick second swipe stuttered and snapped. Now, when a swipe takes hold, the finger takes over:
+the running spring and the settle's fade (`Motion.fade` now returns its animator) are cancelled. On
+Day that's the page; on Week, the grid carousel. Cancelling stops every property at once, so if the
+page was still springing back up after a pull to sync, that spring starts again from where it stopped
+(the audit's version would have left the page hanging partway down).
+
+**Checked:** unit tests pass; built. The feel is the user's to try: swipe a day, and swipe again before
+the page has settled; it should follow the finger with no stutter or snap. Also swipe right after a
+pull to sync: the page should still go all the way back up.
+
+## 22 October 2026 (Class reminders)
+
+**Asked for:** an option to notify the user of the classes they have to attend.
+
+**Change:** Settings › Notifications has **Class reminders** (Off at first). A tap flies a card out of
+the row with the choices on a wheel: Off, At start, 5, 10, 15 or 30 min before, 1 h before (choose, then
+Choose, like the occurrence card). Chosen, `ClassReminders` posts a notification on a new "Classes"
+channel before each class Day shows: the course's short name and type, then "In 10 min · 10:00–11:00 ·
+room" (the time left as it really is, should the phone sleep past the alarm; nothing once the class is
+over). None on public holidays or in weeks without classes. One exact alarm at a time, re-armed
+wherever the timetable changes, after each sync, and after a reboot or update. Choosing a reminder with
+notifications off asks for them.
+
+**Checked:** unit tests pass. The Settings sheet drawn on the phone (`DebugRenderReceiver --es view
+settings`): the row under "Deadlines, marks and news", saying "Off". The card and a reminder going off
+weren't seen: the user hasn't chosen one, and the choice is theirs.
+
+## 22 October 2026 (Attendance stays with Spectrum's occurrence)
+
+**Asked for:** even when the user has changed a course's occurrence, its attendance should be marked
+according to their original occurrence.
+
+**Change:** the occurrence in Spectrum (the user's group) is where their attendance is recorded, and its
+sessions belong to that occurrence's classes. So when a course has another occurrence chosen in
+Settings, the TimeEdit lookup now also brings Spectrum's occurrence's weekly classes (the module's
+reservations are read once either way; `timeedit-lookup.js` takes `registered` and marks those slots),
+and the timetable keeps them apart (`registered` in timetable.json, the course's `registered`
+occurrence). `Timetable.attendance` is the classes attendance goes by: Spectrum's occurrence's for such a
+course, everyone else's as shown. Auto attendance (its alarms and tries), the attendance checks and the
+matching of attendance activities (`fetchAttendance`, `AttendanceMatch` with Spectrum's number) all use
+it. Until a TimeEdit lookup has brought those classes (a choice made before this version), the chosen
+classes stand in, matched with Spectrum's occurrence number. The Day and Week pages still show the
+chosen occurrence.
+
+**Checked:** unit tests pass, two new: the TimeEdit build puts the registered slots apart with the
+course's `registered` occurrence (nothing apart when Spectrum's own is chosen), and
+`AttendanceClassesTest`: attendance is taken at Spectrum's occurrence's class (Wednesday) while the page
+shows the chosen one (Tuesday), and with no registered classes yet, the chosen class with Spectrum's
+number. Not tried against the real TimeEdit: the lookup runs in TimeEditActivity with the user there;
+the user currently has no occurrence chosen.
+
+## 22 October 2026 (Course pages: text you can select and copy)
+
+**Asked for:** the text on a course page (Spectrum's content, from the Courses tab) can be selected
+and copied.
+
+**Change:** on a course page, the section texts, labels, each activity's description and availability
+note, its dates line and the course's full name under the code take a long press to select a word,
+with handles and Android's Copy (`RichText.view(selectable = true)`, `RichText.selectable`). Links in
+the text still open on a tap: the app's own link handling runs before the selection's. A tap focuses
+the text, and `revealOnFocusHint = false` keeps the page from scrolling a tall block's top into view
+for it. Section names keep their long press for Pin to top; buttons (files, folders, links) aren't
+text to select. News, Grades and the rest are unchanged.
+
+**Checked:** unit tests pass; built. Press feedback (`Motion.Presser`) only sinks views with a click
+listener, so selectable text doesn't sink and nothing under it does. Not tried by hand: selecting and
+copying, and that a swipe or a pull on the text still moves the page, need the user's long press on
+the phone.
+
+## 22 October 2026 (Auto attendance: at the start of class, trying again while nothing is open)
+
+**Asked for:** don't wait 5 minutes: mark the class's attendance once it starts, and notify when
+marking is unsuccessful or a password is needed.
+
+**Change:** the first try is at the class's start. When no session is open yet (or Spectrum is out of
+reach) it tries again at 2, 5, 10, 15, 20, 30 and 45 minutes, then every half hour, while the class
+lasts, and only after the last try says "Couldn't mark attendance · No attendance session opened for it
+while the app kept trying". What the user has to act on (the lecturer's password, a QR code, the campus
+network only, signing in again, no status offered, Android blocking the network) is notified at once,
+as before. A session that already has a status (the user or the lecturer marked it) counts as done,
+silently: the script reads today's row ("Mon 19 Oct 2026 …" with no "?" left) instead of trying until
+the class ends. A class with no attendance activity matched is looked for again for 20 minutes (its
+session may be put in the calendar late), then left. Public holidays and weeks without classes
+(break, revision, exams) are skipped. Settings' line says the new timing.
+
+**Checked:** unit tests pass. The script in headless Chromium against stand-in pages: today's row
+marked ("Present … Self-recorded") answers `{ok, already, status: "Present"}`; today's row with "?" and
+no link answers `notopen` with the rows; with a "Submit attendance" link it goes on to open it. On the
+phone: see below for the alarm set at today's first class start. A real class run is the user's next
+class with it on; the log (`attendance-log.txt`) shows each try.
+
+## 22 October 2026 (Auto attendance: a log readable over USB, and mobile data in the background)
+
+**Asked for:** improve auto attendance; to debug it, the app logs its marking, readable on another
+user's phone by plugging it in.
+
+**Change:** every step of auto attendance goes to `AttendanceLog`, a text file in the app's folder of
+shared storage, which `adb shell cat /sdcard/Android/data/com.skylightlim.umtimetable/files/attendance-log.txt`
+reads on any phone, release build included (no `run-as`). It records when the next try is set and
+whether exact alarms are allowed, how late each alarm fired, the phone's conditions at each run (Wi-Fi
+or mobile data, background data limited, battery Restricted/Optimised/Unrestricted, standby bucket,
+notifications off), today's attendance sessions read, which activity each class opened (or, with
+none matched, each of the course's activities with its match score), the pages the hidden page went
+through, and Spectrum's answer, with the session table's rows on a failure. No sign-in, cookies or
+passwords go in it; it keeps about 256 KB, dropping the older half past that.
+
+The first log-style check found why marking couldn't work away from Wi-Fi: with the app's background
+data turned off (as on the user's phone) Android cuts its mobile data in the background, the page
+load failed, the script then ran on WebView's error page and the app waited 60 s for an answer that
+couldn't come ("no answer in time"). Now the alarm starts a short foreground service
+(`AutoAttendanceService`, type shortService, with a silent "Marking your attendance" notification on a
+new minimal "Marking attendance" channel): a foreground service keeps mobile data with background data
+off, and an exact alarm may start one from the background. If Android refuses the service, the old
+expedited job runs instead (logged). A page that fails to load now answers at once (`unreachable`, or
+`blocked` when Android cut the network) instead of after a minute.
+
+**Checked:** unit tests pass. On the user's phone (debug build), on mobile data with background data
+off, a dry read through the real path (`DebugSpectrumReceiver --es automark alarm --ei cmid N`: an exact
+alarm 15 s later, app in the background): Android logged "Background started FGS: Allowed …
+ALARM_MANAGER_WHILE_IDLE", and the hidden page read the real attendance page in about 3.5 s (today's
+session listed, not open yet). The same read from a plain broadcast before the change: "no answer in
+time" after 60 s. The log file read over adb without `run-as`.
+
+## 19 October 2026 (1.6.1-beta.1 published)
+
+**Asked for:** push these updates.
+
+**Published:** 1.6.1-beta.1, versionCode 9: a patch, for the plans on Day as class cards and the drag
+that holds a plan where it's taken. Before publishing, the tree was grepped again for the backups'
+lecturer names and course occurrences (none), and the new QA entries read for the user's schedule
+(none); the drag test's example times, which were the user's own plan's, were changed to made-up ones
+first. GitHub's `main` got one release commit with `main`'s tree, "UM Timetable 1.6.1-beta.1" (0862d75),
+on top of 1.6.0-beta.1's, as a fast-forward from the local `public` branch. Pre-release `v9`, titled
+"1.6.1-beta.1", carries `UM-Timetable-1.6.1-beta.1.apk`, built from a clean checkout of that commit:
+versionCode 9, signed with the release key (SHA-256 bf:c0:58…b2:94:20). The notes are four plain lines.
+
+**Checked:** the APK's version and certificate (aapt2, apksigner); the release lists the APK as its only
+asset. The published APK is on the user's phone (versionCode 9).
+
 ## 19 October 2026 (a held plan drags from where it's held)
 
 **Asked for:** holding and dragging a plan on the week grid should be relative to where it's held:

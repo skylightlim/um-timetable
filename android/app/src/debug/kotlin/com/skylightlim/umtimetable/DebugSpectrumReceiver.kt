@@ -15,9 +15,9 @@ import kotlin.concurrent.thread
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es names fill
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es call core_course_get_contents --es params '{"courseid":151}'
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es attendance check|sync
- *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es sso probe [--es site timeedit] [--ez signout true]
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es timeedit build
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es automark dry [--ei cmid N]
+ *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es automark alarm [--ei cmid N]
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es sync full
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es haptic tick|back|cross|uncross
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es fake signin
@@ -97,6 +97,21 @@ class DebugSpectrumReceiver : BroadcastReceiver() {
         }
         // --es automark dry [--ei cmid N]: what auto attendance would find on an attendance activity's page
         // (today's first session's, or activity N's), without marking anything: logged as "automark dry".
+        // --es automark alarm [--ei cmid N]: the same dry read, the way the real one runs: an exact alarm in
+        // 15 s starts the foreground service (so it's tried with the app in the background). Logged to AttendanceLog.
+        if (intent.getStringExtra("automark") == "alarm") {
+            val cmid = intent.getIntExtra("cmid", 0)
+            val url = if (cmid > 0) "${Spectrum.SITE}/mod/attendance/view.php?id=$cmid"
+            else SpectrumStore.array(c, "attendance").objects().firstOrNull()?.optString("url") ?: return
+            val pi = android.app.PendingIntent.getBroadcast(
+                c, 7_001,
+                Intent(c, SpectrumAlarmReceiver::class.java).setAction(SpectrumAlarmReceiver.ACTION_AUTOMARK).putExtra(AutoAttendanceService.EXTRA_DRY, url),
+                android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            exactAlarm(c.getSystemService(android.app.AlarmManager::class.java), System.currentTimeMillis() + 15_000, pi)
+            Log.i("UMTimetable", "automark alarm: dry read of $url in 15 s")
+            return
+        }
         if (intent.getStringExtra("automark") == "dry") {
             val pending = goAsync()
             val cmid = intent.getIntExtra("cmid", 0)
@@ -115,12 +130,6 @@ class DebugSpectrumReceiver : BroadcastReceiver() {
         if (intent.getStringExtra("timeedit") == "build") {
             val pending = goAsync()
             DebugTimeEdit.build(c) { pending.finish() }
-            return
-        }
-        // --es sso probe: whether MAYA and TimeEdit let the app in with its SiswaMail session (SsoProbe).
-        if (intent.getStringExtra("sso") == "probe") {
-            val pending = goAsync()
-            SsoProbe.run(c, intent.getStringExtra("site"), intent.getBooleanExtra("signout", false)) { pending.finish() }
             return
         }
         // --es attendance sync: the background attendance check (SpectrumSync.run, attendanceOnly).
@@ -195,7 +204,8 @@ class DebugSpectrumReceiver : BroadcastReceiver() {
                     val token = SpectrumStore.token(c) ?: error("not signed in")
                     Spectrum.call(token, "core_course_get_contents", mapOf("courseid" to course)).toString().also { rawFile.writeText(it) }
                 }
-                SpectrumStore.write(c, "contents-$course", SpectrumSync.normalizeContents(org.json.JSONArray(raw)).toString())
+                // The format and Flexible sections' layout aren't in the raw reply: a full fetch (no offline) brings them.
+                SpectrumStore.write(c, "contents-$course", if (intent.getBooleanExtra("offline", false)) SpectrumSync.normalizeContents(org.json.JSONArray(raw)).toString() else SpectrumSync.courseContents(c, course))
                 Log.i("UMTimetable", "debug: course $course raw contents ${raw.length} chars")
             } catch (e: Exception) {
                 Log.w("UMTimetable", "debug: course $course failed: ${e.message}")

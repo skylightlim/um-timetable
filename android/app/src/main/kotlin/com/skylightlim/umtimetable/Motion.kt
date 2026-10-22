@@ -1,5 +1,6 @@
 package com.skylightlim.umtimetable
 
+import android.animation.Animator
 import android.animation.ObjectAnimator
 import android.animation.TimeInterpolator
 import android.animation.ValueAnimator
@@ -85,15 +86,20 @@ object Motion {
     /** Leaving is quicker than arriving, and doesn't bounce. */
     val EXIT = PathInterpolator(0.4f, 0f, 1f, 1f)
     private val PRESS = PathInterpolator(0.2f, 0f, 0f, 1f)
+    /** The tint animation running on a view, so a new one cancels it: two over one view could end in the wrong colour. */
+    private val tints = java.util.WeakHashMap<View, ValueAnimator>()
 
     fun ViewPropertyAnimator.spring(s: Spring): ViewPropertyAnimator = setInterpolator(s).setDuration(s.duration)
 
     /** False with "Remove animations": then views are just put where they end. */
     val enabled get() = ValueAnimator.areAnimatorsEnabled()
 
-    /** Opacity eases on its own (a spring would carry it past fully opaque). */
-    fun fade(v: View, from: Float, to: Float, ms: Long = 180) =
-        ObjectAnimator.ofFloat(v, View.ALPHA, from, to).setDuration(ms).apply { interpolator = PRESS }.start()
+    /** Opacity eases on its own (a spring would carry it past fully opaque). Returns the running animator, so a finger can cancel it. */
+    fun fade(v: View, from: Float, to: Float, ms: Long = 180): Animator {
+        val a = ObjectAnimator.ofFloat(v, View.ALPHA, from, to).setDuration(ms).apply { interpolator = PRESS }
+        a.start()
+        return a
+    }
 
     /**
      * Press feedback for everything tappable under a root: the view under the finger sinks a little
@@ -284,9 +290,12 @@ object Motion {
 
     /** An icon's tint changing with the pill gliding under it. */
     fun tint(icon: ImageView, from: Int, to: Int, ms: Long = 220) {
+        tints.remove(icon)?.cancel()
         icon.imageTintList = android.content.res.ColorStateList.valueOf(if (!enabled) to else from)
         if (!enabled || from == to) return
-        ValueAnimator.ofArgb(from, to).setDuration(ms).apply { addUpdateListener { icon.imageTintList = android.content.res.ColorStateList.valueOf(it.animatedValue as Int) } }.start()
+        val a = ValueAnimator.ofArgb(from, to).setDuration(ms).apply { addUpdateListener { icon.imageTintList = android.content.res.ColorStateList.valueOf(it.animatedValue as Int) } }
+        a.start()
+        tints[icon] = a
     }
 
     /**
@@ -294,9 +303,12 @@ object Motion {
      * faster ([ms] 90): its light colour on the bare slot is barely readable.
      */
     fun tint(text: android.widget.TextView, from: Int, to: Int, ms: Long = 220) {
+        tints.remove(text)?.cancel()
         if (!enabled || from == to) return text.setTextColor(to)
         text.setTextColor(from)
-        ValueAnimator.ofArgb(from, to).setDuration(ms).apply { addUpdateListener { text.setTextColor(it.animatedValue as Int) } }.start()
+        val a = ValueAnimator.ofArgb(from, to).setDuration(ms).apply { addUpdateListener { text.setTextColor(it.animatedValue as Int) } }
+        a.start()
+        tints[text] = a
     }
 
     /**
