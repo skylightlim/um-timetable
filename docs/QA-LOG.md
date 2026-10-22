@@ -18,6 +18,22 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 22 October 2026 (Security: debug tools only for adb)
+
+**Asked for:** the app audit, continued: fix the security findings of 22 October (checked with
+Google's `android-intent-security` skill and by reading the web and network code).
+
+**Change:** the debug build's four tools (`DebugSpectrumReceiver`, `DebugRenderReceiver`,
+`DebugSpectrumCallActivity`, `WidgetPreviewActivity`) were open to every app on the phone, so while a
+debug build was installed any app could have made Spectrum calls as the user (posting, messaging,
+submitting) through `DebugSpectrumReceiver --es call`. Each now needs `android.permission.DUMP`, which
+adb's shell holds and other apps can't be given. Release builds never had them.
+
+**Checked:** debug build installed on the user's phone: its manifest (`aapt2 dump xmltree`) has the
+permission on all four, and `am broadcast` from adb still reaches `DebugRenderReceiver` (it drew the
+Settings page). Another app being refused couldn't be shown: `am` run as another app fails its own
+package check before it gets that far.
+
 ## 22 October 2026 (Audit: dead code deleted)
 
 **Asked for:** the app audit, continued: the dead code of `docs/audit.md` §4, and what the ponytail
