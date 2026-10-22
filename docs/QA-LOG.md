@@ -18,6 +18,18 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 22 October 2026 (Audit: dragging a sheet down while it's still arriving)
+
+**Asked for:** the app audit, continued (`docs/audit.md` §3).
+
+**Change:** a bottom sheet (Settings, a class's sheet) rises on a spring, and a drag that started
+during it set the sheet's position while the spring did too, so it shook. The drag now cancels the
+entrance spring when it takes hold. (The scrim's short entrance fade can still overlap a drag: the
+audit left it unless a flicker shows.)
+
+**Checked:** unit tests pass; built. The user's to try: open a sheet and pull it down the moment it
+appears; it should follow the finger from the first move.
+
 ## 22 October 2026 (Audit: a switch's labels settling in the wrong colour)
 
 **Asked for:** the app audit, continued (`docs/audit.md` §2).
