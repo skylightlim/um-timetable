@@ -18,6 +18,19 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 23 October 2026 (1.7.0-beta.1 published)
+
+**Asked for:** push it to GitHub.
+
+**Published:** 1.7.0-beta.1, versionCode 10: a minor version, for course pages laid out as Spectrum shows
+them, the course page link fixes, auto attendance at class start on mobile data, attendance by Spectrum's
+occurrence, class reminders, selectable course text, and the audit's fixes. Before publishing, the tree was
+grepped for the backups' lecturer names (none) and the user's occurrences: two code comments used the
+user's real occurrence as their example (`{"GIG1003": …}`), now the made-up student's, and the new QA
+entries and the attendance script used a real class's date and time as examples, now made-up ones. Snapshot
+df7c0b8 on the public `main`; the APK built from a clean worktree of it, signed with the release key
+(SHA-256 bf:c0:58…b2:94:20); pre-release v10 with nine plain lines of notes. Installed on the user's phone.
+
 ## 23 October 2026 (Course pages laid out from Spectrum's own layout, for any course)
 
 **Asked for:** not only these courses: anyone using the app, with any course, should see its page laid
