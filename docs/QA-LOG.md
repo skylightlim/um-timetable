@@ -41,7 +41,9 @@ reads it once. No times change.
 
 **Checked:** unit tests pass, with a new `StartOfDayTest`: for 400 days from 20 October 2026, in Kuala
 Lumpur's time and in London's (days of 23 and 25 hours), the new midnight and weekday equal what the
-old `Calendar` code gave. Built.
+old `Calendar` code gave. Built. On the user's phone, the app's alarms after the debug install and a
+full sync were the ones set before it, to the second (`dumpsys alarm`: deadline reminder, auto
+attendance at the next class's start, the attendance check a minute later).
 
 ## 22 October 2026 (Audit: sync without what only an older Moodle needed)
 
@@ -58,7 +60,9 @@ The names already saved on a phone stay in its settings until the next sign-in o
 clear them; nothing reads them now.
 
 **Checked:** unit tests pass; built. Spectrum answered the deadlines call with the parameter
-(`DebugSpectrumReceiver --es call`, one event; the raw reply deleted).
+(`DebugSpectrumReceiver --es call`, one event; the raw reply deleted). On the user's phone (debug build),
+a full sync (`--es sync full`) came back ok in 1.6 s with all the courses, today's attendance sessions,
+grades and news, and Due rewritten with the same items as before.
 
 ## 22 October 2026 (Security: trusted sites matched by whole domain names)
 
