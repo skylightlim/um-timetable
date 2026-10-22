@@ -18,6 +18,23 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 22 October 2026 (Audit: a swipe taking hold of a page still settling)
+
+**Asked for:** carry on with the app audit: the motion fixes of the 17 October audit (`docs/audit.md`
+§1) were never made.
+
+**Change:** a page follows the finger by setting its position and opacity itself, while the last
+swipe's spring back (or the next page's slide in) could still be running on it: both wrote each frame,
+so a quick second swipe stuttered and snapped. Now, when a swipe takes hold, the finger takes over:
+the running spring and the settle's fade (`Motion.fade` now returns its animator) are cancelled. On
+Day that's the page; on Week, the grid carousel. Cancelling stops every property at once, so if the
+page was still springing back up after a pull to sync, that spring starts again from where it stopped
+(the audit's version would have left the page hanging partway down).
+
+**Checked:** unit tests pass; built. The feel is the user's to try: swipe a day, and swipe again before
+the page has settled; it should follow the finger with no stutter or snap. Also swipe right after a
+pull to sync: the page should still go all the way back up.
+
 ## 22 October 2026 (Class reminders)
 
 **Asked for:** an option to notify the user of the classes they have to attend.

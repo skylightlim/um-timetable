@@ -1,5 +1,6 @@
 package com.skylightlim.umtimetable
 
+import android.animation.Animator
 import android.animation.ObjectAnimator
 import android.animation.TimeInterpolator
 import android.animation.ValueAnimator
@@ -91,9 +92,12 @@ object Motion {
     /** False with "Remove animations": then views are just put where they end. */
     val enabled get() = ValueAnimator.areAnimatorsEnabled()
 
-    /** Opacity eases on its own (a spring would carry it past fully opaque). */
-    fun fade(v: View, from: Float, to: Float, ms: Long = 180) =
-        ObjectAnimator.ofFloat(v, View.ALPHA, from, to).setDuration(ms).apply { interpolator = PRESS }.start()
+    /** Opacity eases on its own (a spring would carry it past fully opaque). Returns the running animator, so a finger can cancel it. */
+    fun fade(v: View, from: Float, to: Float, ms: Long = 180): Animator {
+        val a = ObjectAnimator.ofFloat(v, View.ALPHA, from, to).setDuration(ms).apply { interpolator = PRESS }
+        a.start()
+        return a
+    }
 
     /**
      * Press feedback for everything tappable under a root: the view under the finger sinks a little
