@@ -18,13 +18,11 @@ object ClassReminders {
     private const val KEY = "classReminder"
     private const val FIRED = "classReminded"
 
-    private fun prefs(c: Context) = c.getSharedPreferences("ui", Context.MODE_PRIVATE)
-
     /** Minutes before each class, or null when they're off. */
-    fun before(c: Context): Int? = prefs(c).getInt(KEY, -1).takeIf { it >= 0 }
+    fun before(c: Context): Int? = uiPrefs(c).getInt(KEY, -1).takeIf { it >= 0 }
 
     fun setBefore(c: Context, minutes: Int?) {
-        prefs(c).edit().putInt(KEY, minutes ?: -1).apply()
+        uiPrefs(c).edit().putInt(KEY, minutes ?: -1).apply()
         schedule(c)
     }
 
@@ -51,7 +49,7 @@ object ClassReminders {
         val pi = SpectrumAlarmReceiver.intent(c, SpectrumAlarmReceiver.ACTION_CLASS)
         val before = before(c) ?: return am.cancel(pi)
         val now = System.currentTimeMillis()
-        val fired = prefs(c).getStringSet(FIRED, emptySet()).orEmpty()
+        val fired = uiPrefs(c).getStringSet(FIRED, emptySet()).orEmpty()
         val next = ahead(c, before).filter { it.key !in fired && it.at > now }.minOfOrNull { it.at }
         exactAlarm(am, next, pi)
     }
@@ -60,7 +58,7 @@ object ClassReminders {
         val before = before(c) ?: return
         val now = System.currentTimeMillis()
         val due = ahead(c, before)
-        val fired = prefs(c).getStringSet(FIRED, emptySet()).orEmpty().toMutableSet()
+        val fired = uiPrefs(c).getStringSet(FIRED, emptySet()).orEmpty().toMutableSet()
         // Due now (a minute early is fine), and not once the class is over: a phone asleep past it says nothing.
         for (d in due) {
             if (d.key in fired || d.at > now + 60_000 || d.end <= now) continue
@@ -80,7 +78,7 @@ object ClassReminders {
             )
             fired += d.key
         }
-        prefs(c).edit().putStringSet(FIRED, fired.filter { key -> due.any { it.key == key } }.toSet()).apply()
+        uiPrefs(c).edit().putStringSet(FIRED, fired.filter { key -> due.any { it.key == key } }.toSet()).apply()
         schedule(c)
     }
 }

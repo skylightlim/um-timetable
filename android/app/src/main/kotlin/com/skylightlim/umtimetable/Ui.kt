@@ -120,9 +120,8 @@ enum class Scheme(
     }
 
     companion object {
-        private fun prefs(c: Context) = c.getSharedPreferences("ui", Context.MODE_PRIVATE)
-        fun load(c: Context) = runCatching { valueOf(prefs(c).getString("scheme", GOLD.name)!!) }.getOrDefault(GOLD)
-        fun save(c: Context, scheme: Scheme) = prefs(c).edit().putString("scheme", scheme.name).apply()
+        fun load(c: Context) = runCatching { valueOf(uiPrefs(c).getString("scheme", GOLD.name)!!) }.getOrDefault(GOLD)
+        fun save(c: Context, scheme: Scheme) = uiPrefs(c).edit().putString("scheme", scheme.name).apply()
     }
 }
 
@@ -137,9 +136,8 @@ enum class Look(val label: String, val icon: Int) {
     })
 
     companion object {
-        private fun prefs(c: Context) = c.getSharedPreferences("ui", Context.MODE_PRIVATE)
-        fun load(c: Context) = runCatching { valueOf(prefs(c).getString("look", AUTO.name)!!) }.getOrDefault(AUTO)
-        fun save(c: Context, look: Look) = prefs(c).edit().putString("look", look.name).apply()
+        fun load(c: Context) = runCatching { valueOf(uiPrefs(c).getString("look", AUTO.name)!!) }.getOrDefault(AUTO)
+        fun save(c: Context, look: Look) = uiPrefs(c).edit().putString("look", look.name).apply()
     }
 }
 
@@ -528,6 +526,9 @@ class Wheel(private val ui: Ui, private val options: List<String>, chosen: Int, 
         super.onDetachedFromWindow()
     }
 }
+
+/** The app's own settings (look, scheme, vibration, reminders, the page last open), apart from Spectrum's. */
+fun uiPrefs(c: Context): android.content.SharedPreferences = c.getSharedPreferences("ui", Context.MODE_PRIVATE)
 
 /** Small view-building helpers shared by the native screens. */
 class Ui(val context: Context, val p: Palette, val f: Fonts) {

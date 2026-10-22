@@ -40,8 +40,6 @@ object Updater {
 
     data class Release(val code: Long, val name: String, val notes: String, val url: String, val size: Long)
 
-    private fun prefs(c: Context) = c.getSharedPreferences("ui", Context.MODE_PRIVATE)
-
     fun installed(c: Context): Pair<Long, String> =
         c.packageManager.getPackageInfo(c.packageName, 0).let { it.longVersionCode to (it.versionName ?: "") }
 
@@ -76,7 +74,7 @@ object Updater {
      * there's one, and not again for a version the user put off. Otherwise (Settings): says how it went.
      */
     fun check(activity: Activity, ui: Ui, quiet: Boolean) {
-        val p = prefs(activity)
+        val p = uiPrefs(activity)
         // A download that's been installed (or overtaken) isn't needed any more.
         val have = installed(activity).first
         dir(activity).listFiles()?.filter { (it.name.removePrefix("um-timetable-").removeSuffix(".apk").toLongOrNull() ?: 0) <= have }?.forEach { it.delete() }
@@ -132,7 +130,7 @@ object Updater {
             right?.let { buttons.addView(ConfirmDialog.button(ui, it, p.accent, p.accentInk, onRight), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)) }
         }
         fun later() {
-            prefs(activity).edit().putLong("updateLater", release.code).apply()
+            uiPrefs(activity).edit().putLong("updateLater", release.code).apply()
             close(null)
         }
         lateinit var start: () -> Unit

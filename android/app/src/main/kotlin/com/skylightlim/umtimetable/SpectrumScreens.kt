@@ -561,7 +561,7 @@ object SpectrumScreens {
         }
         val all = SpectrumStore.array(ui.context, "news").objects().sortedByDescending { it.getLong("time") }
         val mine = all.filter { it.optBoolean("forMe", true) }
-        val prefs = ui.context.getSharedPreferences("ui", android.content.Context.MODE_PRIVATE)
+        val prefs = uiPrefs(ui.context)
         val showAll = prefs.getBoolean("newsAll", false)
         // For me / All, across the top of the list (the page's name is in the top bar).
         val switch = ui.segmented(listOf("For me · ${mine.size}", "All · ${all.size}"), if (showAll) 1 else 0, fill = true) { i, _ ->

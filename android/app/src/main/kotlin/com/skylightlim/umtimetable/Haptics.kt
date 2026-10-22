@@ -22,16 +22,14 @@ object Haptics {
 
     private enum class Kind { SELECT, BACK, CROSS, UNCROSS }
 
-    private fun prefs(c: Context) = c.getSharedPreferences("ui", Context.MODE_PRIVATE)
-
     /** Medium unless chosen; the first version's on/off switch, if turned off, means Off. */
     fun level(c: Context): Level {
-        val p = prefs(c)
+        val p = uiPrefs(c)
         if (p.contains("hapticLevel")) return Level.entries.getOrElse(p.getInt("hapticLevel", 2)) { Level.MEDIUM }
         return if (p.getBoolean("haptics", true)) Level.MEDIUM else Level.OFF
     }
 
-    fun setLevel(c: Context, level: Level) = prefs(c).edit().putInt("hapticLevel", level.ordinal).apply()
+    fun setLevel(c: Context, level: Level) = uiPrefs(c).edit().putInt("hapticLevel", level.ordinal).apply()
 
     /** Another tab, day or page was chosen. Also what a level feels like, when it's picked. */
     fun tick(v: View) = play(v, Kind.SELECT)

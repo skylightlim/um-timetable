@@ -18,6 +18,16 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 22 October 2026 (Audit: one name for the app's own settings)
+
+**Asked for:** the app audit, continued: the ponytail audit's cuts.
+
+**Change:** seven places each opened the app's own settings file (`"ui"`: the look, scheme, vibration,
+class reminders, update choice, the page last open) with their own copy of the call; they now share
+`uiPrefs(context)` (Ui.kt). Nothing stored changes.
+
+**Checked:** unit tests pass; the debug and release builds build.
+
 ## 22 October 2026 (Audit: alarm scheduling, shorter)
 
 **Asked for:** the app audit, continued: the ponytail audit's cuts.

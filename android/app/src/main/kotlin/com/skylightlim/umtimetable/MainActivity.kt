@@ -142,11 +142,11 @@ class MainActivity : Activity(), SpectrumHost {
         fonts = Fonts(this)
         look = Look.load(this)
         scheme = Scheme.load(this)
-        seenNews = prefs().getStringSet("newsSeen", emptySet()) ?: emptySet()
-        seenGrades = prefs().getStringSet("gradesSeen", emptySet()) ?: emptySet()
+        seenNews = uiPrefs(this).getStringSet("newsSeen", emptySet()) ?: emptySet()
+        seenGrades = uiPrefs(this).getStringSet("gradesSeen", emptySet()) ?: emptySet()
         sel = homeDay(timetable, now())
         view = intent.getStringExtra(EXTRA_VIEW)?.takeIf { it in VIEWS }
-            ?: prefs().getString("view", "day")?.takeIf { it in VIEWS } ?: "day"
+            ?: uiPrefs(this).getString("view", "day")?.takeIf { it in VIEWS } ?: "day"
         intent.getIntExtra(EXTRA_COURSE, 0).takeIf { it > 0 }?.let { view = "files"; openCourse = it }
         buildShell()
         render()
@@ -193,8 +193,6 @@ class MainActivity : Activity(), SpectrumHost {
         settings = null
         super.onDestroy()
     }
-
-    private fun prefs() = getSharedPreferences("ui", MODE_PRIVATE)
 
     /** Every touch goes past the press feedback first; it never takes one. */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
@@ -722,7 +720,7 @@ class MainActivity : Activity(), SpectrumHost {
             val ids = SpectrumStore.array(this, "news").objects().map { it.getInt("id").toString() }
             if (ids.all { it in seenNews }) return@postDelayed
             seenNews = (seenNews + ids).toList().takeLast(500).toSet()
-            prefs().edit().putStringSet("newsSeen", seenNews).apply()
+            uiPrefs(this).edit().putStringSet("newsSeen", seenNews).apply()
             renderTabs() // the dots on the cards stay until the next redraw, so they're seen first
         }, 1500)
     }
@@ -732,7 +730,7 @@ class MainActivity : Activity(), SpectrumHost {
             val keys = SpectrumStore.array(this, "grades").objects().filter { !it.isNull("raw") }.map { SpectrumSync.gradeKey(it) }
             if (keys.all { it in seenGrades }) return@postDelayed
             seenGrades = (seenGrades + keys).toList().takeLast(500).toSet()
-            prefs().edit().putStringSet("gradesSeen", seenGrades).apply()
+            uiPrefs(this).edit().putStringSet("gradesSeen", seenGrades).apply()
             renderTabs() // the dots on the marks stay until the next redraw, so they're seen first
         }, 1500)
     }
@@ -749,7 +747,7 @@ class MainActivity : Activity(), SpectrumHost {
         // Another tab: Day and Week start again from the strip's own week.
         if (view != "day" && view != "week") weekShift = 0
         this.view = view
-        prefs().edit().putString("view", view).apply()
+        uiPrefs(this).edit().putString("view", view).apply()
         if (changed) feel?.invoke(shell)
         render(keepScroll = false, enter = changed)
     }
