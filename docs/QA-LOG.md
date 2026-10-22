@@ -18,6 +18,22 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 22 October 2026 (Security: links from web pages open only what a browser could)
+
+**Asked for:** the app audit, continued (security finding 2).
+
+**Change:** on the sign-in, MAYA and TimeEdit pages, a link that isn't a web page (an `intent:` link,
+or another app's scheme such as the Microsoft Authenticator's) went to `Intent.parseUri` and was
+started as it came, so a page there could have opened any screen of this app, private ones included.
+It's now sent the way Chrome sends one: only to screens that take links from a browser
+(`CATEGORY_BROWSABLE`), with any named screen and selector dropped. (The in-app Spectrum view already
+sent such links on as plain links.)
+
+**Checked:** unit tests pass; built. On the user's phone, the Microsoft Authenticator's sign-in links
+(`microsoft-authenticator://`, `ms-msa://`, `authapp://`) still resolve to it with the browser category
+(`pm query-activities -c android.intent.category.BROWSABLE`). A real hand-off to it during a sign-in
+wasn't tried: the user is signed in.
+
 ## 22 October 2026 (Security: debug tools only for adb)
 
 **Asked for:** the app audit, continued: fix the security findings of 22 October (checked with

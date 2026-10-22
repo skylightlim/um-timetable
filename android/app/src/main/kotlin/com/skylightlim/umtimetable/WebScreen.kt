@@ -115,11 +115,21 @@ abstract class WebScreen : Activity() {
 
     /**
      * Whether [url] leaves the page. Web pages stay; other schemes (e.g. the Microsoft
-     * Authenticator app during SiswaMail sign-in) go to the app that handles them.
+     * Authenticator app during SiswaMail sign-in) go to the app that handles them, as Chrome
+     * sends them: only to screens open to links from a browser, and never to a named one. A page's
+     * `intent:` link could otherwise open any screen of this app, private ones included.
      */
     protected open fun leaves(url: Uri): Boolean {
         if (url.scheme == "https" || url.scheme == "http") return false
-        runCatching { startActivity(Intent.parseUri(url.toString(), Intent.URI_INTENT_SCHEME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        runCatching {
+            val intent = Intent.parseUri(url.toString(), Intent.URI_INTENT_SCHEME).apply {
+                addCategory(Intent.CATEGORY_BROWSABLE)
+                component = null
+                selector = null
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        }
         return true
     }
 
