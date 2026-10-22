@@ -935,6 +935,18 @@ class MainActivity : Activity(), SpectrumHost {
 
     override fun courseContents(id: Int) = contents[id]
 
+    /** Reads a course's layout again behind its page, and redraws the page if it changed. */
+    private fun refreshLayout(id: Int) = thread {
+        val fresh = CourseLayout.refresh(applicationContext, id) ?: return@thread
+        runOnUiThread {
+            val course = contents[id] ?: return@runOnUiThread
+            course.remove("layoutStale")
+            if (course.optJSONObject("layout")?.toString() == fresh.toString()) return@runOnUiThread
+            course.put("layout", fresh)
+            if (view == "files" && openCourse == id) render(keepScroll = true)
+        }
+    }
+
     override fun showSection(id: Int) {
         Haptics.tick(shell)
         sectionPages += id to scroll.scrollY
@@ -961,6 +973,7 @@ class MainActivity : Activity(), SpectrumHost {
                 if (course != null && course.has("sections")) contents[id] = course
                 else contentErrors[id] = course?.optString("error")?.ifEmpty { null } ?: "Couldn't read this course."
                 if (view == "files" && openCourse == id) render(keepScroll = true)
+                if (course?.optBoolean("layoutStale") == true) refreshLayout(id)
             }
         }
     }

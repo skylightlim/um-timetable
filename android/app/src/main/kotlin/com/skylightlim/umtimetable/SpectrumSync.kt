@@ -123,8 +123,10 @@ object SpectrumSync {
 
     /**
      * One course page for the Courses tab, cached for offline use: its sections ([normalizeContents]),
-     * its format and whether it shows one section per page, and for Flexible sections which section
-     * sits in which ([CourseLayout]). [CourseOutline] arranges them as Spectrum's own page does.
+     * its format and whether it shows one section per page, and Spectrum's layout of the page
+     * ([CourseLayout]): the one kept, or for a format the web service's order doesn't give, read now the
+     * first time. A kept one that's out of date is marked `layoutStale` for the caller to read again
+     * after showing the page. [CourseOutline] arranges them as Spectrum's own page does.
      */
     fun courseContents(c: Context, courseId: Int): String {
         val token = SpectrumStore.token(c) ?: return JSONObject().put("error", "Not signed in.").toString()
@@ -139,7 +141,10 @@ object SpectrumSync {
                     // Flexible sections hides the first section's name unless the course says otherwise.
                     .put("section0title", if (info.optString("format") == "flexsections") options["showsection0title"] == "1" else true)
             }.onFailure { Log.w(TAG, "course format failed: ${it.message}") }
-            if (course.optString("format") == "flexsections") CourseLayout.get(c, courseId, course)?.let { course.put("layout", it) }
+            val kept = CourseLayout.kept(c, courseId)
+            val readNow = kept == null && course.optString("format") !in CourseLayout.PLAIN
+            (if (readNow) CourseLayout.refresh(c, courseId) else kept)?.let { course.put("layout", it) }
+            if (!readNow && CourseLayout.stale(c, courseId, course)) course.put("layoutStale", true)
             course.toString().also { SpectrumStore.write(c, cacheName, it) }
         } catch (e: Exception) {
             Log.w(TAG, "course contents failed: ${e.message}")
@@ -151,8 +156,8 @@ object SpectrumSync {
 
     /**
      * core_course_get_contents → { sections: [{ id, number, name, summary, component, itemid, visible,
-     * uservisible, availability, modules: [{ kind, name, label, url, files, html, dates, availability,
-     * restricted, cmid, instance }] }] }. Nothing Spectrum's page shows is left out: restricted sections
+     * uservisible, availability, orphan, modules: [{ kind, name, label, url, files, html, dates,
+     * availability, restricted, onpage, cmid, instance }] }] }. Nothing Spectrum's page shows is left out: restricted sections
      * and activities (another group's) stay, marked, and so do empty and hidden sections.
      */
     fun normalizeContents(sections: JSONArray): JSONObject {
@@ -188,6 +193,8 @@ object SpectrumSync {
                         .put("availability", m.optString("availabilityinfo"))
                         // Shown on the page but not open to this student: greyed, with its rules, as in a browser.
                         .put("restricted", !m.optBoolean("uservisible", true))
+                        // Open by its link but not listed on the course page ("stealth"): left off the page.
+                        .put("onpage", m.optInt("visibleoncoursepage", 1) != 0)
                         .put("cmid", m.optInt("id")).put("instance", m.optInt("instance")),
                 )
             }
@@ -198,7 +205,9 @@ object SpectrumSync {
                     // A subsection's own section (mod_subsection, itemid = the subsection), shown where its link is.
                     .put("component", if (s.isNull("component")) "" else s.optString("component")).put("itemid", s.optInt("itemid"))
                     .put("visible", s.optInt("visible", 1) != 0).put("uservisible", s.optBoolean("uservisible", true))
-                    .put("availability", s.optString("availabilityinfo")),
+                    .put("availability", s.optString("availabilityinfo"))
+                    // Beyond the course's number of sections (an old setting): not on the page.
+                    .put("orphan", s.optInt("hiddenbynumsections") != 0),
             )
         }
         return JSONObject().put("sections", out)

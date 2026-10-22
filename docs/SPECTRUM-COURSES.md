@@ -9,7 +9,13 @@ drawn off-screen (`DebugRenderReceiver --es view files --ei course N [--ei secti
 
 Lecturers set up their courses in four different ways, and the web service flattens all of them into
 one list of sections. A browser shows each its own way; the app now does the same ([CourseOutline],
-[CourseLayout]).
+[CourseLayout]), for any course, not only these seven: it follows the description Moodle builds every
+course page from (`core_courseformat_get_state`: which section sits in which, which opens as a page of
+its own, which activities each section lists and in what order), read in a hidden page on the app's
+Spectrum session. Checked on all seven: with it, every section the browser draws lists the same
+activities in the same order, and the same sections are at the top. What can't be the same is a format's
+look: Tiles and Grid courses (pictures) and One Topic courses (tabs) show their sections as cards
+opening a page each, the closest the app's pages come.
 
 | Course | Format | How the browser shows it | Sections (shown) | Subsections | Restricted to other groups | Also |
 |---|---|---|---|---|---|---|
@@ -39,7 +45,9 @@ one list of sections. A browser shows each its own way; the app now does the sam
    official Moodle app shows these courses flat too. *Before:* GIG1003 was 64 sections in one list, every
    lecturer's material for every occurrence. *Now:* the layout is read the way Spectrum's own page reads
    it, `core_courseformat_get_state`, in a hidden page on the app's Spectrum session ([CourseLayout],
-   about 1.3 s; kept a day). The web service token can't call it ("Access control exception"). Inner
+   about 1.3 s; kept a day). The web service token can't call it ("Access control exception"). Every
+   course's layout is read this way, whatever its format: a Topics or Weekly course's page shows at once
+   from the web service and its layout follows; any other format waits for it the first time. Inner
    sections are set in; linked ones are cards (name, summary, "2 activities · 6 sections") opening a
    page of their own. A section whose parent was deleted isn't shown, as in the browser. If the layout
    can't be read (signed out of Microsoft), the course shows all its sections at the top.
@@ -79,8 +87,11 @@ one list of sections. A browser shows each its own way; the app now does the sam
 - Sections can't be collapsed; everything on a page is shown open (the app's rule: nothing behind Show
   more on a course page, except long restriction lists).
 - Activity icons are by kind (file, folder, link, other), not each activity type's own.
-- A Flexible sections course needs the hidden page's sign-in for its layout; the first open of such a
-  course waits for it (about a second or two).
+- The layout needs the hidden page's sign-in. Without it (signed out of Microsoft, no network) the
+  web service's order stands in, less what Spectrum keeps off the page (activities hidden from it,
+  sections beyond the course's number of sections): on these seven, the same as the browser except a
+  Flexible sections course's nesting (GIG1003 shows all its sections at the top).
+- The first open of a course that isn't Topics or Weekly waits for its layout (about a second or two).
 - Text is the web service's, unfiltered (`moodlewssettingfilter` off): Spectrum's filters would turn
   YouTube links into players the app can't show. Spectrum doesn't turn plain addresses into links, so
   nothing is lost.

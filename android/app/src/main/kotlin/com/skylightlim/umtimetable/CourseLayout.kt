@@ -16,28 +16,45 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * Which section sits in which on a Flexible sections course page, and which of them Spectrum shows as a
- * link to a page of its own. The web service the app signs in with says nothing of either (Spectrum's
- * Flexible sections offers the Moodle app nothing), so it's read the way Spectrum's own page reads it,
- * core_courseformat_get_state, in a hidden page on the app's Spectrum session: signed in through
- * Microsoft like auto attendance's. Kept per course, and read again once a day, or as soon as the course
- * has a section the last reading didn't know.
+ * A course page's layout as Spectrum's own page lays it out, for any course format: which section sits in
+ * which (Flexible sections), which Spectrum shows as a link to a page of its own, and which activities
+ * each section lists, in its order (one hidden from the course page isn't). It's the description Moodle
+ * builds the page from, core_courseformat_get_state, which the app's web-service token may not call
+ * ("Access control exception"); so it's read the way the page reads it, in a hidden page on the app's
+ * Spectrum session, signed in through Microsoft like auto attendance's. Kept per course, and read again
+ * once a day, or as soon as the course has a section the last reading didn't know.
  */
 object CourseLayout {
     private const val TAG = "UMTimetable"
     private const val DAY = 86_400_000L
     /** A small signed-in page: it carries the session key the request needs. */
     private const val PAGE = "/user/preferences.php"
+    /**
+     * Formats whose page lists the web service's sections in its own order: such a page shows at once,
+     * and its layout follows. Any other (Flexible sections, Tiles, one not seen yet) waits for it the
+     * first time, since the web service's flat list can be far from what the page shows.
+     */
+    val PLAIN = setOf("topics", "weeks")
+    /** The kept layout's shape; an older one is read again. */
+    private const val VERSION = 2
 
-    /** { "<section id>": { parent: <section id, 0 at the top>, link } }, or null when it can't be read and none was kept. */
-    fun get(c: Context, courseId: Int, course: JSONObject): JSONObject? {
-        val name = "layout-$courseId"
-        val kept = SpectrumStore.read(c, name)?.let { runCatching { JSONObject(it) }.getOrNull() }
-        val sections = kept?.optJSONObject("sections")
-        val ids = course.optJSONArray("sections")?.objects().orEmpty().filter { it.optString("component").isEmpty() }.map { it.optInt("id").toString() }
-        if (sections != null && System.currentTimeMillis() - kept.optLong("at") < DAY && ids.all(sections::has)) return sections
-        val fresh = read(c, courseId) ?: return sections
-        SpectrumStore.write(c, name, JSONObject().put("at", System.currentTimeMillis()).put("sections", fresh).toString())
+    /** { "<section id>": { parent: <section id, 0 at the top>, link, cms: [activity ids in the page's order] } } as last kept, or null. */
+    fun kept(c: Context, courseId: Int): JSONObject? =
+        SpectrumStore.read(c, "layout-$courseId")?.let { runCatching { JSONObject(it) }.getOrNull() }
+            ?.takeIf { it.optInt("v") == VERSION }?.optJSONObject("sections")
+
+    /** Whether the kept layout should be read again: none, a day old, or missing one of [course]'s sections. */
+    fun stale(c: Context, courseId: Int, course: JSONObject): Boolean {
+        val kept = SpectrumStore.read(c, "layout-$courseId")?.let { runCatching { JSONObject(it) }.getOrNull() }
+        val sections = kept?.takeIf { it.optInt("v") == VERSION }?.optJSONObject("sections") ?: return true
+        val ids = course.optJSONArray("sections")?.objects().orEmpty().map { it.optInt("id").toString() }
+        return System.currentTimeMillis() - kept.optLong("at") > DAY || !ids.all(sections::has)
+    }
+
+    /** Reads the layout afresh and keeps it; null when it can't be read (signed out of Microsoft, no network). */
+    fun refresh(c: Context, courseId: Int): JSONObject? {
+        val fresh = read(c, courseId) ?: return null
+        SpectrumStore.write(c, "layout-$courseId", JSONObject().put("v", VERSION).put("at", System.currentTimeMillis()).put("sections", fresh).toString())
         return fresh
     }
 
@@ -106,7 +123,9 @@ object CourseLayout {
           }).then(function (r) { return r.json(); }).then(function (r) {
             if (r[0].error) throw new Error((r[0].exception && r[0].exception.errorcode) || 'error');
             var out = {};
-            JSON.parse(r[0].data).section.forEach(function (s) { out[s.id] = {parent: Number(s.parentid) || 0, link: !!s.showaslink}; });
+            JSON.parse(r[0].data).section.forEach(function (s) {
+              out[s.id] = {parent: Number(s.parentid) || 0, link: !!s.showaslink, cms: (s.cmlist || []).map(Number)};
+            });
             window.__umLayout = JSON.stringify(out);
           }).catch(function (e) { window.__umLayout = JSON.stringify({error: String(e)}); });
         })();

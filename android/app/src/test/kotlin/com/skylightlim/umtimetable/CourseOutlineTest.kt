@@ -78,6 +78,37 @@ class CourseOutlineTest {
         assertNull(CourseOutline.find(top, 16))
     }
 
+    @Test fun theLayoutSaysWhatEachSectionListsAndInWhatOrder() {
+        val c = course(
+            section(10, 0, module(1)),
+            section(11, 1, module(2), module(3), module(4)),
+            section(12, 2, module(5)), // not in the layout: not on the page
+        ).put("layout", JSONObject()
+            .put("10", JSONObject().put("parent", 0).put("cms", JSONArray(listOf(1))))
+            .put("11", JSONObject().put("parent", 0).put("cms", JSONArray(listOf(4, 2))))) // 3 is kept off the page
+        val top = CourseOutline.build(c)
+        assertEquals(listOf(0, 1), numbers(top))
+        assertEquals(listOf(4, 2), top[1].items.map { it.module.optInt("cmid") })
+    }
+
+    @Test fun withoutTheLayoutWhatSpectrumKeepsOffThePageStaysOff() {
+        val c = course(
+            section(10, 0, module(1), module(2).put("onpage", false)),
+            section(11, 1).put("orphan", true),
+        )
+        val top = CourseOutline.build(c)
+        assertEquals(listOf(0), numbers(top))
+        assertEquals(listOf(1), top[0].items.map { it.module.optInt("cmid") })
+    }
+
+    @Test fun tilesAndTabsOpenEachSectionOnItsOwnPage() {
+        for (format in listOf("tiles", "grid", "onetopic")) {
+            val top = CourseOutline.build(course(section(10, 0), section(11, 1), section(12, 2)).put("format", format))
+            assertEquals(format, listOf(false, true, true), top.map { it.link })
+        }
+        assertEquals(listOf(false, false), CourseOutline.build(course(section(10, 0), section(11, 1)).put("format", "weeks")).map { it.link })
+    }
+
     @Test fun onePerPageShowsGeneralThenCards() {
         val c = course(
             section(10, 0, module(1)),

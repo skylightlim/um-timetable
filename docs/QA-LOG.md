@@ -18,6 +18,29 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 23 October 2026 (Course pages laid out from Spectrum's own layout, for any course)
+
+**Asked for:** not only these courses: anyone using the app, with any course, should see its page laid
+out as Spectrum shows it.
+
+**Change:** every course's page now follows the description Moodle builds the course page from,
+whatever the format (`core_courseformat_get_state`, read in the hidden page on the app's Spectrum
+session, `CourseLayout`; before, only Flexible sections courses had it): which section sits in which,
+which opens as a page of its own, and which activities each section lists, in its order, so an activity
+hidden from the course page stays off it. A Topics or Weekly course's page shows at once from the web
+service and its layout follows behind it (redrawn only if it changes); any other format, one not seen
+yet included, waits for it the first time. Kept a day per course. Tiles, Grid and One Topic courses
+(sections as tiles or tabs) show their sections as cards opening a page each. Without the layout (signed
+out of Microsoft, no network), the web service's order stands in, less activities hidden from the course
+page and sections beyond the course's number of sections.
+
+**Checked:** unit tests pass, with three more in `CourseOutlineTest` (the layout's lists and order,
+what stays off without it, tiles and tabs). On the real data of all seven courses, arranged with
+Moodle's layout as the laptop's browser read it (a local run, not committed): the same sections at the
+top as the browser, and every section the browser draws has the same activities in the same order.
+Without the layout: the same on six; the Flexible sections course with linked pages loses its nesting.
+Not tried: the hidden page reading a layout on the phone (logged `course layout N: read … sections in … ms`).
+
 ## 23 October 2026 (Course pages arranged as Spectrum shows them in a browser)
 
 **Asked for:** a course page in the app wasn't organised like Spectrum in a laptop browser: check every
