@@ -86,6 +86,8 @@ object Motion {
     /** Leaving is quicker than arriving, and doesn't bounce. */
     val EXIT = PathInterpolator(0.4f, 0f, 1f, 1f)
     private val PRESS = PathInterpolator(0.2f, 0f, 0f, 1f)
+    /** The tint animation running on a view, so a new one cancels it: two over one view could end in the wrong colour. */
+    private val tints = java.util.WeakHashMap<View, ValueAnimator>()
 
     fun ViewPropertyAnimator.spring(s: Spring): ViewPropertyAnimator = setInterpolator(s).setDuration(s.duration)
 
@@ -288,9 +290,12 @@ object Motion {
 
     /** An icon's tint changing with the pill gliding under it. */
     fun tint(icon: ImageView, from: Int, to: Int, ms: Long = 220) {
+        tints.remove(icon)?.cancel()
         icon.imageTintList = android.content.res.ColorStateList.valueOf(if (!enabled) to else from)
         if (!enabled || from == to) return
-        ValueAnimator.ofArgb(from, to).setDuration(ms).apply { addUpdateListener { icon.imageTintList = android.content.res.ColorStateList.valueOf(it.animatedValue as Int) } }.start()
+        val a = ValueAnimator.ofArgb(from, to).setDuration(ms).apply { addUpdateListener { icon.imageTintList = android.content.res.ColorStateList.valueOf(it.animatedValue as Int) } }
+        a.start()
+        tints[icon] = a
     }
 
     /**
@@ -298,9 +303,12 @@ object Motion {
      * faster ([ms] 90): its light colour on the bare slot is barely readable.
      */
     fun tint(text: android.widget.TextView, from: Int, to: Int, ms: Long = 220) {
+        tints.remove(text)?.cancel()
         if (!enabled || from == to) return text.setTextColor(to)
         text.setTextColor(from)
-        ValueAnimator.ofArgb(from, to).setDuration(ms).apply { addUpdateListener { text.setTextColor(it.animatedValue as Int) } }.start()
+        val a = ValueAnimator.ofArgb(from, to).setDuration(ms).apply { addUpdateListener { text.setTextColor(it.animatedValue as Int) } }
+        a.start()
+        tints[text] = a
     }
 
     /**

@@ -18,6 +18,19 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 22 October 2026 (Audit: a switch's labels settling in the wrong colour)
+
+**Asked for:** the app audit, continued (`docs/audit.md` §2).
+
+**Change:** `Motion.tint` started a new colour animation without stopping the one already running on
+that label or icon. Two choices within about a fifth of a second left two animations writing the
+colour, and the older, longer one could write last, so a label ended in the colour it should have
+left. Now each label or icon has at most one tint animation: a new one cancels the old. That covers
+the segmented switches (For me / All, the look, Vibration) and the day strip's chips.
+
+**Checked:** unit tests pass; built. The user's to try: tap a switch's options back and forth
+quickly; every label should end in its proper colour, never a faded in-between.
+
 ## 22 October 2026 (Audit: a swipe taking hold of a page still settling)
 
 **Asked for:** carry on with the app audit: the motion fixes of the 17 October audit (`docs/audit.md`
