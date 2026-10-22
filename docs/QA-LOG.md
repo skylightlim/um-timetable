@@ -18,6 +18,22 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 22 October 2026 (Audit: dead code deleted)
+
+**Asked for:** the app audit, continued: the dead code of `docs/audit.md` §4, and what the ponytail
+audit of 22 October found unused.
+
+**Change:** deleted, about 450 lines, none of it used anywhere:
+- the sideways `Tape` picker and `Ui.tape()`: the wheels replaced them on 19 October;
+- `SpectrumScreens.courseDot` (the rows draw their own dot now), `DuelScene.linear`, `Look.next` and
+  `Haptics.next` (both from the days of the cycling buttons), and `ic_refresh.xml`;
+- the debug `SsoProbe` and its `--es sso probe` branch: its question (can the app sign in to MAYA
+  and TimeEdit on its own?) was answered on 13 October, as `FINDINGS.md` records. It stays in git's
+  history.
+
+**Checked:** each name has no hits left in the source; unit tests pass; the release and debug builds
+build. Nothing on screen changes.
+
 ## 22 October 2026 (Audit: dragging a sheet down while it's still arriving)
 
 **Asked for:** the app audit, continued (`docs/audit.md` §3).

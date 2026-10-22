@@ -1,7 +1,6 @@
 package com.skylightlim.umtimetable
 
 import android.graphics.Color
-import android.graphics.Rect
 import android.graphics.drawable.InsetDrawable
 import android.util.TypedValue
 import android.view.Gravity
@@ -202,21 +201,6 @@ object SpectrumScreens {
             addView(ui.text("Your phone blocks ${ui.context.getString(R.string.app_name)} from using data in the background, so it can't check Spectrum for attendance, announcements or deadlines while it's closed. To fix it, open app settings, tap Mobile data & Wi‑Fi, and turn on Background data.", 14.5f, ui.p.muted), ui.wide(top = 6f, bottom = 16f))
             addView(button(ui, "Open app settings") { h.openAppSettings() })
         }, ui.wide(bottom = 14f))
-    }
-
-    /**
-     * A round course-colour dot for a top-aligned row: its baseline is set so that, lined up with
-     * [text]'s first baseline, the dot is centred on the capital letters.
-     */
-    fun courseDot(ui: Ui, color: Int, text: TextView): View {
-        val size = ui.dp(10)
-        val caps = Rect().also { text.paint.getTextBounds("H", 0, 1, it) }.height()
-        return object : View(ui.context) {
-            override fun getBaseline() = (size + caps) / 2
-        }.apply {
-            background = ui.shape(color, 99f)
-            layoutParams = LinearLayout.LayoutParams(size, size)
-        }
     }
 
     /** Waiting on Spectrum: the cow and the horse fighting over [text]. */

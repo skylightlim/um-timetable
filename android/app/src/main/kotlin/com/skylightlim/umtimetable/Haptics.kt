@@ -33,9 +33,6 @@ object Haptics {
 
     fun setLevel(c: Context, level: Level) = prefs(c).edit().putInt("hapticLevel", level.ordinal).apply()
 
-    /** The level after [level] when the row is tapped: Off → Light → Medium → Strong → Off. */
-    fun next(level: Level) = Level.entries[(level.ordinal + 1) % Level.entries.size]
-
     /** Another tab, day or page was chosen. Also what a level feels like, when it's picked. */
     fun tick(v: View) = play(v, Kind.SELECT)
 

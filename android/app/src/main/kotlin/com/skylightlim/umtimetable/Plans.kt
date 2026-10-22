@@ -81,7 +81,7 @@ data class Plan(
             )
         }
 
-        /** The reminder choices: minutes before the start (null: none). The plan card shows them on a tape. */
+        /** The reminder choices: minutes before the start (null: none). The plan card shows them on a wheel. */
         val REMINDERS = listOf<Pair<Int?, String>>(
             null to "Off", 0 to "At start", 5 to "5 min", 10 to "10 min", 15 to "15 min", 30 to "30 min",
             60 to "1 h", 120 to "2 h", 1440 to "1 day",

@@ -15,7 +15,6 @@ import kotlin.concurrent.thread
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es names fill
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es call core_course_get_contents --es params '{"courseid":151}'
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es attendance check|sync
- *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es sso probe [--es site timeedit] [--ez signout true]
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es timeedit build
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es automark dry [--ei cmid N]
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es automark alarm [--ei cmid N]
@@ -131,12 +130,6 @@ class DebugSpectrumReceiver : BroadcastReceiver() {
         if (intent.getStringExtra("timeedit") == "build") {
             val pending = goAsync()
             DebugTimeEdit.build(c) { pending.finish() }
-            return
-        }
-        // --es sso probe: whether MAYA and TimeEdit let the app in with its SiswaMail session (SsoProbe).
-        if (intent.getStringExtra("sso") == "probe") {
-            val pending = goAsync()
-            SsoProbe.run(c, intent.getStringExtra("site"), intent.getBooleanExtra("signout", false)) { pending.finish() }
             return
         }
         // --es attendance sync: the background attendance check (SpectrumSync.run, attendanceOnly).

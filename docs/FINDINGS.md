@@ -143,7 +143,7 @@ organisation (`66a39ae27cea2561470bc5e1`, region SGP, from the public
 same tenant as Spectrum's "OpenID Microsoft 365". **Students are let in**: the account shows as
 `<matric>@siswa365.um.edu.my`.
 
-**Signing in without the user (13 Oct, `SsoProbe`, debug):**
+**Signing in without the user (13 Oct, `SsoProbe`, debug; removed 22 Oct with the research done, still in git history):**
 - TimeEdit's own session lasts at least 14 h: a hidden page was let straight in.
 - With TimeEdit signed out (its cookies expired, its sites' storage cleared; Microsoft's kept), the
   hidden page got back in **without typing anything**: the student page's sign-in page first tries a
