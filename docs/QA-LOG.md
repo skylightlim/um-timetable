@@ -18,6 +18,23 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (Long press to dismiss a deadline)
+
+**Asked for:** let the user long press to dismiss an item in Due.
+
+**Change:** a long press on a deadline in Due brings up a small "Dismiss" card out of the row (the
+section pin's card and vibration, now shared as `popMenu`/`menuCard`). A tap on it folds the row away in
+place, then the page is drawn again. A dismissed deadline goes from everything that counts what's due:
+the Due list and its top line, Week's deadline line, the 24 h and 2 h reminders (rescheduled at once) and
+the widget (`SpectrumStore.due`). It waits, faded, in a **Dismissed · N** fold at the end of Due, where a
+long press brings it back. Dismissals are kept per activity (`DueList.activityKey`) while Spectrum still
+lists it, and Sign out clears them with the rest.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (72) with JUnit against Robolectric's Android 17 jar. Still to try on the phone: the card
+coming out of a row, the row folding away (first, middle and last rows: no line left above the first or
+below the last), the fold, Bring back, and that a dismissed deadline's reminder doesn't come.
+
 ## 29 October 2026 (One Due row per activity, none for other occurrences)
 
 **Asked for:** check for duplicated items in Due.

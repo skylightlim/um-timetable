@@ -694,7 +694,7 @@ internal fun startOfDay(date: LocalDate): Long = date.atStartOfDay(ZoneId.system
 object Reminders {
     private val OFFSETS = listOf(24 * 3_600_000L to "24 h", 2 * 3_600_000L to "2 h")
 
-    private fun upcoming(c: Context) = SpectrumStore.array(c, "due").objects().filter { !it.optBoolean("overdue") }
+    private fun upcoming(c: Context) = SpectrumStore.due(c).filter { !it.optBoolean("overdue") }
 
     fun schedule(c: Context) {
         val am = c.getSystemService(AlarmManager::class.java)

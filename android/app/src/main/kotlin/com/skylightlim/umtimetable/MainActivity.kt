@@ -366,6 +366,8 @@ class MainActivity : Activity(), SpectrumHost {
     /** A move to another page (a course, back, a tab tapped again): it arrives with its entrance. */
     override fun render() = render(keepScroll = false, enter = true)
 
+    override fun redraw() = render(keepScroll = true)
+
     private fun render(keepScroll: Boolean, enter: Boolean = false) {
         val n = now()
         lastMinute = "${n.dow}-${n.min.toInt()}"
@@ -636,7 +638,7 @@ class MainActivity : Activity(), SpectrumHost {
         val from = startOfDay(dateIn(monday).timeInMillis)
         val to = startOfDay(dateIn(monday + 7).timeInMillis)
         val now = System.currentTimeMillis()
-        val n = SpectrumStore.array(this, "due").objects().count { it.getLong("due") in (if (to <= now) from else maxOf(from, now)) until to }
+        val n = SpectrumStore.due(this).count { it.getLong("due") in (if (to <= now) from else maxOf(from, now)) until to }
         val which = when (monday) {
             in -6..0 -> " this week"
             in 1..7 -> " next week"
