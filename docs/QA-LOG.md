@@ -18,6 +18,21 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (Courses' week in its top line, not in a Total row)
+
+**Asked for:** remove the Total row (L and T hours, classes a week, hours) from the bottom of Courses.
+Write the L/T hours and the classes in the line under the title, after the number of courses, from the
+user's timetable. Drop "last synced" from that line: pulling down shows it.
+
+**Change:** the line under Courses is now "5 courses · L12 T5 · 11 classes", with "· 2 new" when
+announcements or marks are new. The hours and classes are counted from the timetable's classes
+(`hoursShort`), so they follow it, TimeEdit or MAYA. They're left out without a timetable. The Total
+row (`totalHours`) is gone. "Last synced" shows only on the pull-down indicator, as before.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (78) with JUnit against Robolectric's Android 17 jar. Still to look at on the phone: the line's
+length at 11sp caps beside a "new" count.
+
 ## 29 October 2026 (A course page's sections: a panel from the left, and each one folds)
 
 **Asked for:** an overview of a Spectrum course's sections on the left side, one that can be hidden
