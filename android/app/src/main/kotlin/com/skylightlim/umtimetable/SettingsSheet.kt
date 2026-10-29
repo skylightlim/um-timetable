@@ -25,7 +25,8 @@ object SettingsSheet {
 
     /**
      * The Settings tab's page. [restyle] makes a change of look or theme, given what was tapped and what
-     * the redrawn page should show moving; [moved] is that, when this is the redrawn page.
+     * the redrawn page should show moving; [moved] is that, when this is the redrawn page. [openLog] opens
+     * auto attendance's log ([AttendanceLogPage]).
      */
     fun build(
         h: SpectrumHost,
@@ -33,6 +34,7 @@ object SettingsSheet {
         signedIn: Boolean = SpectrumStore.signedIn(context),
         moved: Moved? = null,
         restyle: (View, Moved, () -> Unit) -> Unit = { _, _, change -> change() },
+        openLog: () -> Unit = {},
     ): View {
         val ui = h.ui
         val p = ui.p
@@ -142,10 +144,11 @@ object SettingsSheet {
             classReminders(ui, context, ::row, ::chevron) { if (ask) h.enableNotifications() },
         ))
 
-        // Marking attendance by itself, as each class starts (AutoAttendance).
+        // Marking attendance by itself, as each class starts (AutoAttendance), and its log: each try and what went wrong.
         if (signedIn) section("Attendance", listOf(
             row("Mark my attendance", "As each class starts, the app marks you present on Spectrum, and tries again while no session is open. If it can't, or a password is needed, a notification says why.",
                 Toggle(ui, AutoAttendance.enabled(context)) { on -> AutoAttendance.setEnabled(context, on) }.apply { contentDescription = "Mark my attendance" }, null),
+            row("Attendance log", AttendanceLogPage.summary(context), chevron()) { openLog() },
         ))
 
         label("Vibration")

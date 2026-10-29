@@ -57,6 +57,9 @@ class MainActivity : Activity(), SpectrumHost {
     private var settingsMoved: SettingsSheet.Moved? = null
     /** Where a new look or theme spreads from: what was tapped in Settings, else the title. */
     private var spreadFrom: View? = null
+    /** The attendance log is open over Settings, which were scrolled to [settingsY]. */
+    private var settingsLog = false
+    private var settingsY = 0
 
     override val timetable: Timetable get() = Timetable.load(this)
     override fun now() = Now.current()
@@ -341,6 +344,8 @@ class MainActivity : Activity(), SpectrumHost {
                         Haptics.back(this)
                         openCourse = null
                         render()
+                    } else if (id == view && id == "settings" && settingsLog) {
+                        logBack()
                     } else if (id == "day" && view == "day") {
                         goCell(WEEK_CELL)
                     } else if (id == "day" && view == "week") {
@@ -374,7 +379,7 @@ class MainActivity : Activity(), SpectrumHost {
                 "due" -> SpectrumScreens.due(this)
                 "news" -> SpectrumScreens.news(this).also { markNewsSeenSoon() }
                 "files" -> SpectrumScreens.courses(this).also { openCourse?.let { loadCourse(it) } }
-                "settings" -> settingsPage()
+                "settings" -> if (settingsLog) AttendanceLogPage.build(this) else settingsPage()
                 else -> DayScreen.build(this, sel)
             }
         } catch (e: Exception) {
@@ -509,7 +514,8 @@ class MainActivity : Activity(), SpectrumHost {
         val p = ui.p
         val tt = timetable
         val big = view == "day" || view == "week"
-        val page = PAGE_TITLES[view]
+        val log = view == "settings" && settingsLog
+        val page = if (log) "Attendance log" else PAGE_TITLES[view]
         val days = daysTo(sel)
         val words = when {
             view == "day" -> listOf(DAY_NAMES[sel], dateText(days))
@@ -520,6 +526,7 @@ class MainActivity : Activity(), SpectrumHost {
         // The small line under the title, each page's own summary. The Spectrum tabs: what's on them
         // ("3 due · next in 1d"); Day: the day at a glance; Week: its Spectrum deadlines.
         val line = when {
+            log -> AttendanceLogPage.summary(this)
             page != null -> SpectrumScreens.summary(this, view)
             view == "day" -> dayGlance(tt.day(sel))
             view == "week" -> weekLine(daysTo(1))
@@ -558,7 +565,20 @@ class MainActivity : Activity(), SpectrumHost {
             change()
             spreadFrom = null
             settingsMoved = null
+        }, openLog = {
+            Haptics.tick(shell)
+            settingsY = scroll.scrollY
+            settingsLog = true
+            render()
         })
+    }
+
+    /** Back from the attendance log to Settings, where they were scrolled to. */
+    private fun logBack() {
+        Haptics.back(shell)
+        settingsLog = false
+        render()
+        scroll.post { scroll.scrollTo(0, settingsY) }
     }
 
     override fun setLook(look: Look) {
@@ -761,6 +781,8 @@ class MainActivity : Activity(), SpectrumHost {
         if (changed) scroll.resetPull()
         // Another tab: Day and Week start again from the strip's own week.
         if (view != "day" && view != "week") weekShift = 0
+        // Another tab: Settings open at the top of their page again, not on the log.
+        if (view != "settings") settingsLog = false
         this.view = view
         uiPrefs(this).edit().putString("view", view).apply()
         if (changed) feel?.invoke(shell)
@@ -861,8 +883,9 @@ class MainActivity : Activity(), SpectrumHost {
         go(if (week) "week" else "day", if (slideFar) null else Haptics::tick)
     }
 
-    // Back: leave a course page, then return to Day; on Day (false), Android's own back leaves the app.
+    // Back: leave a course page or the attendance log, then return to Day; on Day (false), Android's own back leaves the app.
     private fun stepBack(): Boolean {
+        if (view == "settings" && settingsLog) { logBack(); return true }
         if (view == "files" && openCourse != null && sectionBack()) return true
         if (view == "files" && openCourse != null) {
             Haptics.back(shell)

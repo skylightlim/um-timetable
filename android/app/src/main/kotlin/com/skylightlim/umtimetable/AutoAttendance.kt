@@ -367,6 +367,35 @@ object AttendanceLog {
             f.appendText("${STAMP.format(LocalDateTime.now())} $line\n")
         }
     }
+
+    /** One step of the log: when ("2026-10-27 08:01:05") and what happened; [problem] when it went wrong. */
+    data class Entry(val time: LocalDateTime, val text: String) {
+        val problem get() = isProblem(text)
+    }
+
+    /** The log as it is now, oldest first; empty before anything is logged. */
+    fun read(c: Context): List<Entry> = runCatching { file(c)?.takeIf { it.exists() }?.readText()?.let(::parse) }.getOrNull().orEmpty()
+
+    /** The file's text as entries: a line that doesn't start with a time carries on the one before it. */
+    fun parse(text: String): List<Entry> {
+        val out = ArrayList<Entry>()
+        for (line in text.lineSequence()) {
+            val m = LINE.matchEntire(line)
+            val time = m?.let { runCatching { LocalDateTime.parse(it.groupValues[1], STAMP) }.getOrNull() }
+            if (m != null && time != null) out += Entry(time, m.groupValues[2])
+            else if (line.isNotBlank() && out.isNotEmpty()) out[out.size - 1] = out.last().let { it.copy(text = it.text + "\n" + line) }
+        }
+        return out
+    }
+
+    /**
+     * Whether a step went wrong: a read or a run that failed, Spectrum's answer naming an error, no
+     * attendance activity for a class, the run cut short, or nobody told because notifications are off.
+     */
+    fun isProblem(text: String) = PROBLEM.containsMatchIn(text)
+
+    private val LINE = Regex("""(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) (.*)""")
+    private val PROBLEM = Regex("""\bfailed\b|"error"\s*:|ran out of time|no attendance activity|notifications are off""")
 }
 
 /**
