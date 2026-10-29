@@ -87,3 +87,25 @@ the tested logic, but not resource errors (AAPT), lint, R8 or behaviour on scree
 - To confirm: sync and check logcat's `news:` line; use `DebugSpectrumReceiver --es call
   mod_forum_get_forums_by_courses` to see GUL1001's forum names. If the announcement turns out to be section
   text rather than a forum post, that's a separate feature (notify on changes to the user's section).
+
+## 6. Grades and News fold out of each course on Courses
+
+- Tabs are now `day`, `due`, `files` (Courses) and `settings`. `MainActivity.viewOf()` maps the old names
+  "grades" and "news" (old notifications, the saved last page) to "files". `avd_tab_grades`,
+  `avd_tab_news`, `ic_tab_grades` and `ic_tab_news` are deleted.
+- `SpectrumScreens.courses(h, gradeItems)`: one `courseEntry()` per course. Its body is `courseRow(...)`,
+  which opens `openCourse`. After a 1dp line comes a 56dp toggle (a fresh-count chip and a chevron)
+  that opens the fold `foldKey(id)` = `course-fold-<id>` in `expanded`. `courseFold()` fills it lazily
+  with the News label + `newsRow`s (only `forMe` items, via `myNews`), then the Grades label + `courseMarks`
+  (it no longer draws a header line; it shows "N of M marked" or "No marks released yet"). Grades are
+  filtered as the old Grades page did (no attendance, no unmarked items for other occurrences).
+- Deleted: `SpectrumScreens.grades()`, `news()`, `olderNews()`, `courseLine()`, the News For me / All
+  switch (`newsAll` pref, now unused) and summary's grades/news cases. `summary("files")` adds "N new";
+  `newCount(h)` is that count and the Courses tab's badge.
+- Seen: `SpectrumHost.markSeen(newsIds, gradeKeys)` (MainActivity: after 1.5 s, saved as before in
+  `newsSeen`/`gradesSeen`) replaces `markNewsSeenSoon`/`markGradesSeenSoon`.
+- Notifications: `Notify.openFold(c, courseId)` → `MainActivity.EXTRA_FOLD` → `openFold(id)`.
+- Debug renderer: views `grades` and `news` are gone. `files --ez sample true` uses `sampleGrades` (now
+  tied to the first three Spectrum course ids), `--ez open true` opens the folds, and the bench measures
+  Courses with every fold open.
+- Try by hand: both tap zones, the folds with real data, the badge and New, a notification.

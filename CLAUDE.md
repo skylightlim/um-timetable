@@ -1,8 +1,8 @@
 # 马大牛逼 (UM Timetable)
 
 An unofficial Android app for Universiti Malaya students, built for and with the user (the repo
-owner). It shows the timetable (from TimeEdit) and Spectrum, UM's Moodle (Due, Grades, News,
-Courses), plus a home-screen widget, notifications and in-app updates from GitHub Releases. All of it
+owner). It shows the timetable (from TimeEdit) and Spectrum, UM's Moodle (Due, and Courses with each
+course's news and grades), plus a home-screen widget, notifications and in-app updates from GitHub Releases. All of it
 runs on one SiswaMail sign-in. The user's phone is a Pixel 9 Pro. They use the app every day and change
 it a piece at a time.
 
@@ -54,7 +54,7 @@ They often have the app open, or are on a video call shown in picture-in-picture
   over each other and keep the data.
 - Debug tools exist only in debug builds. To use them, install debug, check, then put the release back.
   - `DebugRenderReceiver` draws a page to `cache/render/<view>.png` (`<view>-dark.png` with `--ez dark true`) with nothing on screen. Views: day,
-    week, grades, due, news, files, sheet, settings, signout, signin, webbar, plan, pinmenu, tabicons, duel,
+    week, due, files, sheet, settings, signout, signin, webbar, plan, pinmenu, tabicons, duel,
     duelloop, scene, icon (the launcher icon with the phone's mask). Options are in its KDoc. A still
     can't show motion: frame sheets (scene, duel, duelloop, tabicons) and poses (`--ef hopAt`,
     `--ei boxDay/boxAt`, `--ei weekShift`) stand in, and the report says what still needs a try by hand.

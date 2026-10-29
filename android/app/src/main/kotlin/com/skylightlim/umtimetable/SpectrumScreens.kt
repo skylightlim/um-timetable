@@ -26,6 +26,8 @@ interface SpectrumHost : Host {
     val expanded: MutableSet<String>
     val seenNews: Set<String>
     val seenGrades: Set<String>
+    /** A course's announcements ([news] ids) and marks ([grades], [SpectrumSync.gradeKey]) have been seen: their New goes, soon. */
+    fun markSeen(news: Collection<String>, grades: Collection<String>) = Unit
     /** The course page as [SpectrumSync.courseContents] gives it, for [CourseOutline]. */
     fun courseContents(id: Int): JSONObject?
     fun courseError(id: Int): String?
@@ -82,8 +84,8 @@ object SpectrumScreens {
 
     /**
      * The small line under a Spectrum tab's name: what that page holds, at a glance. It used to be the
-     * week of the semester and today's date on every tab; the week is on Day's strip. Counted as the
-     * pages count: Grades leaves out attendance and other occurrences' items, News counts posts for you.
+     * week of the semester and today's date on every tab; the week is on Day's strip. Courses counts what's
+     * new in their folds: announcements for the user and marks not seen yet.
      */
     fun summary(h: SpectrumHost, view: String): String {
         val c = h.ui.context
@@ -92,21 +94,6 @@ object SpectrumScreens {
         if (!SpectrumStore.signedIn(c)) return "Not signed in"
         if (SpectrumStore.lastSync(c) == 0L) return "Not synced yet"
         val parts = when (view) {
-            "grades" -> {
-                val occurrences = SpectrumStore.occurrences(c)
-                fun mine(code: String) = occurrences.optInt(code).takeIf { it > 0 } ?: h.timetable.courses.firstOrNull { it.code == code }?.occ ?: 0
-                val items = SpectrumStore.array(c, "grades").objects().filter { g ->
-                    !g.optBoolean("total") && !SpectrumSync.isAttendance(g) &&
-                        !(g.isNull("raw") && AttendanceMatch.othersOnly(g.optString("name"), mine(g.optString("code"))))
-                }
-                val marked = items.filter { !it.isNull("raw") }
-                val fresh = marked.count { SpectrumSync.gradeKey(it) !in h.seenGrades }
-                val waiting = items.size - marked.size
-                listOfNotNull(
-                    if (marked.isEmpty()) "No marks yet" else count(marked.size, "mark"),
-                    if (fresh > 0) "$fresh new" else waiting.takeIf { it > 0 }?.let { "$it to be marked" },
-                )
-            }
             "due" -> {
                 val now = System.currentTimeMillis()
                 val (late, coming) = SpectrumStore.due(c).partition { it.optBoolean("overdue") || it.getLong("due") <= now }
@@ -118,19 +105,21 @@ object SpectrumScreens {
                     late.size.takeIf { it > 0 }?.let { "$it late" },
                 ).take(3)
             }
-            "news" -> {
-                val mine = SpectrumStore.array(c, "news").objects().filter { it.optBoolean("forMe", true) }
-                val unread = mine.count { it.getInt("id").toString() !in h.seenNews }
-                val latest = mine.maxOfOrNull { it.getLong("time") }
-                if (latest == null) listOf("No announcements for you")
-                else listOf(
-                    if (unread > 0) "$unread unread" else "All read",
-                    "latest ${dayLabel(latest).let { if (it == "Today" || it == "Yesterday") "${it.lowercase()} ${hm(latest)}" else it }}",
-                )
-            }
-            else -> listOf(count(SpectrumStore.array(c, "courses").length(), "course"), lastSynced(c).replaceFirstChar { it.lowercase() })
+            else -> listOfNotNull(
+                count(SpectrumStore.array(c, "courses").length(), "course"),
+                newCount(h).takeIf { it > 0 }?.let { "$it new" },
+                lastSynced(c).replaceFirstChar { it.lowercase() },
+            )
         }
         return parts.joinToString(" · ")
+    }
+
+    /** What's new in the Courses list's folds: the user's announcements not yet seen, and marks not yet seen (the Courses tab's badge). */
+    fun newCount(h: SpectrumHost): Int {
+        val c = h.ui.context
+        val news = myNews(c).count { it.getInt("id").toString() !in h.seenNews }
+        val marks = SpectrumStore.array(c, "grades").objects().count { !it.isNull("raw") && !SpectrumSync.isAttendance(it) && SpectrumSync.gradeKey(it) !in h.seenGrades }
+        return news + marks
     }
 
     private fun count(n: Int, what: String) = "$n $what${if (n == 1) "" else "s"}"
@@ -444,63 +433,7 @@ object SpectrumScreens {
         }
     }
 
-    // --- Grades ----------------------------------------------------------------------------
-
-    /**
-     * Marks released on Spectrum. Courses with marks come first, the one with the newest mark on top;
-     * courses with none yet are listed compactly after them.
-     */
-    /**
-     * Marks grouped by course as in redesign 1j, the newest marks' course first, then the courses with
-     * nothing marked yet. Pull down to sync. Attendance isn't shown: it's in Due.
-     */
-    fun grades(h: SpectrumHost, items: List<JSONObject> = SpectrumStore.array(h.ui.context, "grades").objects()): View {
-        val ui = h.ui
-        val p = ui.p
-        val page = ui.column().apply { setPadding(0, ui.dp(6), 0, 0) }
-        if (!SpectrumStore.signedIn(ui.context)) {
-            page.addView(connect(h, "See each mark as soon as a lecturer releases it, with a notification."))
-            return page
-        }
-        // Unmarked items named for other occurrences (other groups' submissions) are left out too.
-        val occurrences = SpectrumStore.occurrences(ui.context)
-        fun mine(code: String) = occurrences.optInt(code).takeIf { it > 0 } ?: h.timetable.courses.firstOrNull { it.code == code }?.occ ?: 0
-        val all = items.filter { g ->
-            !SpectrumSync.isAttendance(g) && !(g.isNull("raw") && AttendanceMatch.othersOnly(g.optString("name"), mine(g.optString("code"))))
-        }
-        problem(h, page)
-        if (all.isEmpty()) {
-            page.addView(emptyOrLoading(ui, "Spectrum lists no grade items for your courses."))
-            return page
-        }
-        val byCourse = all.groupBy { it.getInt("courseId") }
-        val (marked, unmarked) = byCourse.entries.partition { (_, items) -> items.any { !it.isNull("raw") && !it.optBoolean("total") } }
-        // A course whose only item was attendance (or that has only its total) has nothing to wait for.
-        val waiting = unmarked.filter { (_, items) -> items.any { !it.optBoolean("total") } }
-        if (marked.isEmpty()) {
-            page.addView(card(ui).apply {
-                addView(ui.text("No marks released yet", 17f, p.text, ui.f.bodyBold))
-                addView(ui.text("When a lecturer releases a mark on Spectrum, it shows here and you get a notification.", 14.5f, p.muted), ui.wide(top = 6f))
-            }, ui.wide(bottom = 20f))
-        }
-        for ((_, items) in marked.sortedByDescending { (_, items) -> items.maxOf { it.getLong("gradedAt") } }) {
-            page.addView(courseMarks(h, items), ui.wide(bottom = 20f))
-        }
-        // Laid out as the Courses list is: the same rows, with lines between them only.
-        if (waiting.isNotEmpty()) {
-            page.addView(ui.label("Not marked yet", p.text, 11f).apply { setPadding(0, 0, 0, ui.dp(2)) })
-            for ((n, entry) in waiting.withIndex()) {
-                val (courseId, items) = entry
-                val left = items.filter { !it.optBoolean("total") }
-                val code = items.first().optString("code")
-                val count = ui.text("${left.size} ${if (left.size == 1) "item" else "items"}", 12f, p.muted, ui.f.mono)
-                val head = courseRow(h, code, courseName(h, items.first().optString("course"), code), mine(code).takeIf { it > 0 }, count)
-                if (n > 0) page.addView(rule(ui))
-                page.addView(unmarked(h, head, left, "unmarked-$courseId"))
-            }
-        }
-        return page
-    }
+    // --- Grades (in each course's fold on the Courses list) --------------------------------
 
     /**
      * Grade items not marked yet, folded under [head] (a row; the chevron goes at its end). Tapping
@@ -518,8 +451,8 @@ object SpectrumScreens {
             val url = g.optString("url")
             list.addView(ui.row(gap = 10f).apply {
                 minimumHeight = ui.dp(44)
-                // In line with the course's name above (after its 12dp dot and 12dp gap).
-                setPadding(ui.dp(24), ui.dp(8), 0, ui.dp(8))
+                // Set in under "Not marked yet".
+                setPadding(ui.dp(12), ui.dp(8), 0, ui.dp(8))
                 addView(ui.text(g.optString("name"), 14f, p.text), ui.grow())
                 g.optString("kind").takeIf { it.isNotEmpty() }?.let { addView(ui.text(it, 12.5f, p.muted)) }
                 if (url.isNotEmpty()) {
@@ -548,21 +481,9 @@ object SpectrumScreens {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1)
     }
 
-    /** A course on one line: dot, code, name (cut short to fit) and [end] in small mono at the end. */
-    private fun courseLine(h: SpectrumHost, item: JSONObject, end: String, nameSize: Float, nameColor: Int, nameFace: android.graphics.Typeface): LinearLayout {
-        val ui = h.ui
-        val code = item.optString("code")
-        return ui.row(gap = 8f).apply {
-            addView(View(ui.context).apply { background = ui.shape(colorOf(h, code), 99f) }, LinearLayout.LayoutParams(ui.dp(10), ui.dp(10)))
-            if (code.isNotEmpty()) addView(ui.text(code, 13f, ui.p.courseText(colorOf(h, code)), ui.f.monoBold))
-            addView(ui.text(courseName(h, item.optString("course"), code), nameSize, nameColor, nameFace, lines = 1), ui.grow())
-            addView(ui.text(end, 11f, ui.p.muted, ui.f.mono))
-        }
-    }
-
     /**
-     * One course's marks as in 1j: a ruled header line with how many items are marked, then a card per
-     * mark, newest first, tagged NEW until seen, then the course total and what's still to be marked.
+     * One course's marks as in 1j, in its fold on the Courses list: how many items are marked, then a card
+     * per mark, newest first, tagged NEW until seen, then the course total and what's still to be marked.
      */
     private fun courseMarks(h: SpectrumHost, items: List<JSONObject>): View {
         val ui = h.ui
@@ -573,8 +494,7 @@ object SpectrumScreens {
         val marks = items.filter { !it.isNull("raw") && !it.optBoolean("total") }.sortedByDescending { it.getLong("gradedAt") }
         val total = items.firstOrNull { it.optBoolean("total") && !it.isNull("raw") }
         val count = items.count { !it.optBoolean("total") }
-        box.addView(courseLine(h, first, "${marks.size} of $count", 14f, p.text, ui.f.bodySemi).apply { setPadding(0, 0, 0, ui.dp(8)) })
-        box.addView(rule(ui))
+        box.addView(ui.text(if (marks.isEmpty()) "No marks released yet: when a lecturer releases one, it shows here and you get a notification." else "${marks.size} of $count marked", 13f, p.muted), ui.wide(top = 6f))
         for (g in marks) {
             val isNew = SpectrumSync.gradeKey(g) !in h.seenGrades
             val item = ui.column().apply {
@@ -619,59 +539,15 @@ object SpectrumScreens {
         return box
     }
 
-    // --- News ------------------------------------------------------------------------------
+    // --- News (in each course's fold on the Courses list) ----------------------------------
 
-    /**
-     * Announcements as in redesign 1m: a For me / All switch by the heading, then every post as a ruled
-     * row (course, when, subject, author) that opens in place to its text and files. "For me" leaves out
-     * posts for other occurrences (`forMe`, set by the sync). Pull down to sync.
-     */
-    fun news(h: SpectrumHost): View {
-        val ui = h.ui
-        val p = ui.p
-        val page = ui.column().apply { setPadding(0, ui.dp(6), 0, 0) }
-        if (!SpectrumStore.signedIn(ui.context)) {
-            page.addView(connect(h, "Get a notification when a lecturer posts an announcement."))
-            return page
-        }
-        val all = SpectrumStore.array(ui.context, "news").objects().sortedByDescending { it.getLong("time") }
-        val mine = all.filter { it.optBoolean("forMe", true) }
-        val prefs = uiPrefs(ui.context)
-        val showAll = prefs.getBoolean("newsAll", false)
-        // For me / All, across the top of the list (the page's name is in the top bar).
-        val switch = ui.segmented(listOf("For me · ${mine.size}", "All · ${all.size}"), if (showAll) 1 else 0, fill = true) { i, _ ->
-            prefs.edit().putBoolean("newsAll", i == 1).apply()
-            h.render()
-        }
-        page.addView(switch, ui.wide(bottom = 6f))
-        problem(h, page)
-        val list = if (showAll) all else mine
-        if (list.isEmpty()) {
-            val synced = SpectrumStore.lastSync(ui.context) > 0
-            page.addView(when {
-                !synced -> loading(ui, "Syncing with Spectrum…")
-                all.isEmpty() -> empty(ui, "No announcements in the past month.")
-                else -> empty(ui, "Nothing for your occurrence in the past month. All shows the others' too.")
-            })
-            if (synced) page.addView(olderNews(h))
-            return page
-        }
-        // Every post the same, as 1m's rows; ruled inside only (a line between posts, none above or below).
-        for ((n, a) in list.withIndex()) {
-            if (n > 0) page.addView(rule(ui))
-            page.addView(newsRow(h, a))
-        }
-        page.addView(olderNews(h), ui.wide(top = 8f))
-        return page
-    }
+    /** The announcements for the user (not those for other occurrences only), newest first. */
+    private fun myNews(c: android.content.Context) = SpectrumStore.array(c, "news").objects().filter { it.optBoolean("forMe", true) }.sortedByDescending { it.getLong("time") }
 
-    /** "NEW  WIX1002 ··· Today 09:12": a post's first line; [extra] goes at the end (a row's chevron). */
+    /** "NEW ··· Today 09:12": a post's first line, in its course's fold; [extra] goes at the end (a row's chevron). */
     private fun newsTop(h: SpectrumHost, a: JSONObject, size: Float, extra: View? = null) = h.ui.row(gap = 8f).apply {
         val ui = h.ui
-        val code = a.optString("code")
         if (a.getInt("id").toString() !in h.seenNews) addView(ui.chip("New", ui.p.accent, ui.p.accentInk).apply { setPadding(ui.dp(6), ui.dp(1), ui.dp(6), ui.dp(1)) })
-        addView(ui.text(code.ifEmpty { "Spectrum" }, size, ui.p.courseText(colorOf(h, code)), ui.f.monoBold))
-        if (!a.optBoolean("forMe", true)) addView(ui.text("other occurrence", 11f, ui.p.muted))
         addView(ui.space(), ui.spacer())
         addView(ui.text("${dayLabel(a.getLong("time"))} ${hm(a.getLong("time"))}", size, ui.p.muted, ui.f.mono))
         extra?.let { addView(it) }
@@ -690,7 +566,7 @@ object SpectrumScreens {
         for (f in a.optJSONArray("attachments")?.objects().orEmpty()) into.addView(fileButton(h, f, code), ui.wide(top = 8f))
     }
 
-    /** A post as a ruled row: course, when, subject and author; tapping it opens its text and files in place. */
+    /** A post as a ruled row: when, subject and author; tapping it opens its text and files in place. */
     private fun newsRow(h: SpectrumHost, a: JSONObject): View {
         val ui = h.ui
         val key = "news-open-${a.getInt("id")}"
@@ -718,25 +594,27 @@ object SpectrumScreens {
         }
     }
 
-    /** The end of News: it only reaches back [SpectrumSync.NEWS_DAYS] days. */
-    private fun olderNews(h: SpectrumHost) = h.ui.column().apply {
-        setPadding(0, h.ui.dp(10), 0, h.ui.dp(8))
-        addView(h.ui.text("News only shows announcements from the past month. For older ones, open the course in Courses and tap its announcements forum.", 13f, h.ui.p.muted))
-        addView(link(h.ui, "Open Courses") { h.setView("files") })
-    }
-
     // --- Courses ---------------------------------------------------------------------------
+
+    /** Course [id]'s fold of news and grades on the Courses list: its key in [SpectrumHost.expanded]. */
+    fun foldKey(id: Int) = "course-fold-$id"
+
+    /** The user's occurrence in [code]: their Spectrum group or their choice, else the timetable's; 0 unknown. */
+    private fun myOcc(h: SpectrumHost, occurrences: JSONObject, code: String) =
+        occurrences.optInt(code).takeIf { it > 0 } ?: h.timetable.courses.firstOrNull { it.code == code }?.occ ?: 0
 
     /**
      * The courses, as in redesign 1n: a plain ruled list (dot, code and occurrence, name), each opening
-     * its course page. The account, imports and other settings are in the Settings tab. Pull to sync.
+     * its course page. The end of each row, past a short line, opens the course's news and then its grades
+     * in place ([courseEntry]); Grades and News were tabs of their own. Only what's for the user's
+     * occurrence: announcements for other occurrences only, and their unmarked items, are left out. The
+     * account, imports and other settings are in the Settings tab. Pull to sync.
      */
-    fun courses(h: SpectrumHost): View {
+    fun courses(h: SpectrumHost, gradeItems: List<JSONObject> = SpectrumStore.array(h.ui.context, "grades").objects()): View {
         val ui = h.ui
-        val p = ui.p
         val page = ui.column().apply { setPadding(0, ui.dp(6), 0, 0) }
         if (!SpectrumStore.signedIn(ui.context)) {
-            page.addView(connect(h, "Read each course page and open its slides and notes in one tap."))
+            page.addView(connect(h, "Read each course page, its announcements and your marks, and open its slides and notes in one tap."))
             return page
         }
         val courses = SpectrumStore.array(ui.context, "courses").objects()
@@ -745,25 +623,91 @@ object SpectrumScreens {
         backgroundTip(h, page)
         if (courses.isEmpty()) page.addView(emptyOrLoading(ui, "No current courses found on Spectrum."))
         val occurrences = SpectrumStore.occurrences(ui.context)
+        val news = myNews(ui.context).groupBy { it.getInt("courseId") }
+        // Attendance is in Due; unmarked items named for other occurrences are other groups' submissions.
+        val grades = gradeItems.filter { g ->
+            !SpectrumSync.isAttendance(g) && !(g.isNull("raw") && AttendanceMatch.othersOnly(g.optString("name"), myOcc(h, occurrences, g.optString("code"))))
+        }.groupBy { it.getInt("courseId") }
         // Ruled inside only: a line between courses, none above the first or below the last.
         for ((n, c) in courses.withIndex()) {
             if (n > 0) page.addView(rule(ui))
+            val id = c.getInt("id")
             val code = c.optString("code")
-            val occ = occurrences.optInt(code).takeIf { it > 0 } ?: h.timetable.courses.firstOrNull { it.code == code }?.occ
-            val chevron = ui.icon(R.drawable.ic_chevron, p.faint).apply { layoutParams = LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)) }
-            page.addView(courseRow(h, code, courseName(h, c.optString("name"), code), occ, chevron).apply {
-                background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
-                setOnClickListener { Haptics.tick(this); h.openCourse = c.getInt("id"); h.render() }
-            })
+            page.addView(courseEntry(h, c, code, myOcc(h, occurrences, code).takeIf { it > 0 }, news[id].orEmpty(), grades[id].orEmpty()))
         }
         return page
     }
 
     /**
-     * A course as the Courses list shows it: its colour dot, the code and occurrence, the full name under
-     * them, and [end] at the end. Grades' not-marked-yet courses use it too, so the two lists look alike.
+     * A course on the Courses list. Its row opens the course page; the end of it, past a short line (a
+     * count of what's new over a chevron), opens the course's announcements and then its marks in place
+     * under it, built the first time it's opened. Opening it marks what's new there as seen.
      */
-    private fun courseRow(h: SpectrumHost, code: String, name: String, occ: Int?, end: View): LinearLayout {
+    private fun courseEntry(h: SpectrumHost, c: JSONObject, code: String, occ: Int?, news: List<JSONObject>, grades: List<JSONObject>): View {
+        val ui = h.ui
+        val p = ui.p
+        val id = c.getInt("id")
+        val key = foldKey(id)
+        val name = courseName(h, c.optString("name"), code)
+        val freshNews = news.map { it.getInt("id").toString() }.filter { it !in h.seenNews }
+        val freshMarks = grades.filter { !it.isNull("raw") }.map(SpectrumSync::gradeKey).filter { it !in h.seenGrades }
+        val fresh = freshNews.size + freshMarks.size
+        val body = courseRow(h, code, name, occ, null).apply {
+            background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
+            contentDescription = "$code, $name. Opens the course page."
+            setOnClickListener { Haptics.tick(this); h.openCourse = id; h.render() }
+        }
+        val chevron = Motion.chevron(ui, key in h.expanded, p.faint)
+        val toggle = ui.column().apply {
+            gravity = Gravity.CENTER
+            background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
+            contentDescription = "$code announcements and marks${if (fresh > 0) ", $fresh new" else ""}"
+            if (fresh > 0) addView(ui.chip(fresh.toString(), p.accent, p.accentInk).apply { setPadding(ui.dp(6), ui.dp(1), ui.dp(6), ui.dp(1)) },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = ui.dp(6) })
+            addView(chevron, LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)))
+        }
+        // In line with the course's name (after its 12dp dot and 12dp gap).
+        val fold = ui.column().apply { setPadding(ui.dp(24), 0, 0, ui.dp(16)) }
+        fun open(now: Boolean) {
+            if (fold.childCount == 0) courseFold(h, fold, news, grades)
+            fold.visibility = if (now) View.VISIBLE else View.GONE
+            if (now) h.markSeen(freshNews, freshMarks)
+        }
+        if (key in h.expanded) open(true) else fold.visibility = View.GONE
+        toggle.setOnClickListener {
+            Haptics.tick(toggle)
+            Motion.resize(toggle)
+            val now = h.expanded.add(key) || !h.expanded.remove(key)
+            open(now)
+            Motion.turn(chevron, now)
+        }
+        return ui.column().apply {
+            addView(ui.row().apply {
+                addView(body, ui.grow())
+                addView(View(ui.context).apply { setBackgroundColor(p.line) }, LinearLayout.LayoutParams(1, ui.dp(32)))
+                addView(toggle, LinearLayout.LayoutParams(ui.dp(56), ViewGroup.LayoutParams.MATCH_PARENT))
+            })
+            addView(fold)
+        }
+    }
+
+    /** A course's fold: its announcements for the user (as News showed them), then its marks (as Grades did). */
+    private fun courseFold(h: SpectrumHost, into: LinearLayout, news: List<JSONObject>, grades: List<JSONObject>) {
+        val ui = h.ui
+        val p = ui.p
+        into.addView(ui.label("News", p.muted, 10.5f), ui.wide(top = 2f))
+        if (news.isEmpty()) into.addView(ui.text("No announcements for you in the past month.", 14f, p.muted), ui.wide(top = 8f, bottom = 4f))
+        for ((n, a) in news.withIndex()) {
+            if (n > 0) into.addView(rule(ui))
+            into.addView(newsRow(h, a))
+        }
+        into.addView(ui.label("Grades", p.muted, 10.5f), ui.wide(top = 18f))
+        if (grades.none { !it.optBoolean("total") }) into.addView(ui.text("Spectrum lists no grade items for this course.", 14f, p.muted), ui.wide(top = 8f))
+        else into.addView(courseMarks(h, grades))
+    }
+
+    /** A course as the Courses list shows it: its colour dot, the code and occurrence, the full name under them, and [end] at the end. */
+    private fun courseRow(h: SpectrumHost, code: String, name: String, occ: Int?, end: View?): LinearLayout {
         val ui = h.ui
         val p = ui.p
         return ui.row(gap = 12f).apply {
@@ -777,7 +721,7 @@ object SpectrumScreens {
                 })
                 addView(ui.text(name, 17f, p.text, ui.f.bodySemi), ui.wide(top = 3f))
             }, ui.grow())
-            addView(end)
+            end?.let(::addView)
         }
     }
 
