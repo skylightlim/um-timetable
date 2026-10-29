@@ -18,6 +18,22 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (1.8.0-beta.1: the "Things to fix" branch built and published)
+
+**Asked for:** after merging pull request #1 (`fix/things-to-fix`) on GitHub, bring it into the local repo
+and release a new version.
+
+**Change:** the branch's 15 commits cherry-picked onto local `main`, as its handoff says (the only conflicts
+were this log's top entries, kept newest first). Version 1.8.0-beta.1, versionCode 11: a minor version, for
+Settings as a tab, Grades and News inside Courses, the attendance log, Due's duplicates and dismissing, the
+Sections panel, and Week until midnight.
+
+**Checked:** the first real Gradle build of the branch's work, from a clean worktree:
+`./gradlew testDebugUnitTest assembleRelease` passes (78 JVM tests, AAPT, lint vital and R8 all ran). The
+branch's added lines were grepped for the backups' lecturer names and rooms, the user's occurrences and
+their class times: none (its examples use made-up courses and occurrences). Every item's "Try by hand" in
+`docs/HANDOFF-things-to-fix.md` is still to do on the phone.
+
 ## 29 October 2026 (Every tab's title the same size as Day's)
 
 **Asked for:** Day's top section the same height as the other tabs': its title came out at another size.
@@ -252,6 +268,19 @@ was tried on the phone. All of main and debug type-check with the Kotlin compile
 Robolectric's Android 17 jar and a stub `R`. Still to check by hand: the tab bar's spacing with six tabs
 (until Grades and News go), the icon's animation, the look and theme spreading from the tapped option, and
 Back.
+
+## 23 October 2026 (1.7.0-beta.1 published)
+
+**Asked for:** push it to GitHub.
+
+**Published:** 1.7.0-beta.1, versionCode 10: a minor version, for course pages laid out as Spectrum shows
+them, the course page link fixes, auto attendance at class start on mobile data, attendance by Spectrum's
+occurrence, class reminders, selectable course text, and the audit's fixes. Before publishing, the tree was
+grepped for the backups' lecturer names (none) and the user's occurrences: two code comments used the
+user's real occurrence as their example (`{"GIG1003": …}`), now the made-up student's, and the new QA
+entries and the attendance script used a real class's date and time as examples, now made-up ones. Snapshot
+df7c0b8 on the public `main`; the APK built from a clean worktree of it, signed with the release key
+(SHA-256 bf:c0:58…b2:94:20); pre-release v10 with nine plain lines of notes. Installed on the user's phone.
 
 ## 23 October 2026 (Course pages laid out from Spectrum's own layout, for any course)
 
