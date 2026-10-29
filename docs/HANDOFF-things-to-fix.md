@@ -42,3 +42,17 @@ the tested logic, but not resource errors (AAPT), lint, R8 or behaviour on scree
   and line in `showTitle`. Back (`stepBack`) or tapping the Settings tab again runs `logBack()`, and leaving
   the tab closes the log (`go`).
 - Try by hand: the row's summary, the page with a real log (lots of lines: is it smooth?), Copy log, Back.
+
+## 3. Duplicated Due items
+
+- Cause, from the code (not confirmed on the user's data): Due listed every action event, and one activity
+  can have several (quiz/lesson open + close, "expectcompletionon" + due, group overrides). Some courses
+  also have an assignment copy per occurrence.
+- `DueList` (new file, tested in `DueListTest`): `distinct(items)` gives one row per `activityKey`
+  (`courseId/module/instance`). It prefers event type due, then close, then deadline, with
+  expectcompletionon last; among those, the next still to come, else the last passed. Then it merges rows
+  with the same course, name and due time. `forMe(items, occOf)` drops items named for other occurrences
+  only (`AttendanceMatch.othersOnly`).
+- `SpectrumSync.fetchDue(c, api, courses)` now stores `courseId`, `module`, `instance` and `eventtype` on
+  each due item, runs both filters, and logs the counts (`due: N events, …`).
+- Try by hand: sync, then look at Due and logcat's `due:` line.

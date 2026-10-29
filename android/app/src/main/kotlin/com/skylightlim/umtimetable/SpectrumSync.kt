@@ -76,7 +76,7 @@ object SpectrumSync {
             }
             MayaImport.fillNames(c, courses)
             val news = if (attendanceOnly) null else syncPool.submit(Callable { fetchNews(c, api, courses) })
-            val due = if (attendanceOnly) null else syncPool.submit(Callable { fetchDue(api, courses) })
+            val due = if (attendanceOnly) null else syncPool.submit(Callable { fetchDue(c, api, courses) })
             if (!attendanceOnly) syncGrades(c, api, courses)
             val attendance = syncPool.submit(Callable { fetchAttendance(c, api, courses, fresh = !attendanceOnly) })
             // Notifying and saving stay on this thread, in the same order as before.
@@ -418,30 +418,44 @@ object SpectrumSync {
         return out
     }
 
-    private fun fetchDue(api: Api, courses: JSONArray): JSONArray {
+    /**
+     * What's due: Spectrum's action events from two weeks back to four months on, one row per activity
+     * ([DueList.distinct]: a quiz's open and close, an expected-completion date beside a due date), less
+     * those named for other occurrences only ([DueList.forMe]).
+     */
+    private fun fetchDue(c: Context, api: Api, courses: JSONArray): JSONArray {
         val now = System.currentTimeMillis() / 1000
         val codes = courses.objects().associate { it.getInt("id") to it.getString("code") }
         val params = mapOf("timesortfrom" to now - 14 * 86_400, "timesortto" to now + 120 * 86_400, "limitnum" to 50, "limittononsuspendedevents" to true)
         val res = api.call("core_calendar_get_action_events_by_timesort", params) as JSONObject
-        val out = JSONArray()
+        val all = ArrayList<JSONObject>()
         for (e in (res.optJSONArray("events") ?: JSONArray()).objects()) {
             if (e.optString("modulename") == "attendance") continue
             val course = e.optJSONObject("course")
             val courseId = course?.optInt("id") ?: e.optInt("courseid")
             val due = e.optLong("timesort").takeIf { it > 0 } ?: e.optLong("timestart")
-            out.put(
+            all +=
                 JSONObject()
                     .put("id", e.getInt("id"))
+                    .put("courseId", courseId)
+                    .put("module", e.optString("modulename"))
+                    .put("instance", e.optInt("instance"))
+                    .put("eventtype", e.optString("eventtype"))
                     .put("name", plain(e.optString("activityname").ifBlank { e.optString("name") }))
                     .put("code", codes[courseId]?.takeIf { it.isNotEmpty() } ?: Spectrum.courseCode(course?.optString("shortname"), course?.optString("fullname")) ?: "")
                     .put("course", plain(course?.optString("fullname") ?: ""))
                     .put("due", due * 1000)
                     .put("url", e.optString("url"))
                     .put("moduleLabel", listOf(moduleLabel(e.optString("modulename")), e.optJSONObject("action")?.optString("name").orEmpty()).filter { it.isNotBlank() }.joinToString(" · "))
-                    .put("overdue", e.optBoolean("overdue", false) || due < now),
-            )
+                    .put("overdue", e.optBoolean("overdue", false) || due < now)
         }
-        return out
+        // The user's occurrence in each course: from the last sync's groups (or their choice), else the timetable's.
+        val occurrences = SpectrumStore.occurrences(c)
+        val timetable = Timetable.load(c)
+        val distinct = DueList.distinct(all)
+        val mine = DueList.forMe(distinct) { code -> occurrences.optInt(code).takeIf { it > 0 } ?: timetable.courses.firstOrNull { it.code == code }?.occ ?: 0 }
+        Log.i(TAG, "due: ${all.size} events, ${all.size - distinct.size} more of the same activity, ${distinct.size - mine.size} for other occurrences")
+        return JSONArray().apply { mine.forEach(::put) }
     }
 
     /**
