@@ -702,3 +702,23 @@ class Ui(val context: Context, val p: Palette, val f: Fonts) {
 }
 
 fun hoursText(minutes: Int): String = (minutes / 60.0).let { if (it == Math.floor(it)) "${it.toInt()} h" else "${"%.1f".format(it)} h" }
+
+/** Classes' minutes a week by kind, lectures first, then tutorials, then the rest by name: [("Lecture", 120), ("Tutorial", 60)]. */
+fun minutesByType(sessions: List<Session>): List<Pair<String, Int>> {
+    val order = listOf("Lecture", "Tutorial")
+    return sessions.groupBy { it.type }.map { (type, ss) -> type to ss.sumOf { it.end - it.start } }
+        .sortedWith(compareBy({ order.indexOf(it.first).let { i -> if (i < 0) order.size else i } }, { it.first }))
+}
+
+/** "Lecture 2 h · Tutorial 1 h". */
+fun hoursByType(sessions: List<Session>): String = minutesByType(sessions).joinToString(" · ") { (type, m) -> "$type ${hoursText(m)}" }
+
+/** "L12 T5": each kind's hours a week after its initial ("Lab" and the like keep three letters, so a lab isn't an L). */
+fun hoursShort(sessions: List<Session>): String = minutesByType(sessions).joinToString(" ") { (type, m) ->
+    val tag = when (type) {
+        "Lecture" -> "L"
+        "Tutorial" -> "T"
+        else -> type.take(3)
+    }
+    tag + hoursText(m).removeSuffix(" h")
+}

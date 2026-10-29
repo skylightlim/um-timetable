@@ -18,6 +18,241 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (Every tab's title the same size as Day's)
+
+**Asked for:** Day's top section the same height as the other tabs': its title came out at another size.
+
+**Change:** Day's title shrinks to fit its widest, "Wednesday 30 Sep", while Due, Courses and Settings
+kept 56sp. So the title, and the top bar with it, changed size between tabs. Every tab's title is now
+sized by Day's widest (`titleText`'s `widest` defaults to `DAY_WIDEST`), so all are the same size as
+Day's on any phone width and font size. Measured in Big Shoulders 800's own widths: "Wednesday 30 Sep"
+is wider than every other title (Week's widest ranges, "Attendance log", "Settings"), so none shrinks
+further.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked. The widths
+were read from `bigshoulders_800.ttf`'s advance widths with fontTools. Still to look at on the phone:
+going Day → Due → Courses → Settings, the titles and the line under them shouldn't change size or move.
+
+## 29 October 2026 (A course's classes and hours in one line under its name)
+
+**Asked for:** a course page's lectures, classes and hours as one simple line, not a section of their own.
+
+**Change:** the Hours heading and card at the top of a course page are gone. Under the course's name, one
+muted line says it: "Lecture 2 h · Tutorial 1 h · 3 classes a week" ("· online" when a class is). A tap
+on it still opens the course's class sheet (days, times, rooms). A course with no classes in the
+timetable has no line.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (78) with JUnit against Robolectric's Android 17 jar. Still to look at on the phone: the line
+under a long course name.
+
+## 29 October 2026 (Mark my attendance: "settles your attendance for you")
+
+**Asked for:** change the Mark my attendance setting's description to say it settles attendance for you.
+
+**Change:** Settings → Attendance → Mark my attendance now reads "Settles your attendance for you: as
+each class starts, the app marks you present on Spectrum. If it can't, a notification says why." (It
+was "As each class starts, the app marks you present on Spectrum, and tries again while no session is
+open. If it can't, or a password is needed, a notification says why.") What it does is unchanged.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone; type-checked. Still to look
+at on the phone: the row's wrapping.
+
+## 29 October 2026 (Courses' week in its top line, not in a Total row)
+
+**Asked for:** remove the Total row (L and T hours, classes a week, hours) from the bottom of Courses.
+Write the L/T hours and the classes in the line under the title, after the number of courses, from the
+user's timetable. Drop "last synced" from that line: pulling down shows it.
+
+**Change:** the line under Courses is now "5 courses · L12 T5 · 11 classes", with "· 2 new" when
+announcements or marks are new. The hours and classes are counted from the timetable's classes
+(`hoursShort`), so they follow it, TimeEdit or MAYA. They're left out without a timetable. The Total
+row (`totalHours`) is gone. "Last synced" shows only on the pull-down indicator, as before.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (78) with JUnit against Robolectric's Android 17 jar. Still to look at on the phone: the line's
+length at 11sp caps beside a "new" count.
+
+## 29 October 2026 (A course page's sections: a panel from the left, and each one folds)
+
+**Asked for:** an overview of a Spectrum course's sections on the left side, one that can be hidden
+and shown. The user chose both: a panel listing the sections to jump to, and sections that fold.
+
+**Change:** on a course page with more than one section, a small **Sections** tab (a dot-and-line
+icon) peeks out of the left edge halfway down, sliding out as the page comes. A tap slides a panel in
+from the left over the dimmed page (`SectionsPanel`): the course's code, "Sections", how many, and each
+top section in Spectrum's order with what's in it ("3 activities · 2 sections", "its own page" for a
+linked one), pinned ones with a pin, locked ones greyed. A tap on one puts the panel away and goes there:
+the section opens if it was folded and the page glides to it (`SpectrumHost.scrollTo`), or a linked
+section's page opens. **Fold all** / **Open all** fold every section to its heading or open them again.
+Back or a tap beside the panel puts it away. On the page itself, a tap on a section's heading now folds
+it to the heading (its chevron turns) and opens it again; a long press still pins it. Folds are kept
+while the app is open (`expanded`, `shut-<course>-<section>`).
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (78) with JUnit against Robolectric's Android 17 jar. Still to try on the phone: the tab's place
+over the page's left margin (does it cover text?), the panel's slide and its insets under the status bar,
+going to a section (folded and not, pinned and not), Fold all, Back, and a long course (GUL1001's cards).
+
+## 29 October 2026 (Week until midnight, a toggle in Settings)
+
+**Asked for:** run the Week grid from 19:00 to 12 am, with a toggle in Settings.
+
+**Change:** Settings' Timetable section has **Week until midnight** (off by default, remembered as
+`weekToMidnight`). On, Week's grid runs 08:00 to 00:00 (16 hours, the last line labelled 00) instead
+of to 19:00, so plans can go in the evening: the selection box goes down to 23:30, a plan can run to
+midnight (its How long wheel too), and the now line shows until midnight. The same end holds for a plan
+opened from Day (`DayEnd.minutes`). Classes are unchanged; the widget still ends at 19:00. With the
+toggle off again, plans after 19:00 are kept but fall outside the grid until it's back on.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (78) with JUnit against Robolectric's Android 17 jar. Still to try on the phone: the toggle,
+the taller grid (scrolling, the swipe between weeks, the bench: a week swipe was 4.6 ms), a plan at
+22:00, the now line in the evening, and the toggle back off.
+
+## 29 October 2026 (Hours on each course's page and their total under Courses, not under Week)
+
+**Asked for:** remove the Courses section from Week. Put each course's lecture and tutorial hours in a
+new section on that course's page, and the total hours after the courses, written as L and T hours
+("L12 T5").
+
+**Change:** Week is the grid, its key and the plans line; its Courses section is gone, with the redraw
+it waited for after a week swipe. A course's page starts with **Hours**, before Spectrum's sections: the
+hours a week by kind ("Lecture 2 h · Tutorial 1 h"), how many classes, and the hours large on the right.
+A tap opens the course's class sheet (days, times, rooms), as a course row under Week did. Under the
+Courses list, after a heavier line, **Total** gives each kind's hours by its initial and the number of
+classes ("L12 T5 · 11 classes a week"), with the week's hours on the right (`hoursByType`, `hoursShort`,
+`minutesByType` in `Ui.kt`). These are the usual week's hours. Week took a holiday's classes off the
+hours of the week shown; with no week chosen on Courses, nothing is taken off.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (78) with JUnit against Robolectric's Android 17 jar, including the new `HoursTest` (kinds in
+order, half hours, a lab not taken for a lecture). Still to try on the phone: the Hours card on a course
+page and its tap, the Total row's look under the course rows, and Week without its section (swiping weeks).
+
+## 29 October 2026 (Grades and News fold out of each course on Courses)
+
+**Asked for:** remove the Grades and News pages and put them in Courses, only the user's occurrence's
+items; pressing a course's main body opens its course page, and only the rightmost part opens its news,
+then its grades below, in place.
+
+**Change:** the tabs are Day, Due, Courses and Settings. On Courses, each row's body (dot, code and
+occurrence, name) opens the course page as before. Past a short line at its end, a 56dp part (a count of
+what's new in the accent, over a chevron) opens the course's **News** (its announcements for the user, as
+News's rows: tap one for its text and files), then its **Grades** ("2 of 5 marked", the mark cards with
+New until seen, the course total, Not marked yet) under the row. The fold is built the first time it
+opens, and opening it marks what's new there as seen after a moment. Only the user's occurrence's
+things: announcements for other occurrences only are left out (no For me / All switch any more), as are
+unmarked items named for other occurrences. The Courses tab's badge and the line under its title count
+what's new ("5 courses · 2 new · last synced 11:32"). Notifications of a new announcement or mark open
+Courses with that course's fold open (`EXTRA_FOLD`), and old ones, or a page last left on Grades or
+News, open Courses. The Grades and News icons are deleted.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (76) with JUnit against Robolectric's Android 17 jar. Still to try on the phone: the row's two
+tap zones (is the right part easy to hit and plain enough as a separate button?), the fold's look with real
+news and marks, New going after opening, the badge, a notification opening a fold, and the tab bar
+with four tabs.
+
+## 29 October 2026 (News reads the user's occurrence's own forum)
+
+**Asked for:** find out why the latest GUL1001 announcement in the user's occurrence's tab never arrived.
+
+**Change:** News read only each course's Announcements forum (`type == "news"`). GUL1001 shows one
+section per occurrence (a card per group, see `docs/SPECTRUM-COURSES.md`), and an announcement in the
+user's occurrence's section is most likely a post in a forum of that section, which News never read. The likely cause,
+from the code; the user's Spectrum data wasn't available to confirm it. News now also reads
+(`NewsForums.pick`) any forum named for the user's occurrence in that course ("Announcement OCC 4",
+"Forum Occ4", "Group 4 …"), and a course's other announcement-named forums ("Pengumuman", "Notices") when
+there are at most three; more than that are one per group, whose is whose can't be told. Forums named for
+other occurrences are left out. A post from such a forum says the forum's name after its author. The sync
+logs how many forums it read (logcat `news:`). The groups are now read before the forums are picked, so
+the first sync after sign-in already knows the user's occurrence.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (76) with JUnit against Robolectric's Android 17 jar, including the new `NewsForumsTest`.
+Still to check on the phone: sync, then look for the missing post in News and in logcat's `news:` line. If it
+isn't there, the post may be text on the section's page rather than a forum post:
+`DebugSpectrumReceiver --es call mod_forum_get_forums_by_courses --es params '{"courseids":[GUL1001's id]}'`
+lists the course's forums and their names.
+
+## 29 October 2026 (Long press to dismiss a deadline)
+
+**Asked for:** let the user long press to dismiss an item in Due.
+
+**Change:** a long press on a deadline in Due brings up a small "Dismiss" card out of the row (the
+section pin's card and vibration, now shared as `popMenu`/`menuCard`). A tap on it folds the row away in
+place, then the page is drawn again. A dismissed deadline goes from everything that counts what's due:
+the Due list and its top line, Week's deadline line, the 24 h and 2 h reminders (rescheduled at once) and
+the widget (`SpectrumStore.due`). It waits, faded, in a **Dismissed · N** fold at the end of Due, where a
+long press brings it back. Dismissals are kept per activity (`DueList.activityKey`) while Spectrum still
+lists it, and Sign out clears them with the rest.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (72) with JUnit against Robolectric's Android 17 jar. Still to try on the phone: the card
+coming out of a row, the row folding away (first, middle and last rows: no line left above the first or
+below the last), the fold, Bring back, and that a dismissed deadline's reminder doesn't come.
+
+## 29 October 2026 (One Due row per activity, none for other occurrences)
+
+**Asked for:** check for duplicated items in Due.
+
+**Change:** without the user's Spectrum data in this session, the duplicates were traced in the code.
+Due lists Spectrum's action events (`core_calendar_get_action_events_by_timesort`), one row per **event**.
+One activity can have several: a quiz or lesson opens and closes, an activity with "Expect completed on"
+has that date besides its due date, and a group override adds one. Some courses also post an assignment
+once per occurrence. The sync now keeps each event's module, instance and event type, and `DueList`
+makes one row per activity: its deadline (due, then close) over its other events, and of those the next
+still to come. Rows of a course with the same name and due time are one too. Activities named for other
+occurrences only ("Assignment 1 (OCC 3)" for an OCC 4 student) are left out, as Grades already does. The
+sync logs how many of each it took out (logcat `due:`).
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests run with JUnit against Robolectric's Android 17 jar: 72 pass, including the new `DueListTest` (a
+quiz's open and close, a due date beside an expected completion, a group override, the same assignment
+added twice, other occurrences' copies). Still to check on the phone: after a sync, whether the
+duplicates the user saw are gone, and what logcat's `due:` line counted. If any remain, they're a kind not
+covered here: note their names and types.
+
+## 29 October 2026 (The attendance log in the app, its problems in red)
+
+**Asked for:** let the user see the attendance log, with the errors.
+
+**Change:** Settings' Attendance section has an **Attendance log** row ("2 problems in the past week",
+"No problems in the past week", "Nothing logged yet") that opens the log as a page in the Settings tab
+(title "Attendance log"; Back, or tapping Settings again, returns to Settings where it was scrolled). The
+page reads the same file adb reads (`AttendanceLog.read`/`parse`), newest first under a label per day,
+with each step's time in mono and its text. Problems are in red: a read or a run that failed, Spectrum's
+answer naming an error (`{"error":…}`), no attendance activity for a class, the run cut short, and
+notifications being off (`AttendanceLog.isProblem`). Problems / All across the top (Problems first, unless
+there are none; remembered as `logAll`). It shows the newest 200 steps, a long press selects a step's text,
+and **Copy log** puts the whole file on the clipboard.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. The main and debug sources
+type-check (Kotlin 2.4.20 against Robolectric's Android 17 jar, stub `R`), and the JVM tests were compiled
+and run with JUnit against that jar: 66 pass, including the new `AttendanceLogTest` (lines with a time,
+lines that carry on the one before, what counts as a problem). Still to try on the phone: the row's line,
+the page with a real log, Copy log, Back.
+
+## 29 October 2026 (Settings as a tab of their own)
+
+**Asked for:** a standalone Settings panel, as a fourth tab (Day, Due, Courses, Settings once Grades and
+News are gone).
+
+**Change:** Settings are the last tab (`settings`, icon `avd_tab_settings`: the three sliders, each row
+sliding over and back when chosen), drawn as a page under the top bar's "Settings", with who's signed in
+and the version on the line under it. `SettingsSheet.build` now draws that page (no handle, close button
+or sheet); the bottom sheet (`SettingsSheet.Open`) is gone. A long press on the title and pulling the
+Courses list up still open Settings, now by going to the tab. A new look or theme spreads over the app from
+what was tapped (`MainActivity.spreadFrom`), and the redrawn page carries on the pill's glide or the dots'
+hop (`settingsMoved`). Back from Settings goes to Day, as from any tab.
+
+**Checked:** made in a cloud session with no Android SDK, so no Gradle build or unit tests ran and nothing
+was tried on the phone. All of main and debug type-check with the Kotlin compiler (2.4.20) against
+Robolectric's Android 17 jar and a stub `R`. Still to check by hand: the tab bar's spacing with six tabs
+(until Grades and News go), the icon's animation, the look and theme spreading from the tapped option, and
+Back.
+
 ## 23 October 2026 (Course pages laid out from Spectrum's own layout, for any course)
 
 **Asked for:** not only these courses: anyone using the app, with any course, should see its page laid

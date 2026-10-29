@@ -124,14 +124,15 @@ fun weekRange(monday: Int): String =
 /** Top-bar titles: Big Shoulders 56sp everywhere (as 1i and 1m's headings). */
 private const val TITLE_SIZE = 56f
 
-/** Day's widest title: the longest day name with a wide date. */
+/** Day's widest title: the longest day name with a wide date. Every tab's title is sized by it. */
 private const val DAY_WIDEST = "Wednesday 30 Sep"
 
 /**
  * A top-bar title at 56sp, or smaller when [widest] (the longest title shown in its place) wouldn't fit the
- * width it's given. Sized by the widest, every day's title is the same size, so it doesn't jump as days
- * change. On a 427dp-wide phone they all fit at 56sp in the 395dp the title has (no settings button
- * beside it any more); at 360dp Day's come out at about 47sp.
+ * width it's given. Every tab's is sized by Day's widest, so each title is the same size as Day's and the
+ * top bar doesn't change height going from tab to tab (Day's shrank to fit while "Due" stayed at 56sp).
+ * At 360dp they come out at about 47sp; a title wider than Day's widest ("Attendance log" isn't) shrinks
+ * further to fit.
  */
 /**
  * The small line's place under a title: wrapping its text too. A full-width child in a column whose other
@@ -139,7 +140,7 @@ private const val DAY_WIDEST = "Wednesday 30 Sep"
  */
 private fun underTitle(ui: Ui) = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(4) }
 
-private fun titleText(ui: Ui, text: String, widest: String = text) =
+private fun titleText(ui: Ui, text: String, widest: String = DAY_WIDEST) =
     ui.fitText(text, TITLE_SIZE, ui.p.text, ui.f.sign, widest = widest, lines = 1).apply {
         setLineSpacing(0f, 1f)
         // Wrapping its text: as a column's default full-width child, the column measured it again at its own
@@ -272,8 +273,8 @@ object DayScreen {
             baselineAlignedChildIndex = 0
         }, ui.grow())
         card.setOnClickListener {
-            // The free time after it (to the next class or plan, or 19:00), and the card's height per hour for the way back.
-            val maxEnd = minOf(19 * 60, day.filter { it.third !== plan && it.first >= plan.end }.minOfOrNull { it.first } ?: Int.MAX_VALUE)
+            // The free time after it (to the next class or plan, or the end of the day), and the card's height per hour for the way back.
+            val maxEnd = minOf(DayEnd.minutes(ui.context), day.filter { it.third !== plan && it.first >= plan.end }.minOfOrNull { it.first } ?: Int.MAX_VALUE)
             val at = IntArray(2).also(card::getLocationOnScreen)
             val from = RectF(at[0].toFloat(), at[1].toFloat(), (at[0] + card.width).toFloat(), (at[1] + card.height).toFloat())
             h.openPlan(from, plan, false, maxEnd, card.height / ((plan.end - plan.start) / 60f))
@@ -464,12 +465,21 @@ object DayScreen {
         ui.text(text, 18f, color, ui.f.bodyBold, spacing = -0.01f).apply { setLineSpacing(0f, 1.1f) }
 }
 
+/**
+ * How late the day runs for the week grid and plans: 19:00, or (Settings' "Week until midnight") 24:00,
+ * for plans in the evening. Classes end by 19:00 either way.
+ */
+object DayEnd {
+    private const val KEY = "weekToMidnight"
+    fun late(c: android.content.Context) = uiPrefs(c).getBoolean(KEY, false)
+    fun setLate(c: android.content.Context, on: Boolean) = uiPrefs(c).edit().putBoolean(KEY, on).apply()
+    /** The end of the day in minutes after midnight: 19:00 or 24:00. */
+    fun minutes(c: android.content.Context) = if (late(c)) 24 * 60 else 19 * 60
+}
+
 object WeekScreen {
     /** The parts of a Week page that change with the week, so going to another week changes only them ([shift]). */
-    class Parts(val offSlot: FrameLayout, val gridBox: FrameLayout, val coursesSlot: FrameLayout?) {
-        /** The Courses list's redraw after a shift, waiting for the slide to end. */
-        var pending: Runnable? = null
-    }
+    class Parts(val offSlot: FrameLayout, val gridBox: FrameLayout)
 
     /** The week grid and the courses; [plans] instead of the saved ones (a still drawing's made-up plans). */
     fun build(h: Host, plans: List<Plan>? = null): View {
@@ -506,14 +516,9 @@ object WeekScreen {
             addView(ui.text("Plan · long-press a free time to add one", 12f, p.muted))
         })
         page.addView(card)
-        if (tt.sessions.isEmpty()) {
-            page.addView(ui.text("No timetable yet · sign in to Spectrum in Courses", 13.5f, p.muted), ui.wide(top = 12f))
-            page.tag = Parts(offSlot, gridBox, null)
-            return page
-        }
-        val coursesSlot = FrameLayout(ui.context).apply { addView(courses(h)) }
-        page.addView(coursesSlot, ui.wide(top = 30f))
-        page.tag = Parts(offSlot, gridBox, coursesSlot)
+        if (tt.sessions.isEmpty()) page.addView(ui.text("No timetable yet · sign in to Spectrum in Courses", 13.5f, p.muted), ui.wide(top = 12f))
+        // Each course's hours are on its course page now, and the week's total under the Courses list.
+        page.tag = Parts(offSlot, gridBox)
         return page
     }
 
@@ -528,8 +533,8 @@ object WeekScreen {
     /**
      * [page] going to the week shown now ([Host.weekShift] has just moved, [dir] +1 for a later week):
      * only what changes changes. The grid's new week slides in from that side as the old one carries on
-     * out from where the finger left it (at its speed, [pxPerSecond]), the two together like a carousel; the break card follows; the
-     * Courses list is redrawn once the slide is over (it's below the grid). False if [page] isn't Week.
+     * out from where the finger left it (at its speed, [pxPerSecond]), the two together like a carousel; the break card follows.
+     * False if [page] isn't Week.
      */
     fun shift(page: View, h: Host, dir: Int, pxPerSecond: Float = 0f): Boolean {
         val parts = page.tag as? Parts ?: return false
@@ -554,97 +559,7 @@ object WeekScreen {
             parts.offSlot.addView(card)
             Motion.fade(card, 0f, 1f, 200)
         }
-        val slot = parts.coursesSlot ?: return true
-        parts.pending?.let(slot::removeCallbacks)
-        val redraw = Runnable {
-            parts.pending = null
-            slot.removeAllViews()
-            slot.addView(courses(h))
-        }
-        parts.pending = redraw
-        slot.postDelayed(redraw, if (Motion.enabled) Motion.SETTLE.duration else 0)
         return true
-    }
-
-    /**
-     * Each course with its hours this week, laid out and ordered as the Courses tab (by code): code and
-     * occurrence, the name, the hours by kind of class, and the week's hours on the right; lines between
-     * courses only; then the totals. A course opens its class sheet. Classes that don't happen this week
-     * (on a public holiday, or all of them in a break, revision or exam week) are taken off the hours:
-     * a kind of class with none left is struck through, and a course with none left is struck through
-     * whole, at 0 h.
-     */
-    private fun courses(h: Host): View {
-        val ui = h.ui
-        val p = ui.p
-        val tt = h.timetable
-        val monday = h.dateOf(1)
-        val offWeek = weekOff(monday) != null
-        fun cancelled(s: Session) = offWeek || Holidays.on(monday.plusDays((s.day - 1).toLong())) != null
-        val anyCancelled = tt.sessions.any(::cancelled)
-        val list = ui.column()
-        list.addView(ui.text("COURSES", 28f, p.text, ui.f.sign).apply { letterSpacing = 0.02f }, ui.wide(bottom = 4f))
-        val order = listOf("Lecture", "Tutorial")
-        fun types(sessions: List<Session>) = sessions.groupBy { it.type }.toList()
-            .sortedWith(compareBy({ order.indexOf(it.first).let { i -> if (i < 0) order.size else i } }, { it.first }))
-        fun byType(sessions: List<Session>) = types(sessions).map { (type, ss) -> "$type ${hoursText(ss.sumOf { it.end - it.start })}" }
-        /** "Lecture 2 h · Tutorial 1 h", with each kind's hours this week; a kind with nothing left struck through at its usual hours. */
-        fun parts(sessions: List<Session>): CharSequence {
-            val out = android.text.SpannableStringBuilder()
-            for ((type, ss) in types(sessions)) {
-                if (out.isNotEmpty()) out.append(" · ")
-                val left = ss.filterNot(::cancelled)
-                val from = out.length
-                out.append("$type ${hoursText((if (left.isEmpty()) ss else left).sumOf { it.end - it.start })}")
-                if (left.isEmpty()) out.setSpan(android.text.style.StrikethroughSpan(), from, out.length, 0)
-            }
-            return out
-        }
-        fun strike(t: android.widget.TextView) = t.apply { paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG }
-        tt.courses.sortedWith(compareBy({ it.code.ifEmpty { "~" } }, { it.name })).forEachIndexed { n, course ->
-            if (n > 0) list.addView(View(ui.context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
-            val sessions = tt.sessions.filter { it.course == course }
-            val left = sessions.filterNot(::cancelled)
-            val none = sessions.isNotEmpty() && left.isEmpty()
-            val total = left.sumOf { it.end - it.start }
-            val sub = android.text.SpannableStringBuilder(parts(sessions)).apply { if (sessions.any { it.room == "Online" }) append(" · online") }
-            val codeLine = ui.row().apply {
-                addView(ui.text(course.code, 12f, p.courseText(course.color), ui.f.monoBold).also { if (none) strike(it) })
-                addView(ui.text(" · Occ ${course.occ}", 12f, p.faint, ui.f.mono))
-                setPadding(0, 0, 0, ui.dp(2))
-            }
-            list.addView(ui.row(gap = 12f).apply {
-                minimumHeight = ui.dp(60)
-                setPadding(0, ui.dp(10), 0, ui.dp(10))
-                background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
-                contentDescription = "${course.code}, occurrence ${course.occ}, ${course.name}: ${if (none) "no classes this week" else "$sub, ${hoursText(total)}"}"
-                setOnClickListener { h.openSheet(course, null) }
-                addView(View(ui.context).apply { background = ui.shape(course.color, 99f); if (none) alpha = 0.4f }, LinearLayout.LayoutParams(ui.dp(12), ui.dp(12)))
-                addView(ui.column().apply {
-                    addView(codeLine)
-                    addView(ui.text(course.name, 15f, if (none) p.muted else p.text, ui.f.bodySemi).also { if (none) strike(it) })
-                    addView(ui.text(sub, 12.5f, p.muted).also { if (none) strike(it) }, ui.wide(top = 2f))
-                }, ui.grow())
-                addView(ui.text(hoursText(total), 22f, if (none) p.muted else p.text, ui.f.sign))
-            })
-        }
-        // The week in total, under a heavier line.
-        list.addView(View(ui.context).apply { setBackgroundColor(p.text) }, ui.wide(top = 4f).apply { height = ui.dp(1.5f) })
-        val held = tt.sessions.filterNot(::cancelled)
-        val all = held.sumOf { it.end - it.start }
-        val count = "${held.size} ${if (held.size == 1) "class" else "classes"} ${if (anyCancelled) "this week" else "a week"}"
-        val totals = listOf(count) + byType(held)
-        list.addView(ui.row(gap = 12f).apply {
-            minimumHeight = ui.dp(60)
-            setPadding(ui.dp(24), ui.dp(10), 0, ui.dp(10))
-            contentDescription = "Total: $count, ${hoursText(all)}"
-            addView(ui.column().apply {
-                addView(ui.text("Total", 15f, p.text, ui.f.bodyBold))
-                addView(ui.text(totals.joinToString(" · "), 12.5f, p.muted), ui.wide(top = 2f))
-            }, ui.grow())
-            addView(ui.text(hoursText(all), 26f, p.text, ui.f.sign))
-        })
-        return list
     }
 }
 
@@ -667,6 +582,9 @@ class WeekGrid(
     private val gapX = ui.dp(4f).toFloat()
     private val padY = ui.dp(8f).toFloat()
     private val startMin = 8 * 60
+    /** 19:00, or midnight with Settings' Week until midnight ([DayEnd]); and the grid's hours from 08:00. */
+    private val endMin = DayEnd.minutes(ui.context)
+    private val hours = (endMin - startMin) / 60
     private val blocks = mutableListOf<Pair<RectF, Session>>()
     private val planBlocks = mutableListOf<Pair<RectF, Plan>>()
     /** Each column's date, Monday first. */
@@ -706,7 +624,7 @@ class WeekGrid(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (head + padY * 2 + hour * 11).toInt())
+        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (head + padY * 2 + hour * hours).toInt())
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -714,14 +632,15 @@ class WeekGrid(
         planBlocks.clear()
         val colW = (width - axis - gapX * 5) / 5
         val top = head + padY
-        val bottom = top + hour * 11
-        // Now: on a weekday between 08:00 and 19:00.
-        val nowY = if (today != null && now.min >= startMin && now.min <= 19 * 60) top + (now.min - startMin) / 60 * hour else null
+        val bottom = top + hour * hours
+        // Now: on a weekday between 08:00 and the end of the day.
+        val nowY = if (today != null && now.min >= startMin && now.min <= endMin) top + (now.min - startMin) / 60 * hour else null
         val pillH = ui.dp(15f).toFloat()
-        for (h in 8..19) {
-            val y = top + (h - 8) * hour
+        for (h in startMin / 60..endMin / 60) {
+            val y = top + (h - startMin / 60) * hour
             if (nowY != null && kotlin.math.abs(y - nowY) < pillH) continue // the time pill is there
-            canvas.drawText("%02d".format(h), axis - ui.dp(3f), y + axisPaint.textSize * 0.35f, axisPaint)
+            // Midnight at the bottom is 00.
+            canvas.drawText("%02d".format(h % 24), axis - ui.dp(3f), y + axisPaint.textSize * 0.35f, axisPaint)
         }
         for (d in 1..5) {
             val left = axis + gapX + (d - 1) * (colW + gapX)
@@ -735,7 +654,7 @@ class WeekGrid(
             }
             if (holiday != null) drawHoliday(canvas, holiday, RectF(left, top, left + colW, bottom))
             fill.color = p.line
-            for (h in 0..11) canvas.drawRect(left, top + h * hour, left + colW, top + h * hour + 1, fill)
+            for (h in 0..hours) canvas.drawRect(left, top + h * hour, left + colW, top + h * hour + 1, fill)
             // A faint guide across the other days, under their classes, so "now" lines up across the week.
             if (nowY != null && !isToday) {
                 fill.color = p.accent
@@ -956,10 +875,10 @@ class WeekGrid(
         return (k + 1).takeIf { k in 0..4 && x >= colLeft(k + 1) && x <= colLeft(k + 1) + colW }
     }
 
-    /** The half hour under ([x], [y]), kept inside the grid: the nearest day, 08:00 to 18:30. */
+    /** The half hour under ([x], [y]), kept inside the grid: the nearest day, 08:00 to the last half hour before the end of the day. */
     private fun halfHourAt(x: Float, y: Float): Pair<Int, Int> {
         val d = (((x - axis - gapX) / (colW + gapX)).toInt() + 1).coerceIn(1, 5)
-        val start = (startMin + ((y - gridTop) / hour * 2).toInt().coerceIn(0, 21) * 30)
+        val start = (startMin + ((y - gridTop) / hour * 2).toInt().coerceIn(0, hours * 2 - 1) * 30)
         return d to start
     }
 
@@ -967,11 +886,11 @@ class WeekGrid(
     private fun busy(d: Int, except: String?) = tt.day(d).map { it.start to it.end } +
         plans.filter { it.date == dates[d - 1] && it.id != except }.map { it.start to it.end }
 
-    /** Starting at [start] on day [d]: whether it's free, how far it can run (19:00 at most), and where a plan of [length] would end. */
+    /** Starting at [start] on day [d]: whether it's free, how far it can run (to the end of the day at most), and where a plan of [length] would end. */
     private fun room(d: Int, start: Int, length: Int, except: String?): Triple<Boolean, Int, Int> {
         val taken = busy(d, except)
         val free = taken.none { (a, b) -> start in a until b }
-        val maxEnd = minOf(19 * 60, taken.map { it.first }.filter { it > start }.minOrNull() ?: Int.MAX_VALUE)
+        val maxEnd = minOf(endMin, taken.map { it.first }.filter { it > start }.minOrNull() ?: Int.MAX_VALUE)
         return Triple(free, maxEnd, minOf(start + length, maxEnd))
     }
 
@@ -1045,7 +964,7 @@ class WeekGrid(
         pickDay = d
         pickStart = start
         pickFree = free
-        pickEnd = if (free) end else minOf(start + (plan.end - plan.start), 19 * 60)
+        pickEnd = if (free) end else minOf(start + (plan.end - plan.start), endMin)
         if (free) lastFree = d to start
         if (feel) { if (free) Haptics.tick(this) else Haptics.threshold(this, false) }
         boxFrom.set(box)

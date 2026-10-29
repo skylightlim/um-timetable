@@ -40,7 +40,8 @@ import kotlin.concurrent.thread
 import kotlin.math.hypot
 
 /**
- * The app's main screen, drawn natively: Day (with the Week grid), Grades, Due, News and Courses.
+ * The app's main screen, drawn natively: Day (with the Week grid), Due, Courses (with each course's news
+ * and grades) and Settings.
  * The timetable comes from the MAYA import.
  */
 class MainActivity : Activity(), SpectrumHost {
@@ -53,8 +54,13 @@ class MainActivity : Activity(), SpectrumHost {
         private set
     /** The sign-in poster over the app on first run (see [showWelcome]). */
     private var welcome: View? = null
-    /** The Settings sheet, while it's open: it stays until the user closes it. */
-    private var settings: SettingsSheet.Open? = null
+    /** Settings redrawn after a new look or theme: what moves on it (the look's pill, the theme's dots). */
+    private var settingsMoved: SettingsSheet.Moved? = null
+    /** Where a new look or theme spreads from: what was tapped in Settings, else the title. */
+    private var spreadFrom: View? = null
+    /** The attendance log is open over Settings, which were scrolled to [settingsY]. */
+    private var settingsLog = false
+    private var settingsY = 0
 
     override val timetable: Timetable get() = Timetable.load(this)
     override fun now() = Now.current()
@@ -92,6 +98,9 @@ class MainActivity : Activity(), SpectrumHost {
     private lateinit var scroll: SwipeScrollView
     private lateinit var content: FrameLayout
     private lateinit var tabs: LinearLayout
+    /** The Sections tab on the left edge, over a course page, and what a tap on it opens ([sectionsTab]). */
+    private lateinit var sectionsTabView: View
+    private var sectionsOpen: (() -> Unit)? = null
     private val tabViews = mutableMapOf<String, Triple<LinearLayout, ImageView, TextView>>()
     private val badges = mutableMapOf<String, TextView>()
     private lateinit var shell: LinearLayout
@@ -151,9 +160,9 @@ class MainActivity : Activity(), SpectrumHost {
         seenNews = uiPrefs(this).getStringSet("newsSeen", emptySet()) ?: emptySet()
         seenGrades = uiPrefs(this).getStringSet("gradesSeen", emptySet()) ?: emptySet()
         sel = homeDay(timetable, now())
-        view = intent.getStringExtra(EXTRA_VIEW)?.takeIf { it in VIEWS }
-            ?: uiPrefs(this).getString("view", "day")?.takeIf { it in VIEWS } ?: "day"
+        view = viewOf(intent.getStringExtra(EXTRA_VIEW)) ?: viewOf(uiPrefs(this).getString("view", "day")) ?: "day"
         intent.getIntExtra(EXTRA_COURSE, 0).takeIf { it > 0 }?.let { view = "files"; openCourse = it }
+        intent.getIntExtra(EXTRA_FOLD, 0).takeIf { it > 0 }?.let { view = "files"; openFold(it) }
         buildShell()
         render()
         if (!SpectrumStore.signedIn(this) && timetable.sessions.isEmpty()) showWelcome()
@@ -169,7 +178,8 @@ class MainActivity : Activity(), SpectrumHost {
         super.onNewIntent(intent)
         setIntent(intent)
         intent.getIntExtra(EXTRA_COURSE, 0).takeIf { it > 0 }?.let { openCourse = it; setView("files"); return }
-        intent.getStringExtra(EXTRA_VIEW)?.takeIf { it in VIEWS }?.let {
+        intent.getIntExtra(EXTRA_FOLD, 0).takeIf { it > 0 }?.let { openFold(it); if (view == "files") render() else setView("files"); return }
+        viewOf(intent.getStringExtra(EXTRA_VIEW))?.let {
             if (it == "day") { pickedDay = false; weekShift = 0; sel = homeDay(timetable, now()) }
             go(it, null)
         }
@@ -178,12 +188,11 @@ class MainActivity : Activity(), SpectrumHost {
     override fun onResume() {
         super.onResume()
         if (!pickedDay) sel = homeDay(timetable, now())
+        // Back from what a Settings row opened (TimeEdit, Android's settings, the sign-in), the page shows how it went.
         if (fresh) fresh = false else render(keepScroll = true)
-        // Back from what a Settings row opened (TimeEdit, Android's settings, the sign-in): the sheet shows how it went.
-        settings?.takeIf { it.showing }?.refresh()
         ticker.post(tick)
         // Grades arrive after the rest of a sync (they can take Spectrum much longer).
-        SpectrumSync.onGrades = { if (view == "grades") render(keepScroll = true) else renderTabs() }
+        SpectrumSync.onGrades = { if (view == "files" && openCourse == null) render(keepScroll = true) else renderTabs() }
         if (SpectrumStore.signedIn(this) && System.currentTimeMillis() - SpectrumStore.lastSync(this) > 10 * 60_000L) refresh()
     }
 
@@ -191,13 +200,6 @@ class MainActivity : Activity(), SpectrumHost {
         super.onPause()
         ticker.removeCallbacks(tick)
         SpectrumSync.onGrades = null
-    }
-
-    override fun onDestroy() {
-        // Sign out restarts the screen with the sheet still open (its Sign out button asked first).
-        settings?.dismiss()
-        settings = null
-        super.onDestroy()
     }
 
     /** Every touch goes past the press feedback first; it never takes one. */
@@ -215,8 +217,8 @@ class MainActivity : Activity(), SpectrumHost {
         val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
         window.insetsController?.setSystemBarsAppearance(if (p.dark) 0 else lightBars, lightBars)
 
-        // Settings open from a long press on the title (there's no button; the title has the whole width),
-        // or from pulling the Courses list up. TalkBack offers the long press as "Open settings".
+        // Settings are the last tab; a long press on the title opens them too, as does pulling the Courses
+        // list up. TalkBack offers the long press as "Open settings".
         titleBox = FrameLayout(this).apply {
             isHapticFeedbackEnabled = false // the app's own vibration instead, at the user's level
             setOnLongClickListener { Haptics.threshold(it, true); openSettings(); true }
@@ -280,10 +282,25 @@ class MainActivity : Activity(), SpectrumHost {
             // And the settings gear below it, uncovered as the Courses list is pulled up.
             val pullUp = PullUpIndicator(ui)
             scroll.pullUpIndicator = pullUp
+            // A course page's Sections tab peeks out of the left edge, over the page, halfway down.
+            sectionsTabView = FrameLayout(this@MainActivity).apply {
+                val r = ui.dp(14f).toFloat()
+                background = ui.pressable(android.graphics.drawable.GradientDrawable().apply {
+                    setColor(p.surface)
+                    setStroke(1, p.line)
+                    cornerRadii = floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)
+                }, 14f)
+                elevation = ui.dp(4f).toFloat()
+                contentDescription = "Sections: every section of this course, to go to one"
+                addView(ui.icon(R.drawable.ic_sections, p.text, 18f), FrameLayout.LayoutParams(ui.dp(18), ui.dp(18), Gravity.CENTER))
+                visibility = View.GONE
+                setOnClickListener { Haptics.tick(it); sectionsOpen?.invoke() }
+            }
             addView(FrameLayout(this@MainActivity).apply {
                 addView(pull, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
                 addView(pullUp, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
                 addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                addView(sectionsTabView, FrameLayout.LayoutParams(ui.dp(30), ui.dp(60), Gravity.START or Gravity.CENTER_VERTICAL))
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             addView(tabBar)
         }
@@ -347,6 +364,8 @@ class MainActivity : Activity(), SpectrumHost {
                         Haptics.back(this)
                         openCourse = null
                         render()
+                    } else if (id == view && id == "settings" && settingsLog) {
+                        logBack()
                     } else if (id == "day" && view == "day") {
                         goCell(WEEK_CELL)
                     } else if (id == "day" && view == "week") {
@@ -367,19 +386,23 @@ class MainActivity : Activity(), SpectrumHost {
     /** A move to another page (a course, back, a tab tapped again): it arrives with its entrance. */
     override fun render() = render(keepScroll = false, enter = true)
 
+    override fun redraw() = render(keepScroll = true)
+
     private fun render(keepScroll: Boolean, enter: Boolean = false) {
         val n = now()
         lastMinute = "${n.dow}-${n.min.toInt()}"
         renderTop(n)
         renderTabs()
         val y = scroll.scrollY
+        // A course page puts its Sections tab back as it's built (sectionsTab).
+        val hadTab = sectionsOpen != null
+        sectionsOpen = null
         val page = try {
             when (view) {
                 "week" -> WeekScreen.build(this)
-                "grades" -> SpectrumScreens.grades(this).also { markGradesSeenSoon() }
                 "due" -> SpectrumScreens.due(this)
-                "news" -> SpectrumScreens.news(this).also { markNewsSeenSoon() }
                 "files" -> SpectrumScreens.courses(this).also { openCourse?.let { loadCourse(it) } }
+                "settings" -> if (settingsLog) AttendanceLogPage.build(this) else settingsPage()
                 else -> DayScreen.build(this, sel)
             }
         } catch (e: Exception) {
@@ -387,6 +410,7 @@ class MainActivity : Activity(), SpectrumHost {
             ui.text("Something went wrong showing this page: ${e.message}", 15f, ui.p.muted)
         }
         content.removeAllViews()
+        showSectionsTab(hadTab)
         // Nor is the page clipped: its cards rise into place, and spring back after a press, a little past its edges.
         (page as? ViewGroup)?.clipChildren = false
         content.addView(page)
@@ -402,7 +426,7 @@ class MainActivity : Activity(), SpectrumHost {
             else -> null
         }
         // Spectrum's tabs sync when pulled down.
-        scroll.onPull = if (view in setOf("grades", "due", "news", "files") && SpectrumStore.signedIn(this)) ::refresh else null
+        scroll.onPull = if (view in setOf("due", "files") && SpectrumStore.signedIn(this)) ::refresh else null
         // The Courses list (where Settings used to sit, under the courses) opens them when pulled up.
         scroll.onPullUp = if (view == "files" && openCourse == null) ::openSettings else null
         if (pendingSlide != 0) {
@@ -514,7 +538,8 @@ class MainActivity : Activity(), SpectrumHost {
         val p = ui.p
         val tt = timetable
         val big = view == "day" || view == "week"
-        val page = PAGE_TITLES[view]
+        val log = view == "settings" && settingsLog
+        val page = if (log) "Attendance log" else PAGE_TITLES[view]
         val days = daysTo(sel)
         val words = when {
             view == "day" -> listOf(DAY_NAMES[sel], dateText(days))
@@ -525,6 +550,7 @@ class MainActivity : Activity(), SpectrumHost {
         // The small line under the title, each page's own summary. The Spectrum tabs: what's on them
         // ("3 due · next in 1d"); Day: the day at a glance; Week: its Spectrum deadlines.
         val line = when {
+            log -> AttendanceLogPage.summary(this)
             page != null -> SpectrumScreens.summary(this, view)
             view == "day" -> dayGlance(tt.day(sel))
             view == "week" -> weekLine(daysTo(1))
@@ -547,18 +573,44 @@ class MainActivity : Activity(), SpectrumHost {
         Motion.retitle(old, title, pendingSlide * ui.dp(32f).toFloat(), ui.dp(10f).toFloat())
     }
 
-    /** Settings (theme, imports, notifications, vibration, account), as in redesign 1p. */
-    private fun openSettings() {
-        if (settings?.showing == true) return
-        settings = SettingsSheet.show(this, this)
+    /** Settings (theme, imports, notifications, vibration, account), as in redesign 1p: the last tab. */
+    private fun openSettings() = setView("settings")
+
+    /**
+     * The Settings tab's page. A new look or theme spreads over the app from what was tapped, and the
+     * page drawn in it shows what moved ([settingsMoved]).
+     */
+    private fun settingsPage(): View {
+        val moved = settingsMoved
+        settingsMoved = null
+        return SettingsSheet.build(this, this, moved = moved, restyle = { from, m, change ->
+            spreadFrom = from
+            settingsMoved = m
+            change()
+            spreadFrom = null
+            settingsMoved = null
+        }, openLog = {
+            Haptics.tick(shell)
+            settingsY = scroll.scrollY
+            settingsLog = true
+            render()
+        })
+    }
+
+    /** Back from the attendance log to Settings, where they were scrolled to. */
+    private fun logBack() {
+        Haptics.back(shell)
+        settingsLog = false
+        render()
+        scroll.post { scroll.scrollTo(0, settingsY) }
     }
 
     override fun setLook(look: Look) {
-        if (look != this.look) restyle(titleBox) { this.look = look; Look.save(this, look) }
+        if (look != this.look) restyle(spreadFrom ?: titleBox) { this.look = look; Look.save(this, look) }
     }
 
     override fun setScheme(scheme: Scheme) {
-        if (scheme != this.scheme) restyle(titleBox) {
+        if (scheme != this.scheme) restyle(spreadFrom ?: titleBox) {
             this.scheme = scheme
             Scheme.save(this, scheme)
             TimetableWidget.updateAll(this) // its classes take the theme's course colours too
@@ -608,7 +660,7 @@ class MainActivity : Activity(), SpectrumHost {
         val from = startOfDay(dateIn(monday).timeInMillis)
         val to = startOfDay(dateIn(monday + 7).timeInMillis)
         val now = System.currentTimeMillis()
-        val n = SpectrumStore.array(this, "due").objects().count { it.getLong("due") in (if (to <= now) from else maxOf(from, now)) until to }
+        val n = SpectrumStore.due(this).count { it.getLong("due") in (if (to <= now) from else maxOf(from, now)) until to }
         val which = when (monday) {
             in -6..0 -> " this week"
             in 1..7 -> " next week"
@@ -622,7 +674,7 @@ class MainActivity : Activity(), SpectrumHost {
         }
     }
 
-    /** A new look or scheme ([change]) spreads out from [from] (the title, where Settings open), over a picture of the old one. */
+    /** A new look or scheme ([change]) spreads out from [from] (what was tapped in Settings), over a picture of the old one. */
     private fun restyle(from: View, change: () -> Unit) {
         val old = shell
         val y = scroll.scrollY
@@ -659,9 +711,8 @@ class MainActivity : Activity(), SpectrumHost {
 
     private fun renderTabs() {
         val p = ui.p
-        val unread = SpectrumStore.array(this, "news").objects().count { it.optBoolean("forMe", true) && it.getInt("id").toString() !in seenNews }
-        val newMarks = SpectrumStore.array(this, "grades").objects().count { !it.isNull("raw") && !SpectrumSync.isAttendance(it) && SpectrumSync.gradeKey(it) !in seenGrades }
-        val counts = mapOf("news" to unread, "grades" to newMarks, "due" to SpectrumScreens.openAttendance(this))
+        // Courses: the announcements and marks not seen yet, in the courses' folds.
+        val counts = mapOf("files" to SpectrumScreens.newCount(this), "due" to SpectrumScreens.openAttendance(this))
         // On the week grid the Day tab is Week, with the grid's icon: the label rolls over and the icon draws itself in.
         val week = view == "week"
         if (week != dayTabWeek) tabViews["day"]?.let { (tab, icon, text) ->
@@ -691,7 +742,7 @@ class MainActivity : Activity(), SpectrumHost {
             badgeCounts[id] = n
         }
         // The pill glides to the lit tab, whose icon plays its little scene: Day's list writes itself in,
-        // Grades' medal and ribbon meet, Due's tick draws, News' bell rings, a page drops into Courses' folder.
+        // Due's tick draws, a page drops into Courses' folder, Settings' sliders slide.
         val shown = TABS[lit].first
         if (tabShown != null && tabShown != shown && Motion.enabled) (tabViews[shown]?.second?.drawable as? android.graphics.drawable.AnimatedVectorDrawable)?.start()
         tabShown = shown
@@ -721,24 +772,29 @@ class MainActivity : Activity(), SpectrumHost {
         }.start()
     }
 
-    private fun markNewsSeenSoon() {
+    /**
+     * A course's fold on the Courses list was opened: what's new in it is seen after a moment. Its New tags
+     * (and the top line's count) stay until the page is next drawn, so they're seen first; the tab's badge goes now.
+     */
+    override fun markSeen(news: Collection<String>, grades: Collection<String>) {
+        if (news.isEmpty() && grades.isEmpty()) return
         ticker.postDelayed({
-            val ids = SpectrumStore.array(this, "news").objects().map { it.getInt("id").toString() }
-            if (ids.all { it in seenNews }) return@postDelayed
-            seenNews = (seenNews + ids).toList().takeLast(500).toSet()
-            uiPrefs(this).edit().putStringSet("newsSeen", seenNews).apply()
-            renderTabs() // the dots on the cards stay until the next redraw, so they're seen first
+            if (news.any { it !in seenNews }) {
+                seenNews = (seenNews + news).toList().takeLast(500).toSet()
+                uiPrefs(this).edit().putStringSet("newsSeen", seenNews).apply()
+            }
+            if (grades.any { it !in seenGrades }) {
+                seenGrades = (seenGrades + grades).toList().takeLast(500).toSet()
+                uiPrefs(this).edit().putStringSet("gradesSeen", seenGrades).apply()
+            }
+            renderTabs()
         }, 1500)
     }
 
-    private fun markGradesSeenSoon() {
-        ticker.postDelayed({
-            val keys = SpectrumStore.array(this, "grades").objects().filter { !it.isNull("raw") }.map { SpectrumSync.gradeKey(it) }
-            if (keys.all { it in seenGrades }) return@postDelayed
-            seenGrades = (seenGrades + keys).toList().takeLast(500).toSet()
-            uiPrefs(this).edit().putStringSet("gradesSeen", seenGrades).apply()
-            renderTabs() // the dots on the marks stay until the next redraw, so they're seen first
-        }, 1500)
+    /** Course [id]'s fold of news and grades opens on the Courses list (a notification about it was tapped). */
+    private fun openFold(id: Int) {
+        openCourse = null
+        expanded += SpectrumScreens.foldKey(id)
     }
 
     // --- navigation ------------------------------------------------------------------------
@@ -752,6 +808,8 @@ class MainActivity : Activity(), SpectrumHost {
         if (changed) scroll.resetPull()
         // Another tab: Day and Week start again from the strip's own week.
         if (view != "day" && view != "week") weekShift = 0
+        // Another tab: Settings open at the top of their page again, not on the log.
+        if (view != "settings") settingsLog = false
         this.view = view
         uiPrefs(this).edit().putString("view", view).apply()
         if (changed) feel?.invoke(shell)
@@ -852,8 +910,9 @@ class MainActivity : Activity(), SpectrumHost {
         go(if (week) "week" else "day", if (slideFar) null else Haptics::tick)
     }
 
-    // Back: leave a course page, then return to Day; on Day (false), Android's own back leaves the app.
+    // Back: leave a course page or the attendance log, then return to Day; on Day (false), Android's own back leaves the app.
     private fun stepBack(): Boolean {
+        if (view == "settings" && settingsLog) { logBack(); return true }
         if (view == "files" && openCourse != null && sectionBack()) return true
         if (view == "files" && openCourse != null) {
             Haptics.back(shell)
@@ -934,6 +993,29 @@ class MainActivity : Activity(), SpectrumHost {
     }
 
     override fun courseContents(id: Int) = contents[id]
+
+    override fun sectionsTab(open: (() -> Unit)?) { sectionsOpen = open }
+
+    /** The Sections tab, there while a course page wants it; it slides out of the edge when it first comes. */
+    private fun showSectionsTab(had: Boolean) {
+        val show = sectionsOpen != null
+        sectionsTabView.visibility = if (show) View.VISIBLE else View.GONE
+        if (!show || had || !Motion.enabled) return
+        sectionsTabView.translationX = -ui.dp(30f).toFloat()
+        sectionsTabView.animate().translationX(0f).spring(Motion.BOUNCY).start()
+    }
+
+    override fun scrollTo(v: View) {
+        // Where [v] is on the page: its tops added up to the page.
+        var y = 0
+        var at: View? = v
+        while (at != null && at !== content) {
+            y += at.top
+            at = at.parent as? View
+        }
+        if (at == null) return
+        scroll.smoothScrollTo(0, maxOf(0, y - ui.dp(8)))
+    }
 
     /** Reads a course's layout again behind its page, and redraws the page if it changed. */
     private fun refreshLayout(id: Int) = thread {
@@ -1043,6 +1125,8 @@ class MainActivity : Activity(), SpectrumHost {
         const val SIGN_OUT_BODY = "All your data in the app will be deleted.\nYou can sign in again any time."
         /** A Spectrum course id to open in the Courses tab. */
         const val EXTRA_COURSE = "course"
+        /** A Spectrum course id whose fold of news and grades to open on the Courses list. */
+        const val EXTRA_FOLD = "fold"
         private const val REQ_LOGIN = 1
         private const val REQ_NOTIFY = 2
         private const val REQ_MAYA = 3
@@ -1050,14 +1134,20 @@ class MainActivity : Activity(), SpectrumHost {
         private val TABS = listOf(
             // Animated icons (res/drawable/avd_tab_*): at rest each is its ic_tab_* drawing.
             Triple("day", "Day", R.drawable.avd_tab_day),
-            Triple("grades", "Grades", R.drawable.avd_tab_grades),
             Triple("due", "Due", R.drawable.avd_tab_due),
-            Triple("news", "News", R.drawable.avd_tab_news),
             Triple("files", "Courses", R.drawable.avd_tab_courses),
+            Triple("settings", "Settings", R.drawable.avd_tab_settings),
         )
-        /** The Spectrum tabs' names, shown large in the top bar. */
-        private val PAGE_TITLES = mapOf("grades" to "Grades", "due" to "Due", "news" to "News", "files" to "Courses")
+        /** The tabs' names after Day, shown large in the top bar. */
+        private val PAGE_TITLES = mapOf("due" to "Due", "files" to "Courses", "settings" to "Settings")
         /** The week grid has no tab of its own; it's the Week chip under Day. */
         private val VIEWS = TABS.map { it.first }.toSet() + "week"
+
+        /** [name] as a page shown now: Grades and News were tabs, and are in Courses now (an old notification, the page last open). */
+        private fun viewOf(name: String?) = when (name) {
+            "grades", "news" -> "files"
+            in VIEWS -> name
+            else -> null
+        }
     }
 }

@@ -168,6 +168,21 @@ object SpectrumStore {
         return parsed
     }
 
+    /** What's due, less what the user dismissed (a long press in Due): every page, reminder and the widget read this. */
+    fun due(c: Context): List<JSONObject> = dismissedDue(c).let { gone -> array(c, "due").objects().filter { DueList.activityKey(it) !in gone } }
+
+    /** The activities the user dismissed from Due ([DueList.activityKey]). */
+    fun dismissedDue(c: Context): Set<String> = stringSet(c, "dismissedDue")
+
+    /** Dismisses [item] from Due, or ([gone] false) brings it back. */
+    fun dismissDue(c: Context, item: JSONObject, gone: Boolean) {
+        val key = DueList.activityKey(item)
+        val set = stringSet(c, "dismissedDue").apply { remove(key) }
+        // Only those still listed are kept, plus this one: a long-gone deadline needn't be remembered.
+        val listed = array(c, "due").objects().map(DueList::activityKey).toSet()
+        putStringSet(c, "dismissedDue", set.filter { it in listed }.toSet() + listOfNotNull(key.takeIf { gone }))
+    }
+
     fun lastSync(c: Context) = prefs(c).getLong("lastSync", 0)
     fun lastError(c: Context): String? = prefs(c).getString("lastError", null)
     fun recordSync(c: Context, error: String?) {
@@ -193,7 +208,7 @@ object SpectrumStore {
         array(c, "attendance").objects().firstOrNull { it.getLong("start") <= now && now < it.getLong("end") && it.optBoolean("listed", true) }?.let { a ->
             return WidgetAlert("Attendance open · ${a.optString("code", a.optString("course"))} · until ${hm(a.getLong("end"))}", true, a.optString("url"))
         }
-        val next = array(c, "due").objects().filter { it.getLong("due") - now in 1 until 7 * 86_400_000L }.minByOrNull { it.getLong("due") }
+        val next = due(c).filter { it.getLong("due") - now in 1 until 7 * 86_400_000L }.minByOrNull { it.getLong("due") }
         return next?.let { WidgetAlert("Due ${dayWord(it.getLong("due"), now)} ${hm(it.getLong("due"))} · ${it.optString("name")}", false, null) }
     }
 

@@ -20,12 +20,13 @@ import java.io.File
  *     --es view files [--ei course 151 [--ei section 491688]] [--ei day 1] [--ez dark true] [--ei width 1280] [--ei dow 2 --ei min 700]
  *   adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.png
  *
- * view: day, week, due, news, files (the Courses tab); course opens one course page from its cache, and
- * section (a Spectrum section id) that section's own page, as a card or a linked section opens.
+ * view: day, week, due, files (the Courses tab, with each course's news and grades: --ez open true opens
+ * every fold), settings; course opens one course page from its cache, and section (a Spectrum section
+ * id) that section's own page, as a card or a linked section opens.
  * view icon draws the launcher icon with the phone's mask (icon.png) and its themed layer (icon-mono.png).
  * dow (0 Sunday … 6 Saturday) and min (minutes after midnight) pretend it's another time of the week.
- * view grades with --ez sample true draws made-up marks for the timetable's first courses instead of the
- * synced ones (to check the mark cards while Spectrum has none).
+ * view files with --ez sample true draws made-up marks for the first three courses instead of the synced
+ * ones (to check the mark cards while Spectrum has none); --ez open true shows them.
  * view due with --ez sample true draws made-up deadlines (late, minutes, hours, days) and attendance
  * (open, about to open, not in Spectrum's calendar).
  * --ef fontScale 1.3 draws at a larger system font size (this render only).
@@ -41,7 +42,7 @@ import java.io.File
  * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200).
  * view occcard draws Settings' card for choosing an occurrence (--es code CODE).
  * view pinmenu draws the card a long press on a course page's section name brings up (--ez pinned true: Unpin).
- * view signout draws the Sign out question's card. view settings draws the Settings sheet (--ez signedIn true|false
+ * view signout draws the Sign out question's card. view settings draws the Settings tab's page (--ez signedIn true|false
  * for either Account row); view signin the first-run sign-in poster, at screen height (or --ei height px).
  * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
  * Nth class of the week (0 first).
@@ -93,17 +94,15 @@ class DebugRenderReceiver : BroadcastReceiver() {
                 addView(SpectrumScreens.pinCard(host.ui, intent.getBooleanExtra("pinned", false)), FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT))
             }
             "due" -> if (intent.getBooleanExtra("sample", false)) sampleDue(context, host) else SpectrumScreens.due(host)
-            "news" -> SpectrumScreens.news(host)
-            "files" -> SpectrumScreens.courses(host)
-            "grades" -> if (intent.getBooleanExtra("sample", false)) SpectrumScreens.grades(host, sampleGrades(context)) else SpectrumScreens.grades(host)
+            "files" -> if (intent.getBooleanExtra("sample", false)) SpectrumScreens.courses(host, sampleGrades(context)) else SpectrumScreens.courses(host)
             // --ez open true: the Occurrences fold open.
-            "settings" -> SettingsSheet.also { it.occurrencesOpen = intent.getBooleanExtra("open", false) }.build(host, c, intent.getBooleanExtra("signedIn", SpectrumStore.signedIn(context))) {}
+            "settings" -> SettingsSheet.also { it.occurrencesOpen = intent.getBooleanExtra("open", false) }.build(host, c, intent.getBooleanExtra("signedIn", SpectrumStore.signedIn(context)))
             "signin" -> SignInScreen.build(host.ui) {}
-            // The top bar as MainActivity lays it out: --es view title --es page Grades|day|week (day and week
+            // The top bar as MainActivity lays it out: --es view title --es page Courses|Due|day|week (day and week
             // with their widest titles)
             "title" -> host.ui.row().apply {
                 setPadding(host.ui.dp(0), host.ui.dp(6), 0, host.ui.dp(10))
-                val page = intent.getStringExtra("page") ?: "Grades"
+                val page = intent.getStringExtra("page") ?: "Courses"
                 addView(when (page) {
                     "day" -> dayTitle(host.ui, "Wednesday", "30 Sep", true, dayGlance(Timetable.load(context).day(2)))
                     "week" -> weekTitle(host.ui, "28 Sep – 2 Oct", "3 deadlines this week")
@@ -136,7 +135,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val frame = FrameLayout(c).apply {
             setBackgroundColor(host.ui.p.ground)
             // A sheet runs edge to edge, from the bottom of the screen.
-            if (view != "sheet" && view != "settings" && view != "signin" && view != "webbar") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
+            if (view != "sheet" && view != "signin" && view != "webbar") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
             addView(page)
         }
         frame.measure(
@@ -181,8 +180,9 @@ class DebugRenderReceiver : BroadcastReceiver() {
         )
     }
 
-    /** Made-up grade items: marks (one a scale word, one with feedback), a course total, unmarked items. */
+    /** Made-up grade items for the first three Spectrum courses: marks (one a scale word, one with feedback), a course total, unmarked items. */
     private fun sampleGrades(context: Context): List<org.json.JSONObject> {
+        val ids = SpectrumStore.array(context, "courses").objects().map { it.getInt("id") }
         val courses = Timetable.load(context).courses.take(3)
         var id = 900_000
         val now = System.currentTimeMillis()
@@ -191,18 +191,21 @@ class DebugRenderReceiver : BroadcastReceiver() {
                 .put("name", name).put("kind", kind).put("raw", raw ?: org.json.JSONObject.NULL).put("max", max).put("word", word)
                 .put("percent", "").put("feedback", feedback).put("gradedAt", if (raw == null) 0 else now - daysAgo * 86_400_000L).put("url", "")
         val out = mutableListOf<org.json.JSONObject>()
+        // Each in the fold of the Spectrum course of the same place in the list.
         courses.getOrNull(0)?.let { c ->
-            out += item(c, 1, "Quiz 1", "Quiz", 8.5, 10.0, 0)
-            out += item(c, 1, "Tutorial 1", "Assignment", 9.0, 10.0, 5, feedback = "<p>Good working, but show every step in question 3.</p>")
-            out += item(c, 1, "Quiz 2", "Quiz", null, 10.0, 0)
+            val i = ids.getOrElse(0) { 1 }
+            out += item(c, i, "Quiz 1", "Quiz", 8.5, 10.0, 0)
+            out += item(c, i, "Tutorial 1", "Assignment", 9.0, 10.0, 5, feedback = "<p>Good working, but show every step in question 3.</p>")
+            out += item(c, i, "Quiz 2", "Quiz", null, 10.0, 0)
         }
         courses.getOrNull(1)?.let { c ->
-            out += item(c, 2, "Lab 1", "Assignment", 18.0, 20.0, 8)
-            out += item(c, 2, "Course total", "", 18.0, 100.0, 8, total = true)
-            out += item(c, 2, "Lab 2", "Assignment", null, 20.0, 0)
+            val i = ids.getOrElse(1) { 2 }
+            out += item(c, i, "Lab 1", "Assignment", 18.0, 20.0, 8)
+            out += item(c, i, "Course total", "", 18.0, 100.0, 8, total = true)
+            out += item(c, i, "Lab 2", "Assignment", null, 20.0, 0)
         }
         courses.getOrNull(2)?.let { c ->
-            out += item(c, 3, "Presentation", "Assignment", 1.0, 1.0, 2, word = "Pass")
+            out += item(c, ids.getOrElse(2) { 3 }, "Presentation", "Assignment", 1.0, 1.0, 2, word = "Pass")
         }
         return out
     }
@@ -300,7 +303,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
 
     private fun tabIcons(context: Context) {
         val pending = goAsync()
-        val ids = listOf(R.drawable.avd_tab_day, R.drawable.avd_tab_week, R.drawable.avd_tab_grades, R.drawable.avd_tab_due, R.drawable.avd_tab_news, R.drawable.avd_tab_courses)
+        val ids = listOf(R.drawable.avd_tab_day, R.drawable.avd_tab_week, R.drawable.avd_tab_due, R.drawable.avd_tab_courses, R.drawable.avd_tab_settings)
         val times = (0..9).map { it * 80L }
         val cell = 120
         val sheet = Bitmap.createBitmap(cell * times.size, cell * ids.size, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFFEEF1F4.toInt()) }
@@ -377,7 +380,8 @@ class DebugRenderReceiver : BroadcastReceiver() {
             var build = 0L; var measure = 0L; var draw = 0L
             repeat(n + 1) { i ->
                 val t0 = System.nanoTime()
-                val page = SpectrumScreens.news(Host(c, ui))
+                // Courses with every fold open: each course's news and grades.
+                val page = SpectrumScreens.courses(Host(c, ui).apply { expanded = object : HashSet<String>() { override fun contains(element: String) = true } })
                 val frame = FrameLayout(c).apply { addView(page) }
                 val t1 = System.nanoTime()
                 frame.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
@@ -387,7 +391,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
                 val t3 = System.nanoTime()
                 if (i > 0) { build += t1 - t0; measure += t2 - t1; draw += t3 - t2 }
             }
-            Log.i("UMTimetable", "bench news split: build %.2f, measure+layout %.2f, draw %.2f ms".format(build / 1e6 / n, measure / 1e6 / n, draw / 1e6 / n))
+            Log.i("UMTimetable", "bench courses (folds open) split: build %.2f, measure+layout %.2f, draw %.2f ms".format(build / 1e6 / n, measure / 1e6 / n, draw / 1e6 / n))
         }
         val t = System.currentTimeMillis()
         time("x10 hm()") { repeat(10) { SpectrumStore.hm(t) } }
@@ -446,14 +450,13 @@ class DebugRenderReceiver : BroadcastReceiver() {
             }
             Log.i("UMTimetable", "bench week swipe now: shift %.2f ms, measure+layout %.2f ms, draw %.2f ms".format(shift / 1e6 / n, layout / 1e6 / n, paint / 1e6 / n))
         }
-        for (view in listOf("day", "week", "grades", "due", "news", "files")) time("page $view") {
+        for (view in listOf("day", "week", "due", "files", "settings")) time("page $view") {
             val host = Host(c, ui)
             val page = when (view) {
                 "week" -> WeekScreen.build(host)
                 "due" -> SpectrumScreens.due(host)
-                "news" -> SpectrumScreens.news(host)
                 "files" -> SpectrumScreens.courses(host)
-                "grades" -> SpectrumScreens.grades(host)
+                "settings" -> SettingsSheet.build(host, c)
                 else -> DayScreen.build(host, 1)
             }
             val frame = FrameLayout(c).apply { addView(page) }

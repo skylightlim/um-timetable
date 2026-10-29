@@ -76,7 +76,7 @@ object SpectrumSync {
             }
             MayaImport.fillNames(c, courses)
             val news = if (attendanceOnly) null else syncPool.submit(Callable { fetchNews(c, api, courses) })
-            val due = if (attendanceOnly) null else syncPool.submit(Callable { fetchDue(api, courses) })
+            val due = if (attendanceOnly) null else syncPool.submit(Callable { fetchDue(c, api, courses) })
             if (!attendanceOnly) syncGrades(c, api, courses)
             val attendance = syncPool.submit(Callable { fetchAttendance(c, api, courses, fresh = !attendanceOnly) })
             // Notifying and saving stay on this thread, in the same order as before.
@@ -264,10 +264,6 @@ object SpectrumSync {
                 .onFailure { Log.w(TAG, "groups failed: ${it.message}") }.getOrDefault(emptyList())
         })
         val forums = api.call("mod_forum_get_forums_by_courses", mapOf("courseids" to byId.keys.toList())) as JSONArray
-        val newsForums = forums.objects().filter { it.optString("type") == "news" && byId.containsKey(it.optInt("course")) }
-        val since = System.currentTimeMillis() / 1000 - NEWS_DAYS * 86_400L
-        // Each course's announcement forum at once.
-        val requests = newsForums.map { f -> f to requestPool.submit(Callable { discussions(api, f.getInt("id"), since) }) }
         val groups = groupsRequest.await()
         val myGroups = groups.groupBy({ it.optInt("courseid") }, { it.optInt("id") })
         // The user's occurrence in each course, saved for building the timetable from TimeEdit.
@@ -284,6 +280,10 @@ object SpectrumSync {
         val savedOccurrences = SpectrumStore.occurrences(c)
         val timetable = Timetable.load(c)
         fun myOcc(code: String) = savedOccurrences.optInt(code).takeIf { it > 0 } ?: timetable.courses.firstOrNull { it.code == code }?.occ ?: 0
+        // Each course's Announcements forum, and its forum for the user's occurrence if it has one ([NewsForums]), at once.
+        val newsForums = NewsForums.pick(forums.objects().filter { byId.containsKey(it.optInt("course")) }) { id -> myOcc(byId.getValue(id).getString("code")) }
+        val since = System.currentTimeMillis() / 1000 - NEWS_DAYS * 86_400L
+        val requests = newsForums.map { f -> f to requestPool.submit(Callable { discussions(api, f.getInt("id"), since) }) }
         val items = mutableListOf<JSONObject>()
         for ((f, request) in requests) {
             val course = byId.getValue(f.optInt("course"))
@@ -301,6 +301,8 @@ object SpectrumSync {
                     .put("subject", subject)
                     .put("html", d.optString("message"))
                     .put("author", d.optString("userfullname"))
+                    // Posted in a forum other than the course's Announcements (an occurrence's own): its name.
+                    .put("forum", if (f.optString("type") == "news") "" else plain(f.optString("name")))
                     .put("time", created * 1000)
                     .put("attachments", JSONArray((d.optJSONArray("attachments") ?: JSONArray()).objects().map { file(it.optString("filename"), it) }))
                     // Posted to the user's group, or in a course where they have none, or to everyone (group -1)
@@ -314,7 +316,7 @@ object SpectrumSync {
         val unique = items.sortedWith(compareByDescending<JSONObject> { it.getBoolean("forMe") }.thenByDescending { it.getLong("time") })
             .distinctBy { Triple(it.getInt("courseId"), it.getString("subject"), plain(it.getString("html"))) }
             .sortedByDescending { it.getLong("time") }
-        Log.i(TAG, "news: ${unique.size} announcements, ${unique.count { !it.getBoolean("forMe") }} for other occurrences")
+        Log.i(TAG, "news: ${unique.size} announcements from ${newsForums.size} forums (${newsForums.count { it.optString("type") != "news" }} not Announcements), ${unique.count { !it.getBoolean("forMe") }} for other occurrences")
         return JSONArray(unique)
     }
 
@@ -418,30 +420,44 @@ object SpectrumSync {
         return out
     }
 
-    private fun fetchDue(api: Api, courses: JSONArray): JSONArray {
+    /**
+     * What's due: Spectrum's action events from two weeks back to four months on, one row per activity
+     * ([DueList.distinct]: a quiz's open and close, an expected-completion date beside a due date), less
+     * those named for other occurrences only ([DueList.forMe]).
+     */
+    private fun fetchDue(c: Context, api: Api, courses: JSONArray): JSONArray {
         val now = System.currentTimeMillis() / 1000
         val codes = courses.objects().associate { it.getInt("id") to it.getString("code") }
         val params = mapOf("timesortfrom" to now - 14 * 86_400, "timesortto" to now + 120 * 86_400, "limitnum" to 50, "limittononsuspendedevents" to true)
         val res = api.call("core_calendar_get_action_events_by_timesort", params) as JSONObject
-        val out = JSONArray()
+        val all = ArrayList<JSONObject>()
         for (e in (res.optJSONArray("events") ?: JSONArray()).objects()) {
             if (e.optString("modulename") == "attendance") continue
             val course = e.optJSONObject("course")
             val courseId = course?.optInt("id") ?: e.optInt("courseid")
             val due = e.optLong("timesort").takeIf { it > 0 } ?: e.optLong("timestart")
-            out.put(
+            all +=
                 JSONObject()
                     .put("id", e.getInt("id"))
+                    .put("courseId", courseId)
+                    .put("module", e.optString("modulename"))
+                    .put("instance", e.optInt("instance"))
+                    .put("eventtype", e.optString("eventtype"))
                     .put("name", plain(e.optString("activityname").ifBlank { e.optString("name") }))
                     .put("code", codes[courseId]?.takeIf { it.isNotEmpty() } ?: Spectrum.courseCode(course?.optString("shortname"), course?.optString("fullname")) ?: "")
                     .put("course", plain(course?.optString("fullname") ?: ""))
                     .put("due", due * 1000)
                     .put("url", e.optString("url"))
                     .put("moduleLabel", listOf(moduleLabel(e.optString("modulename")), e.optJSONObject("action")?.optString("name").orEmpty()).filter { it.isNotBlank() }.joinToString(" · "))
-                    .put("overdue", e.optBoolean("overdue", false) || due < now),
-            )
+                    .put("overdue", e.optBoolean("overdue", false) || due < now)
         }
-        return out
+        // The user's occurrence in each course: from the last sync's groups (or their choice), else the timetable's.
+        val occurrences = SpectrumStore.occurrences(c)
+        val timetable = Timetable.load(c)
+        val distinct = DueList.distinct(all)
+        val mine = DueList.forMe(distinct) { code -> occurrences.optInt(code).takeIf { it > 0 } ?: timetable.courses.firstOrNull { it.code == code }?.occ ?: 0 }
+        Log.i(TAG, "due: ${all.size} events, ${all.size - distinct.size} more of the same activity, ${distinct.size - mine.size} for other occurrences")
+        return JSONArray().apply { mine.forEach(::put) }
     }
 
     /**
@@ -560,7 +576,7 @@ object SpectrumSync {
                     c, Notify.NEWS, "news-${n.getInt("id")}",
                     "${n.getString("code").ifEmpty { n.getString("course") }} · ${n.getString("subject")}",
                     plain(n.getString("html")).take(400),
-                    Notify.openApp(c, "news"),
+                    Notify.openFold(c, n.getInt("courseId")),
                 )
             }
         }
@@ -584,7 +600,7 @@ object SpectrumSync {
         SpectrumStore.putStringSet(c, "seenDue", (seen + fresh.map { it.getInt("id").toString() }).toList().takeLast(500).toSet())
     }
 
-    /** An attendance grade item: kept out of the Grades tab, its badge and its notifications. */
+    /** An attendance grade item: kept out of the courses' marks, the Courses badge and the notifications. */
     fun isAttendance(g: JSONObject) = g.optString("kind") == "Attendance"
 
     /** A notification per newly released (or changed) mark; the first sync with grades only records them. */
@@ -597,7 +613,7 @@ object SpectrumSync {
                     c, Notify.GRADES, "grade-${g.getInt("id")}",
                     "New mark · ${g.getString("code").ifEmpty { g.getString("course") }}",
                     "${g.getString("name")}: ${markText(g)}",
-                    Notify.openApp(c, "grades"),
+                    Notify.openFold(c, g.getInt("courseId")),
                 )
             }
         }
@@ -680,7 +696,7 @@ internal fun startOfDay(date: LocalDate): Long = date.atStartOfDay(ZoneId.system
 object Reminders {
     private val OFFSETS = listOf(24 * 3_600_000L to "24 h", 2 * 3_600_000L to "2 h")
 
-    private fun upcoming(c: Context) = SpectrumStore.array(c, "due").objects().filter { !it.optBoolean("overdue") }
+    private fun upcoming(c: Context) = SpectrumStore.due(c).filter { !it.optBoolean("overdue") }
 
     fun schedule(c: Context) {
         val am = c.getSystemService(AlarmManager::class.java)
@@ -816,6 +832,13 @@ object Notify {
     fun openApp(c: Context, view: String): PendingIntent = PendingIntent.getActivity(
         c, "view-$view".hashCode(),
         Intent(c, MainActivity::class.java).putExtra(MainActivity.EXTRA_VIEW, view).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
+    /** The Courses list with course [courseId]'s fold of news and grades open (a new announcement or mark there). */
+    fun openFold(c: Context, courseId: Int): PendingIntent = PendingIntent.getActivity(
+        c, "fold-$courseId".hashCode(),
+        Intent(c, MainActivity::class.java).putExtra(MainActivity.EXTRA_FOLD, courseId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
