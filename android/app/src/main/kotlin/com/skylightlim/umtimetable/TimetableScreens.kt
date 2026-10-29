@@ -272,8 +272,8 @@ object DayScreen {
             baselineAlignedChildIndex = 0
         }, ui.grow())
         card.setOnClickListener {
-            // The free time after it (to the next class or plan, or 19:00), and the card's height per hour for the way back.
-            val maxEnd = minOf(19 * 60, day.filter { it.third !== plan && it.first >= plan.end }.minOfOrNull { it.first } ?: Int.MAX_VALUE)
+            // The free time after it (to the next class or plan, or the end of the day), and the card's height per hour for the way back.
+            val maxEnd = minOf(DayEnd.minutes(ui.context), day.filter { it.third !== plan && it.first >= plan.end }.minOfOrNull { it.first } ?: Int.MAX_VALUE)
             val at = IntArray(2).also(card::getLocationOnScreen)
             val from = RectF(at[0].toFloat(), at[1].toFloat(), (at[0] + card.width).toFloat(), (at[1] + card.height).toFloat())
             h.openPlan(from, plan, false, maxEnd, card.height / ((plan.end - plan.start) / 60f))
@@ -464,6 +464,18 @@ object DayScreen {
         ui.text(text, 18f, color, ui.f.bodyBold, spacing = -0.01f).apply { setLineSpacing(0f, 1.1f) }
 }
 
+/**
+ * How late the day runs for the week grid and plans: 19:00, or (Settings' "Week until midnight") 24:00,
+ * for plans in the evening. Classes end by 19:00 either way.
+ */
+object DayEnd {
+    private const val KEY = "weekToMidnight"
+    fun late(c: android.content.Context) = uiPrefs(c).getBoolean(KEY, false)
+    fun setLate(c: android.content.Context, on: Boolean) = uiPrefs(c).edit().putBoolean(KEY, on).apply()
+    /** The end of the day in minutes after midnight: 19:00 or 24:00. */
+    fun minutes(c: android.content.Context) = if (late(c)) 24 * 60 else 19 * 60
+}
+
 object WeekScreen {
     /** The parts of a Week page that change with the week, so going to another week changes only them ([shift]). */
     class Parts(val offSlot: FrameLayout, val gridBox: FrameLayout)
@@ -569,6 +581,9 @@ class WeekGrid(
     private val gapX = ui.dp(4f).toFloat()
     private val padY = ui.dp(8f).toFloat()
     private val startMin = 8 * 60
+    /** 19:00, or midnight with Settings' Week until midnight ([DayEnd]); and the grid's hours from 08:00. */
+    private val endMin = DayEnd.minutes(ui.context)
+    private val hours = (endMin - startMin) / 60
     private val blocks = mutableListOf<Pair<RectF, Session>>()
     private val planBlocks = mutableListOf<Pair<RectF, Plan>>()
     /** Each column's date, Monday first. */
@@ -608,7 +623,7 @@ class WeekGrid(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (head + padY * 2 + hour * 11).toInt())
+        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (head + padY * 2 + hour * hours).toInt())
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -616,14 +631,15 @@ class WeekGrid(
         planBlocks.clear()
         val colW = (width - axis - gapX * 5) / 5
         val top = head + padY
-        val bottom = top + hour * 11
-        // Now: on a weekday between 08:00 and 19:00.
-        val nowY = if (today != null && now.min >= startMin && now.min <= 19 * 60) top + (now.min - startMin) / 60 * hour else null
+        val bottom = top + hour * hours
+        // Now: on a weekday between 08:00 and the end of the day.
+        val nowY = if (today != null && now.min >= startMin && now.min <= endMin) top + (now.min - startMin) / 60 * hour else null
         val pillH = ui.dp(15f).toFloat()
-        for (h in 8..19) {
-            val y = top + (h - 8) * hour
+        for (h in startMin / 60..endMin / 60) {
+            val y = top + (h - startMin / 60) * hour
             if (nowY != null && kotlin.math.abs(y - nowY) < pillH) continue // the time pill is there
-            canvas.drawText("%02d".format(h), axis - ui.dp(3f), y + axisPaint.textSize * 0.35f, axisPaint)
+            // Midnight at the bottom is 00.
+            canvas.drawText("%02d".format(h % 24), axis - ui.dp(3f), y + axisPaint.textSize * 0.35f, axisPaint)
         }
         for (d in 1..5) {
             val left = axis + gapX + (d - 1) * (colW + gapX)
@@ -637,7 +653,7 @@ class WeekGrid(
             }
             if (holiday != null) drawHoliday(canvas, holiday, RectF(left, top, left + colW, bottom))
             fill.color = p.line
-            for (h in 0..11) canvas.drawRect(left, top + h * hour, left + colW, top + h * hour + 1, fill)
+            for (h in 0..hours) canvas.drawRect(left, top + h * hour, left + colW, top + h * hour + 1, fill)
             // A faint guide across the other days, under their classes, so "now" lines up across the week.
             if (nowY != null && !isToday) {
                 fill.color = p.accent
@@ -858,10 +874,10 @@ class WeekGrid(
         return (k + 1).takeIf { k in 0..4 && x >= colLeft(k + 1) && x <= colLeft(k + 1) + colW }
     }
 
-    /** The half hour under ([x], [y]), kept inside the grid: the nearest day, 08:00 to 18:30. */
+    /** The half hour under ([x], [y]), kept inside the grid: the nearest day, 08:00 to the last half hour before the end of the day. */
     private fun halfHourAt(x: Float, y: Float): Pair<Int, Int> {
         val d = (((x - axis - gapX) / (colW + gapX)).toInt() + 1).coerceIn(1, 5)
-        val start = (startMin + ((y - gridTop) / hour * 2).toInt().coerceIn(0, 21) * 30)
+        val start = (startMin + ((y - gridTop) / hour * 2).toInt().coerceIn(0, hours * 2 - 1) * 30)
         return d to start
     }
 
@@ -869,11 +885,11 @@ class WeekGrid(
     private fun busy(d: Int, except: String?) = tt.day(d).map { it.start to it.end } +
         plans.filter { it.date == dates[d - 1] && it.id != except }.map { it.start to it.end }
 
-    /** Starting at [start] on day [d]: whether it's free, how far it can run (19:00 at most), and where a plan of [length] would end. */
+    /** Starting at [start] on day [d]: whether it's free, how far it can run (to the end of the day at most), and where a plan of [length] would end. */
     private fun room(d: Int, start: Int, length: Int, except: String?): Triple<Boolean, Int, Int> {
         val taken = busy(d, except)
         val free = taken.none { (a, b) -> start in a until b }
-        val maxEnd = minOf(19 * 60, taken.map { it.first }.filter { it > start }.minOrNull() ?: Int.MAX_VALUE)
+        val maxEnd = minOf(endMin, taken.map { it.first }.filter { it > start }.minOrNull() ?: Int.MAX_VALUE)
         return Triple(free, maxEnd, minOf(start + length, maxEnd))
     }
 
@@ -947,7 +963,7 @@ class WeekGrid(
         pickDay = d
         pickStart = start
         pickFree = free
-        pickEnd = if (free) end else minOf(start + (plan.end - plan.start), 19 * 60)
+        pickEnd = if (free) end else minOf(start + (plan.end - plan.start), endMin)
         if (free) lastFree = d to start
         if (feel) { if (free) Haptics.tick(this) else Haptics.threshold(this, false) }
         boxFrom.set(box)
