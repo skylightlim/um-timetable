@@ -18,6 +18,27 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (One Due row per activity, none for other occurrences)
+
+**Asked for:** check for duplicated items in Due.
+
+**Change:** without the user's Spectrum data in this session, the duplicates were traced in the code.
+Due lists Spectrum's action events (`core_calendar_get_action_events_by_timesort`), one row per **event**.
+One activity can have several: a quiz or lesson opens and closes, an activity with "Expect completed on"
+has that date besides its due date, and a group override adds one. Some courses also post an assignment
+once per occurrence. The sync now keeps each event's module, instance and event type, and `DueList`
+makes one row per activity: its deadline (due, then close) over its other events, and of those the next
+still to come. Rows of a course with the same name and due time are one too. Activities named for other
+occurrences only ("Assignment 1 (OCC 3)" for an OCC 4 student) are left out, as Grades already does. The
+sync logs how many of each it took out (logcat `due:`).
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests run with JUnit against Robolectric's Android 17 jar: 72 pass, including the new `DueListTest` (a
+quiz's open and close, a due date beside an expected completion, a group override, the same assignment
+added twice, other occurrences' copies). Still to check on the phone: after a sync, whether the
+duplicates the user saw are gone, and what logcat's `due:` line counted. If any remain, they're a kind not
+covered here: note their names and types.
+
 ## 29 October 2026 (The attendance log in the app, its problems in red)
 
 **Asked for:** let the user see the attendance log, with the errors.
