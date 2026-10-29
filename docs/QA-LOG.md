@@ -18,6 +18,22 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (1.8.0-beta.1: the "Things to fix" branch built and published)
+
+**Asked for:** after merging pull request #1 (`fix/things-to-fix`) on GitHub, bring it into the local repo
+and release a new version.
+
+**Change:** the branch's 15 commits cherry-picked onto local `main`, as its handoff says (the only conflicts
+were this log's top entries, kept newest first). Version 1.8.0-beta.1, versionCode 11: a minor version, for
+Settings as a tab, Grades and News inside Courses, the attendance log, Due's duplicates and dismissing, the
+Sections panel, and Week until midnight.
+
+**Checked:** the first real Gradle build of the branch's work, from a clean worktree:
+`./gradlew testDebugUnitTest assembleRelease` passes (78 JVM tests, AAPT, lint vital and R8 all ran). The
+branch's added lines were grepped for the backups' lecturer names and rooms, the user's occurrences and
+their class times: none (its examples use made-up courses and occurrences). Every item's "Try by hand" in
+`docs/HANDOFF-things-to-fix.md` is still to do on the phone.
+
 ## 29 October 2026 (Every tab's title the same size as Day's)
 
 **Asked for:** Day's top section the same height as the other tabs': its title came out at another size.
