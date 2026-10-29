@@ -635,7 +635,36 @@ object SpectrumScreens {
             val code = c.optString("code")
             page.addView(courseEntry(h, c, code, myOcc(h, occurrences, code).takeIf { it > 0 }, news[id].orEmpty(), grades[id].orEmpty()))
         }
+        if (courses.isNotEmpty()) totalHours(h)?.let(page::addView)
         return page
+    }
+
+    /**
+     * Under the courses, the timetable's week in total (it was under Week's grid): under a heavier line,
+     * each kind's hours by its initial ("L12 T5") and how many classes, and the hours large on the right.
+     * Null without a timetable.
+     */
+    private fun totalHours(h: SpectrumHost): View? {
+        val ui = h.ui
+        val p = ui.p
+        val sessions = h.timetable.sessions
+        if (sessions.isEmpty()) return null
+        val all = sessions.sumOf { it.end - it.start }
+        val count = "${sessions.size} ${if (sessions.size == 1) "class" else "classes"} a week"
+        return ui.column().apply {
+            addView(View(ui.context).apply { setBackgroundColor(p.text) }, ui.wide(top = 4f).apply { height = ui.dp(1.5f) })
+            addView(ui.row(gap = 12f).apply {
+                minimumHeight = ui.dp(60)
+                // In line with the courses' names (after their 12dp dot and 12dp gap).
+                setPadding(ui.dp(24), ui.dp(10), 0, ui.dp(10))
+                contentDescription = "Total: $count, ${hoursByType(sessions)}, ${hoursText(all)}"
+                addView(ui.column().apply {
+                    addView(ui.text("Total", 15f, p.text, ui.f.bodyBold))
+                    addView(ui.text("${hoursShort(sessions)} · $count", 12.5f, p.muted), ui.wide(top = 2f))
+                }, ui.grow())
+                addView(ui.text(hoursText(all), 26f, p.text, ui.f.sign))
+            })
+        }
     }
 
     /**
@@ -759,6 +788,7 @@ object SpectrumScreens {
             addView(ui.text((code.ifEmpty { "Course" }).uppercase(), 38f, p.courseText(color), ui.f.sign))
             addView(ui.text(courseName(h, c.optString("name"), code), 20f, p.text, ui.f.bodyBold).apply { RichText.selectable(this) }, ui.wide(top = 6f))
         })
+        hours(h, code)?.let { page.addView(it, ui.wide(bottom = 6f)) }
         h.courseError(id)?.let {
             page.addView(ui.text(it, 13.5f).apply { background = ui.shape(Palette.mix(0xFFF2645F.toInt(), p.surface, 0.14f), 12f); setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10)) })
             return page
@@ -823,6 +853,38 @@ object SpectrumScreens {
         arrange()
         page.addView(holder)
         return page
+    }
+
+    /**
+     * A course page's Hours, first, before Spectrum's sections: its classes' hours a week by kind ("Lecture
+     * 2 h · Tutorial 1 h"), how many classes, and the hours large on the right (they were in a Courses
+     * section under Week's grid). A tap opens the course's class sheet, with each class's day, time and room.
+     * Null for a course with no classes in the timetable.
+     */
+    private fun hours(h: SpectrumHost, code: String): View? {
+        val ui = h.ui
+        val p = ui.p
+        val course = h.timetable.courses.firstOrNull { code.isNotEmpty() && it.code == code } ?: return null
+        val sessions = h.timetable.sessions.filter { it.course == course }
+        if (sessions.isEmpty()) return null
+        val total = sessions.sumOf { it.end - it.start }
+        val count = "${sessions.size} ${if (sessions.size == 1) "class" else "classes"} a week${if (sessions.any { it.room == "Online" }) " · online" else ""}"
+        return ui.column().apply {
+            // A heading as the sections' own.
+            addView(ui.text("Hours", 18f, p.text, ui.f.bodyBold), ui.wide(bottom = 8f))
+            addView(ui.row(gap = 12f).apply {
+                minimumHeight = ui.dp(60)
+                background = ui.pressable(ui.shape(p.surface, 12f, p.line), 12f)
+                setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10))
+                contentDescription = "Hours: ${hoursByType(sessions)}, $count, ${hoursText(total)} a week. Opens the class times."
+                setOnClickListener { h.openSheet(course, null) }
+                addView(ui.column().apply {
+                    addView(ui.text(hoursByType(sessions), 15f, p.text, ui.f.bodySemi))
+                    addView(ui.text(count, 12.5f, p.muted), ui.wide(top = 2f))
+                }, ui.grow())
+                addView(ui.text(hoursText(total), 26f, p.text, ui.f.sign))
+            })
+        }
     }
 
     /** A section's name as a heading: bold, smaller set in; greyed, with a lock when it isn't open to this student. */

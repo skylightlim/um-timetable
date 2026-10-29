@@ -109,3 +109,16 @@ the tested logic, but not resource errors (AAPT), lint, R8 or behaviour on scree
   tied to the first three Spectrum course ids), `--ez open true` opens the folds, and the bench measures
   Courses with every fold open.
 - Try by hand: both tap zones, the folds with real data, the badge and New, a notification.
+
+## 7. Hours: from Week to each course's page and the Courses list
+
+- `WeekScreen.courses()` is deleted, along with `Parts.coursesSlot` and `pending` (the redraw after a week
+  swipe). `Parts` is now `(offSlot, gridBox)`.
+- `Ui.kt`: `minutesByType(sessions)` (Lecture, Tutorial, then the rest by name), `hoursByType()` ("Lecture
+  2 h · Tutorial 1 h") and `hoursShort()` ("L12 T5"; other kinds keep 3 letters, e.g. "Lab2"). Tested in
+  `HoursTest`.
+- `SpectrumScreens.hours(h, code)`: the course page's first block ("Hours" heading and a card); a tap
+  calls `openSheet(course, null)`. Courses without timetable classes show nothing.
+  `SpectrumScreens.totalHours(h)`: the Total row after the course list.
+- The hours are the usual week's. Week used to take holidays off the shown week; that's gone with it.
+- Try by hand: a course page's Hours card, the Total row, Week swipes.
