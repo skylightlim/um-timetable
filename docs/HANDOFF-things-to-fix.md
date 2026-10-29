@@ -180,3 +180,8 @@ the tested logic, but not resource errors (AAPT), lint, R8 or behaviour on scree
 ## 11. Mark my attendance's description (second list)
 
 - Only the row's text in `SettingsSheet.build` changed: "Settles your attendance for you: …".
+
+## 12. A course's hours in one line (second list)
+
+- `SpectrumScreens.hours()` (heading + card) is now `hoursLine(h, code)`: a 13.5sp muted text under the
+  course name in `coursePage`'s header, still opening `openSheet(course, null)` on a tap.

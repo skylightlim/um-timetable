@@ -18,6 +18,19 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (A course's classes and hours in one line under its name)
+
+**Asked for:** a course page's lectures, classes and hours as one simple line, not a section of their own.
+
+**Change:** the Hours heading and card at the top of a course page are gone. Under the course's name, one
+muted line says it: "Lecture 2 h · Tutorial 1 h · 3 classes a week" ("· online" when a class is). A tap
+on it still opens the course's class sheet (days, times, rooms). A course with no classes in the
+timetable has no line.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (78) with JUnit against Robolectric's Android 17 jar. Still to look at on the phone: the line
+under a long course name.
+
 ## 29 October 2026 (Mark my attendance: "settles your attendance for you")
 
 **Asked for:** change the Mark my attendance setting's description to say it settles attendance for you.
