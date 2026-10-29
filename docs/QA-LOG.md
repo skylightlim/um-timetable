@@ -18,6 +18,25 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (Settings as a tab of their own)
+
+**Asked for:** a standalone Settings panel, as a fourth tab (Day, Due, Courses, Settings once Grades and
+News are gone).
+
+**Change:** Settings are the last tab (`settings`, icon `avd_tab_settings`: the three sliders, each row
+sliding over and back when chosen), drawn as a page under the top bar's "Settings", with who's signed in
+and the version on the line under it. `SettingsSheet.build` now draws that page (no handle, close button
+or sheet); the bottom sheet (`SettingsSheet.Open`) is gone. A long press on the title and pulling the
+Courses list up still open Settings, now by going to the tab. A new look or theme spreads over the app from
+what was tapped (`MainActivity.spreadFrom`), and the redrawn page carries on the pill's glide or the dots'
+hop (`settingsMoved`). Back from Settings goes to Day, as from any tab.
+
+**Checked:** made in a cloud session with no Android SDK, so no Gradle build or unit tests ran and nothing
+was tried on the phone. All of main and debug type-check with the Kotlin compiler (2.4.20) against
+Robolectric's Android 17 jar and a stub `R`. Still to check by hand: the tab bar's spacing with six tabs
+(until Grades and News go), the icon's animation, the look and theme spreading from the tapped option, and
+Back.
+
 ## 23 October 2026 (1.7.0-beta.1 published)
 
 **Asked for:** push it to GitHub.

@@ -2,64 +2,30 @@ package com.skylightlim.umtimetable
 
 import android.content.Context
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.view.Gravity
 import android.view.View
-import android.widget.FrameLayout
 import android.widget.LinearLayout
 
 /**
- * Settings, as in redesign 1p: a sheet (from a long press on the title, or pulling Courses up) with the theme, the timetable
- * imports, notifications, vibration and the Spectrum account. They used to sit under the course list.
- * It stays open until the user closes it.
+ * Settings, as in redesign 1p: the theme, the timetable imports, notifications, vibration and the
+ * Spectrum account. They're a tab of their own (the last one), drawn as a page under the top bar's
+ * "Settings"; they used to be a sheet opened from a long press on the title, and before that sat under
+ * the course list.
  */
 object SettingsSheet {
     /** A row's padding above and below its text. */
     private const val ROW_PAD = 12f
 
-    /**
-     * Shows the sheet. It stays until the user closes it (the close button, a drag down, a tap outside
-     * or Back): choosing a setting or tapping a row leaves it open, and what a row opens comes up over it.
-     */
-    fun show(h: SpectrumHost, context: Context) = Open(h, context).also { it.sheet.show() }
-
-    /** What a redrawn sheet shows moving: the look's pill settling from [lookAt] (where it was); the chosen theme's dots hopping ([hop]). */
+    /** What a redrawn page shows moving: the look's pill settling from [lookAt] (where it was); the chosen theme's dots hopping ([hop]). */
     data class Moved(val lookAt: Float? = null, val hop: Boolean = false)
 
     /** How long the look's pill glides in the old colours before the new look spreads: by then it has landed. */
     private const val LAND_MS = 380L
 
-    /** The sheet on screen. */
-    class Open(private val h: SpectrumHost, private val context: Context) {
-        val sheet: BottomSheet = BottomSheet(context, content(), h.ui.p.dark)
-        val showing get() = sheet.showing
-
-        private fun content(moved: Moved? = null): View = build(h, context, moved = moved, restyle = ::restyle) { sheet.close() }
-
-        /** Redrawn as it is now: the app is back from what a row opened (a new timetable, notifications allowed, signed in). */
-        fun refresh() = sheet.replace(content(), null, h.ui.p.dark)
-
-        /** Gone at once: the screen under it is being replaced. */
-        fun dismiss() = sheet.dismiss()
-
-        /**
-         * A new look or theme ([change]): the page behind takes it from the title, and the sheet, still
-         * open, from [from] (what was tapped), redrawn showing [moved]. With the same colours (Auto to
-         * Light on a light phone) the sheet stays as it is, its switch already gliding.
-         */
-        private fun restyle(from: View, moved: Moved, change: () -> Unit) {
-            val before = h.ui.p
-            val at = sheet.centreOf(from)
-            change()
-            if (h.ui.p != before) sheet.replace(content(moved), at, h.ui.p.dark)
-        }
-    }
-
     /**
-     * The sheet's content. [restyle] makes a change of look or theme, given what was tapped and what the
-     * redrawn sheet should show moving; [moved] is that, when this is the redrawn sheet. [close] slides
-     * the sheet away.
+     * The Settings tab's page. [restyle] makes a change of look or theme, given what was tapped and what
+     * the redrawn page should show moving; [moved] is that, when this is the redrawn page.
      */
     fun build(
         h: SpectrumHost,
@@ -67,36 +33,18 @@ object SettingsSheet {
         signedIn: Boolean = SpectrumStore.signedIn(context),
         moved: Moved? = null,
         restyle: (View, Moved, () -> Unit) -> Unit = { _, _, change -> change() },
-        close: () -> Unit,
     ): View {
         val ui = h.ui
         val p = ui.p
-        val sheet = ui.column().apply {
-            background = GradientDrawable().apply {
-                setColor(p.surface)
-                val r = ui.dp(22f).toFloat()
-                cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
-            }
-            setPadding(ui.dp(20), ui.dp(8), ui.dp(20), ui.dp(24))
-        }
-        sheet.addView(View(context).apply { background = ui.shape(p.line, 4f) }, LinearLayout.LayoutParams(ui.dp(40), ui.dp(4)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = ui.dp(10) })
-        sheet.addView(ui.row().apply {
-            addView(ui.text("Settings", 34f, p.text, ui.f.sign), ui.grow())
-            addView(FrameLayout(context).apply {
-                // A 34dp circle inside a 48dp touch area, as on the class sheet.
-                background = android.graphics.drawable.InsetDrawable(ui.pressable(ui.shape(p.surface2, 99f), 99f), ui.dp(7))
-                contentDescription = "Close"
-                addView(ui.icon(R.drawable.ic_close, p.muted, 16f), FrameLayout.LayoutParams(ui.dp(16), ui.dp(16), Gravity.CENTER))
-                setOnClickListener { close() }
-            }, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)).apply { marginEnd = -ui.dp(7) })
-        })
+        // The page's name is in the top bar; the content already has the 16dp margins.
+        val page = ui.column().apply { setPadding(0, ui.dp(2), 0, ui.dp(8)) }
 
-        fun rule() = sheet.addView(View(context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
+        fun rule() = page.addView(View(context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
         // Every label sits the same 24dp under what's above it. Rows carry 12dp of their own padding
         // (it's part of what can be tapped), so after rows the label's margin is the other 12dp.
         var afterRows = false
         fun label(text: String, top: Float = 24f, bottom: Float = 10f) {
-            sheet.addView(ui.label(text, p.muted, 10.5f), ui.wide(top = if (afterRows) top - ROW_PAD else top, bottom = bottom))
+            page.addView(ui.label(text, p.muted, 10.5f), ui.wide(top = if (afterRows) top - ROW_PAD else top, bottom = bottom))
             afterRows = false
         }
         /** A section of rows, with lines between them only (none under the label or after the last). */
@@ -104,7 +52,7 @@ object SettingsSheet {
             label(text, bottom = 0f) // the first row's own padding is the gap
             rows.forEachIndexed { i, r ->
                 if (i > 0) rule()
-                sheet.addView(r)
+                page.addView(r)
             }
             afterRows = true
         }
@@ -130,12 +78,12 @@ object SettingsSheet {
             setOnClickListener { onClick() }
         }
 
-        // The look: it spreads over the page from the title, and over the sheet from the option tapped.
-        label("Appearance", top = 16f)
+        // The look: it spreads over the app from the option tapped.
+        label("Appearance", top = 0f)
         var landing: Runnable? = null
-        sheet.addView(ui.segmented(Look.entries.map { it.label }, h.look.ordinal, fill = true, from = moved?.lookAt) { i, v ->
+        page.addView(ui.segmented(Look.entries.map { it.label }, h.look.ordinal, fill = true, from = moved?.lookAt) { i, v ->
             // The pill lands first, then the new look spreads from it, the redrawn pill carrying on from where
-            // it is. Spreading at once left the old pill standing in the old sheet's picture, behind the glide.
+            // it is. Spreading at once left the old pill standing in the old page's picture, behind the glide.
             landing?.let(v::removeCallbacks)
             val spread = Runnable {
                 landing = null
@@ -148,7 +96,7 @@ object SettingsSheet {
         // The accent scheme: a swatch of each, the chosen one outlined; it spreads as the look does, from the
         // swatch, whose dots then hop.
         label("Theme")
-        sheet.addView(ui.row(gap = 8f).apply {
+        page.addView(ui.row(gap = 8f).apply {
             for (scheme in Scheme.entries) {
                 val chosen = scheme == h.scheme
                 addView(ui.column().apply {
@@ -201,7 +149,7 @@ object SettingsSheet {
         ))
 
         label("Vibration")
-        sheet.addView(ui.segmented(Haptics.Level.entries.map { it.label }, Haptics.level(context).ordinal, fill = true) { i, _ -> Haptics.setLevel(context, Haptics.Level.entries[i]) })
+        page.addView(ui.segmented(Haptics.Level.entries.map { it.label }, Haptics.level(context).ordinal, fill = true) { i, _ -> Haptics.setLevel(context, Haptics.Level.entries[i]) })
 
         // The app's version, and the newest one on GitHub (Updater).
         section("About", listOf(
@@ -217,7 +165,7 @@ object SettingsSheet {
                 row("Not signed in", "Sign in to Spectrum with your SiswaMail for courses, deadlines, marks and news.", button("Sign in") { h.signIn() }, null)
             },
         ))
-        return sheet
+        return page
     }
 
     /**
@@ -269,7 +217,7 @@ object SettingsSheet {
         return line
     }
 
-    /** Whether the Occurrences fold is open: it stays so when the sheet is redrawn (back from TimeEdit). */
+    /** Whether the Occurrences fold is open: it stays so when the page is redrawn (back from TimeEdit). */
     var occurrencesOpen = false
 
     /**
@@ -307,9 +255,9 @@ object SettingsSheet {
     /**
      * Occurrences, a fold in Timetable: each course with its occurrence, Spectrum's unless the user chose
      * another; a tap on a course flies a card out of it ([occurrenceCard]) with a wheel of those TimeEdit
-     * lists for it, over the sheet, blurred. A choice is saved at once; the timetable keeps
+     * lists for it, over the page, blurred. A choice is saved at once; the timetable keeps
      * its classes until it's got again from TimeEdit (the button under the courses), whose answer is
-     * shown before it's used. [row] makes the sheet's rows.
+     * shown before it's used. [row] makes the page's rows.
      */
     private fun occurrences(h: SpectrumHost, context: Context, row: (String, String?, View?, (() -> Unit)?) -> LinearLayout): View? {
         val ui = h.ui

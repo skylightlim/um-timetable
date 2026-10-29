@@ -40,7 +40,7 @@ import kotlin.concurrent.thread
 import kotlin.math.hypot
 
 /**
- * The app's main screen, drawn natively: Day (with the Week grid), Grades, Due, News and Courses.
+ * The app's main screen, drawn natively: Day (with the Week grid), Grades, Due, News, Courses and Settings.
  * The timetable comes from the MAYA import.
  */
 class MainActivity : Activity(), SpectrumHost {
@@ -53,8 +53,10 @@ class MainActivity : Activity(), SpectrumHost {
         private set
     /** The sign-in poster over the app on first run (see [showWelcome]). */
     private var welcome: View? = null
-    /** The Settings sheet, while it's open: it stays until the user closes it. */
-    private var settings: SettingsSheet.Open? = null
+    /** Settings redrawn after a new look or theme: what moves on it (the look's pill, the theme's dots). */
+    private var settingsMoved: SettingsSheet.Moved? = null
+    /** Where a new look or theme spreads from: what was tapped in Settings, else the title. */
+    private var spreadFrom: View? = null
 
     override val timetable: Timetable get() = Timetable.load(this)
     override fun now() = Now.current()
@@ -178,9 +180,8 @@ class MainActivity : Activity(), SpectrumHost {
     override fun onResume() {
         super.onResume()
         if (!pickedDay) sel = homeDay(timetable, now())
+        // Back from what a Settings row opened (TimeEdit, Android's settings, the sign-in), the page shows how it went.
         if (fresh) fresh = false else render(keepScroll = true)
-        // Back from what a Settings row opened (TimeEdit, Android's settings, the sign-in): the sheet shows how it went.
-        settings?.takeIf { it.showing }?.refresh()
         ticker.post(tick)
         // Grades arrive after the rest of a sync (they can take Spectrum much longer).
         SpectrumSync.onGrades = { if (view == "grades") render(keepScroll = true) else renderTabs() }
@@ -191,13 +192,6 @@ class MainActivity : Activity(), SpectrumHost {
         super.onPause()
         ticker.removeCallbacks(tick)
         SpectrumSync.onGrades = null
-    }
-
-    override fun onDestroy() {
-        // Sign out restarts the screen with the sheet still open (its Sign out button asked first).
-        settings?.dismiss()
-        settings = null
-        super.onDestroy()
     }
 
     /** Every touch goes past the press feedback first; it never takes one. */
@@ -215,8 +209,8 @@ class MainActivity : Activity(), SpectrumHost {
         val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
         window.insetsController?.setSystemBarsAppearance(if (p.dark) 0 else lightBars, lightBars)
 
-        // Settings open from a long press on the title (there's no button; the title has the whole width),
-        // or from pulling the Courses list up. TalkBack offers the long press as "Open settings".
+        // Settings are the last tab; a long press on the title opens them too, as does pulling the Courses
+        // list up. TalkBack offers the long press as "Open settings".
         titleBox = FrameLayout(this).apply {
             isHapticFeedbackEnabled = false // the app's own vibration instead, at the user's level
             setOnLongClickListener { Haptics.threshold(it, true); openSettings(); true }
@@ -380,6 +374,7 @@ class MainActivity : Activity(), SpectrumHost {
                 "due" -> SpectrumScreens.due(this)
                 "news" -> SpectrumScreens.news(this).also { markNewsSeenSoon() }
                 "files" -> SpectrumScreens.courses(this).also { openCourse?.let { loadCourse(it) } }
+                "settings" -> settingsPage()
                 else -> DayScreen.build(this, sel)
             }
         } catch (e: Exception) {
@@ -547,18 +542,31 @@ class MainActivity : Activity(), SpectrumHost {
         Motion.retitle(old, title, pendingSlide * ui.dp(32f).toFloat(), ui.dp(10f).toFloat())
     }
 
-    /** Settings (theme, imports, notifications, vibration, account), as in redesign 1p. */
-    private fun openSettings() {
-        if (settings?.showing == true) return
-        settings = SettingsSheet.show(this, this)
+    /** Settings (theme, imports, notifications, vibration, account), as in redesign 1p: the last tab. */
+    private fun openSettings() = setView("settings")
+
+    /**
+     * The Settings tab's page. A new look or theme spreads over the app from what was tapped, and the
+     * page drawn in it shows what moved ([settingsMoved]).
+     */
+    private fun settingsPage(): View {
+        val moved = settingsMoved
+        settingsMoved = null
+        return SettingsSheet.build(this, this, moved = moved, restyle = { from, m, change ->
+            spreadFrom = from
+            settingsMoved = m
+            change()
+            spreadFrom = null
+            settingsMoved = null
+        })
     }
 
     override fun setLook(look: Look) {
-        if (look != this.look) restyle(titleBox) { this.look = look; Look.save(this, look) }
+        if (look != this.look) restyle(spreadFrom ?: titleBox) { this.look = look; Look.save(this, look) }
     }
 
     override fun setScheme(scheme: Scheme) {
-        if (scheme != this.scheme) restyle(titleBox) {
+        if (scheme != this.scheme) restyle(spreadFrom ?: titleBox) {
             this.scheme = scheme
             Scheme.save(this, scheme)
             TimetableWidget.updateAll(this) // its classes take the theme's course colours too
@@ -622,7 +630,7 @@ class MainActivity : Activity(), SpectrumHost {
         }
     }
 
-    /** A new look or scheme ([change]) spreads out from [from] (the title, where Settings open), over a picture of the old one. */
+    /** A new look or scheme ([change]) spreads out from [from] (what was tapped in Settings), over a picture of the old one. */
     private fun restyle(from: View, change: () -> Unit) {
         val old = shell
         val y = scroll.scrollY
@@ -691,7 +699,8 @@ class MainActivity : Activity(), SpectrumHost {
             badgeCounts[id] = n
         }
         // The pill glides to the lit tab, whose icon plays its little scene: Day's list writes itself in,
-        // Grades' medal and ribbon meet, Due's tick draws, News' bell rings, a page drops into Courses' folder.
+        // Grades' medal and ribbon meet, Due's tick draws, News' bell rings, a page drops into Courses' folder,
+        // Settings' sliders slide.
         val shown = TABS[lit].first
         if (tabShown != null && tabShown != shown && Motion.enabled) (tabViews[shown]?.second?.drawable as? android.graphics.drawable.AnimatedVectorDrawable)?.start()
         tabShown = shown
@@ -1054,9 +1063,10 @@ class MainActivity : Activity(), SpectrumHost {
             Triple("due", "Due", R.drawable.avd_tab_due),
             Triple("news", "News", R.drawable.avd_tab_news),
             Triple("files", "Courses", R.drawable.avd_tab_courses),
+            Triple("settings", "Settings", R.drawable.avd_tab_settings),
         )
-        /** The Spectrum tabs' names, shown large in the top bar. */
-        private val PAGE_TITLES = mapOf("grades" to "Grades", "due" to "Due", "news" to "News", "files" to "Courses")
+        /** The tabs' names after Day, shown large in the top bar. */
+        private val PAGE_TITLES = mapOf("grades" to "Grades", "due" to "Due", "news" to "News", "files" to "Courses", "settings" to "Settings")
         /** The week grid has no tab of its own; it's the Week chip under Day. */
         private val VIEWS = TABS.map { it.first }.toSet() + "week"
     }

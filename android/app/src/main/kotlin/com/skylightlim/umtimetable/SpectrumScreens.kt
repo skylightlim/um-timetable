@@ -85,6 +85,8 @@ object SpectrumScreens {
      */
     fun summary(h: SpectrumHost, view: String): String {
         val c = h.ui.context
+        // Settings: who's signed in, and the app's version.
+        if (view == "settings") return listOf(if (SpectrumStore.signedIn(c)) accountName(c).ifBlank { "Signed in" } else "Not signed in", "version ${Updater.installed(c).second}").joinToString(" · ")
         if (!SpectrumStore.signedIn(c)) return "Not signed in"
         if (SpectrumStore.lastSync(c) == 0L) return "Not synced yet"
         val parts = when (view) {
@@ -658,7 +660,7 @@ object SpectrumScreens {
 
     /**
      * The courses, as in redesign 1n: a plain ruled list (dot, code and occurrence, name), each opening
-     * its course page. The account, imports and other settings are in the Settings sheet. Pull to sync.
+     * its course page. The account, imports and other settings are in the Settings tab. Pull to sync.
      */
     fun courses(h: SpectrumHost): View {
         val ui = h.ui

@@ -41,7 +41,7 @@ import java.io.File
  * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200).
  * view occcard draws Settings' card for choosing an occurrence (--es code CODE).
  * view pinmenu draws the card a long press on a course page's section name brings up (--ez pinned true: Unpin).
- * view signout draws the Sign out question's card. view settings draws the Settings sheet (--ez signedIn true|false
+ * view signout draws the Sign out question's card. view settings draws the Settings tab's page (--ez signedIn true|false
  * for either Account row); view signin the first-run sign-in poster, at screen height (or --ei height px).
  * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
  * Nth class of the week (0 first).
@@ -97,7 +97,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
             "files" -> SpectrumScreens.courses(host)
             "grades" -> if (intent.getBooleanExtra("sample", false)) SpectrumScreens.grades(host, sampleGrades(context)) else SpectrumScreens.grades(host)
             // --ez open true: the Occurrences fold open.
-            "settings" -> SettingsSheet.also { it.occurrencesOpen = intent.getBooleanExtra("open", false) }.build(host, c, intent.getBooleanExtra("signedIn", SpectrumStore.signedIn(context))) {}
+            "settings" -> SettingsSheet.also { it.occurrencesOpen = intent.getBooleanExtra("open", false) }.build(host, c, intent.getBooleanExtra("signedIn", SpectrumStore.signedIn(context)))
             "signin" -> SignInScreen.build(host.ui) {}
             // The top bar as MainActivity lays it out: --es view title --es page Grades|day|week (day and week
             // with their widest titles)
@@ -136,7 +136,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val frame = FrameLayout(c).apply {
             setBackgroundColor(host.ui.p.ground)
             // A sheet runs edge to edge, from the bottom of the screen.
-            if (view != "sheet" && view != "settings" && view != "signin" && view != "webbar") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
+            if (view != "sheet" && view != "signin" && view != "webbar") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
             addView(page)
         }
         frame.measure(
