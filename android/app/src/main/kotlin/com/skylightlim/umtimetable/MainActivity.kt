@@ -98,6 +98,9 @@ class MainActivity : Activity(), SpectrumHost {
     private lateinit var scroll: SwipeScrollView
     private lateinit var content: FrameLayout
     private lateinit var tabs: LinearLayout
+    /** The Sections tab on the left edge, over a course page, and what a tap on it opens ([sectionsTab]). */
+    private lateinit var sectionsTabView: View
+    private var sectionsOpen: (() -> Unit)? = null
     private val tabViews = mutableMapOf<String, Triple<LinearLayout, ImageView, TextView>>()
     private val badges = mutableMapOf<String, TextView>()
     private lateinit var shell: LinearLayout
@@ -279,10 +282,25 @@ class MainActivity : Activity(), SpectrumHost {
             // And the settings gear below it, uncovered as the Courses list is pulled up.
             val pullUp = PullUpIndicator(ui)
             scroll.pullUpIndicator = pullUp
+            // A course page's Sections tab peeks out of the left edge, over the page, halfway down.
+            sectionsTabView = FrameLayout(this@MainActivity).apply {
+                val r = ui.dp(14f).toFloat()
+                background = ui.pressable(android.graphics.drawable.GradientDrawable().apply {
+                    setColor(p.surface)
+                    setStroke(1, p.line)
+                    cornerRadii = floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f)
+                }, 14f)
+                elevation = ui.dp(4f).toFloat()
+                contentDescription = "Sections: every section of this course, to go to one"
+                addView(ui.icon(R.drawable.ic_sections, p.text, 18f), FrameLayout.LayoutParams(ui.dp(18), ui.dp(18), Gravity.CENTER))
+                visibility = View.GONE
+                setOnClickListener { Haptics.tick(it); sectionsOpen?.invoke() }
+            }
             addView(FrameLayout(this@MainActivity).apply {
                 addView(pull, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
                 addView(pullUp, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
                 addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                addView(sectionsTabView, FrameLayout.LayoutParams(ui.dp(30), ui.dp(60), Gravity.START or Gravity.CENTER_VERTICAL))
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             addView(tabBar)
         }
@@ -376,6 +394,9 @@ class MainActivity : Activity(), SpectrumHost {
         renderTop(n)
         renderTabs()
         val y = scroll.scrollY
+        // A course page puts its Sections tab back as it's built (sectionsTab).
+        val hadTab = sectionsOpen != null
+        sectionsOpen = null
         val page = try {
             when (view) {
                 "week" -> WeekScreen.build(this)
@@ -389,6 +410,7 @@ class MainActivity : Activity(), SpectrumHost {
             ui.text("Something went wrong showing this page: ${e.message}", 15f, ui.p.muted)
         }
         content.removeAllViews()
+        showSectionsTab(hadTab)
         // Nor is the page clipped: its cards rise into place, and spring back after a press, a little past its edges.
         (page as? ViewGroup)?.clipChildren = false
         content.addView(page)
@@ -971,6 +993,29 @@ class MainActivity : Activity(), SpectrumHost {
     }
 
     override fun courseContents(id: Int) = contents[id]
+
+    override fun sectionsTab(open: (() -> Unit)?) { sectionsOpen = open }
+
+    /** The Sections tab, there while a course page wants it; it slides out of the edge when it first comes. */
+    private fun showSectionsTab(had: Boolean) {
+        val show = sectionsOpen != null
+        sectionsTabView.visibility = if (show) View.VISIBLE else View.GONE
+        if (!show || had || !Motion.enabled) return
+        sectionsTabView.translationX = -ui.dp(30f).toFloat()
+        sectionsTabView.animate().translationX(0f).spring(Motion.BOUNCY).start()
+    }
+
+    override fun scrollTo(v: View) {
+        // Where [v] is on the page: its tops added up to the page.
+        var y = 0
+        var at: View? = v
+        while (at != null && at !== content) {
+            y += at.top
+            at = at.parent as? View
+        }
+        if (at == null) return
+        scroll.smoothScrollTo(0, maxOf(0, y - ui.dp(8)))
+    }
 
     /** Reads a course's layout again behind its page, and redraws the page if it changed. */
     private fun refreshLayout(id: Int) = thread {

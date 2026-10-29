@@ -35,6 +35,10 @@ interface SpectrumHost : Host {
     /** Sign out's question, its card flying out of [from] (the Sign out button) when there is one. */
     fun signOut(from: View? = null)
     fun refresh()
+    /** The Sections tab on the left edge of a course page: shown with what a tap on it does, or put away (null). */
+    fun sectionsTab(open: (() -> Unit)?) = Unit
+    /** Scrolls the page so [v] (on it) is at the top, gliding there. */
+    fun scrollTo(v: View) = Unit
     /** The page drawn again as it is now, where it's scrolled to, with no entrance (as each minute's redraw). */
     fun redraw() = render()
     fun openMaya()
@@ -762,6 +766,8 @@ object SpectrumScreens {
      * A course page, arranged as Spectrum's own page is in a browser ([CourseOutline]): the sections in
      * order, subsections and Flexible sections' inner sections set in where they sit, and a section Spectrum
      * shows as a link or a card (one section per page) as a card opening a page of its own ([SpectrumHost.openSection]).
+     * A tap on a section's heading folds it to the heading, or opens it again; the Sections tab on the left
+     * edge lists them all ([SectionsPanel]).
      */
     private fun coursePage(h: SpectrumHost, c: JSONObject): View {
         val ui = h.ui
@@ -804,6 +810,9 @@ object SpectrumScreens {
         val holder = ui.column()
         val pinnedLabel = ui.label("Pinned", p.muted, 10.5f)
         val restLabel = ui.label("Other sections", p.muted, 10.5f)
+        // For the Sections panel: each top section, and the keys in expanded of those folded to their heading.
+        val entries = ArrayList<SectionsPanel.Entry>()
+        val foldKeys = ArrayList<String>()
         fun arrange() {
             holder.removeAllViews()
             val pinned = pins.filter { it in boxes }
@@ -837,21 +846,56 @@ object SpectrumScreens {
             }
             if (node.link) {
                 box.addView(sectionCard(h, node, folder, mark = mark).also(::pinnable), ui.wide(top = 10f))
+                entries += SectionsPanel.Entry(node, { sectionKey in pins }) { h.showSection(node.id) }
                 continue
             }
-            // Flexible sections leaves the first section's name off unless the course shows it.
+            val body = sectionBody(h, node, folder, 0, "s$id-${node.id}")
+            // Flexible sections leaves the first section's name off unless the course shows it. A named section
+            // folds to its heading with a tap (a long press pins it).
+            val shut = "shut-$id-${node.id}"
+            var fold: ((Boolean) -> Unit)? = null
             if (node.number > 0 || course.optBoolean("section0title", true)) {
-                box.addView(sectionName(ui, node, 0).apply {
+                val chevron = Motion.chevron(ui, shut !in h.expanded, p.faint)
+                lateinit var head: LinearLayout
+                fun setOpen(open: Boolean) {
+                    if (open == (body.visibility == View.VISIBLE)) return
+                    Motion.resize(head)
+                    if (open) h.expanded.remove(shut) else h.expanded.add(shut)
+                    body.visibility = if (open) View.VISIBLE else View.GONE
+                    Motion.turn(chevron, open)
+                    head.contentDescription = "$name, ${if (open) "open" else "folded"}. Tap to ${if (open) "fold" else "open"} it; long press to pin or unpin it."
+                }
+                head = sectionName(ui, node, 0).apply {
                     minimumHeight = ui.dp(48)
                     addView(mark)
-                    contentDescription = "$name. Long press to pin or unpin it."
+                    addView(chevron, LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)))
+                    background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
+                    isHapticFeedbackEnabled = false // the pin menu's own vibration instead
+                    contentDescription = "$name, ${if (shut in h.expanded) "folded" else "open"}. Tap to ${if (shut in h.expanded) "open" else "fold"} it; long press to pin or unpin it."
+                    setOnClickListener { Haptics.tick(this); setOpen(body.visibility != View.VISIBLE) }
                     pinnable(this)
-                }, ui.wide(top = 14f, bottom = -2f))
+                }
+                box.addView(head, ui.wide(top = 14f, bottom = -2f))
+                fold = ::setOpen
+                foldKeys += shut
+                if (shut in h.expanded) body.visibility = View.GONE
             }
-            box.addView(sectionBody(h, node, folder, 0, "s$id-${node.id}"))
+            box.addView(body)
+            entries += SectionsPanel.Entry(node, { sectionKey in pins }) {
+                fold?.invoke(true)
+                // Once it's laid out open.
+                box.post { h.scrollTo(box) }
+            }
         }
         arrange()
         page.addView(holder)
+        // The Sections tab, for a page with more than one section.
+        if (entries.size > 1) h.sectionsTab {
+            SectionsPanel.show(ui, code, color, entries, foldKeys.size, foldKeys.count { it in h.expanded }) { foldEvery ->
+                if (foldEvery) h.expanded.addAll(foldKeys) else h.expanded.removeAll(foldKeys.toSet())
+                h.redraw()
+            }
+        }
         return page
     }
 
