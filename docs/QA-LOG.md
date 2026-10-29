@@ -18,6 +18,27 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (A course page's sections: a panel from the left, and each one folds)
+
+**Asked for:** an overview of a Spectrum course's sections on the left side, one that can be hidden
+and shown. The user chose both: a panel listing the sections to jump to, and sections that fold.
+
+**Change:** on a course page with more than one section, a small **Sections** tab (a dot-and-line
+icon) peeks out of the left edge halfway down, sliding out as the page comes. A tap slides a panel in
+from the left over the dimmed page (`SectionsPanel`): the course's code, "Sections", how many, and each
+top section in Spectrum's order with what's in it ("3 activities · 2 sections", "its own page" for a
+linked one), pinned ones with a pin, locked ones greyed. A tap on one puts the panel away and goes there:
+the section opens if it was folded and the page glides to it (`SpectrumHost.scrollTo`), or a linked
+section's page opens. **Fold all** / **Open all** fold every section to its heading or open them again.
+Back or a tap beside the panel puts it away. On the page itself, a tap on a section's heading now folds
+it to the heading (its chevron turns) and opens it again; a long press still pins it. Folds are kept
+while the app is open (`expanded`, `shut-<course>-<section>`).
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (78) with JUnit against Robolectric's Android 17 jar. Still to try on the phone: the tab's place
+over the page's left margin (does it cover text?), the panel's slide and its insets under the status bar,
+going to a section (folded and not, pinned and not), Fold all, Back, and a long course (GUL1001's cards).
+
 ## 29 October 2026 (Week until midnight, a toggle in Settings)
 
 **Asked for:** run the Week grid from 19:00 to 12 am, with a toggle in Settings.

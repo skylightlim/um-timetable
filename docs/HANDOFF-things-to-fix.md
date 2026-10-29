@@ -133,3 +133,21 @@ the tested logic, but not resource errors (AAPT), lint, R8 or behaviour on scree
 - Settings → Timetable → "Week until midnight" (a `Toggle`).
 - Not changed: the widget (`WidgetRenderer.DAY_END`, still 19:00), `dayGlance`.
 - Try by hand: the toggle, an evening plan, a week swipe's smoothness with the taller grid.
+
+## 9. A course page's sections: a panel from the left, and folding sections
+
+- `SectionsPanel.show(ui, code, color, entries, foldable, folded, foldAll)` (new file): a translucent
+  `Dialog` (like `ConfirmDialog.present`, with its own Back handling) holding a scrim and a panel 320dp
+  wide (at most 84% of the screen) that slides in from the left. `Entry(node, pinned, go)`.
+- `SpectrumScreens.coursePage`: a named top section's heading is a toggle (`setOpen`, key
+  `shut-<courseId>-<sectionId>` in `expanded` means folded) with a chevron; long press still pins.
+  It collects `entries` and `foldKeys`, then calls `h.sectionsTab { SectionsPanel.show(...) }` when
+  there's more than one section. A linked section's entry opens its page; any other folds open, then
+  `h.scrollTo(box)` after a post.
+- `SpectrumHost.sectionsTab(open)` and `scrollTo(v)` (defaults do nothing). In MainActivity,
+  `sectionsTabView` (30×60dp, right-rounded, `ic_sections`, new) sits in the scroll's FrameLayout at
+  START|CENTER_VERTICAL. `render()` clears `sectionsOpen` before building the page, and
+  `showSectionsTab(hadTab)` shows it (sliding in only when it wasn't there before). `scrollTo` adds up
+  `top`s to `content` and calls `smoothScrollTo`.
+- Not done: a swipe from the left edge to open the panel (Android's back gesture uses that edge).
+- Try by hand: the tab over the page's margin, the panel with a long course, jumping, Fold all, Back.
