@@ -170,3 +170,9 @@ the tested logic, but not resource errors (AAPT), lint, R8 or behaviour on scree
   `top`s to `content` and calls `smoothScrollTo`.
 - Not done: a swipe from the left edge to open the panel (Android's back gesture uses that edge).
 - Try by hand: the tab over the page's margin, the panel with a long course, jumping, Fold all, Back.
+
+## 10. Courses' week in its top line (second list)
+
+- `SpectrumScreens.totalHours()` and its row under the course list are deleted. `summary(h, "files")` is
+  now courses · `hoursShort(timetable.sessions)` · N classes · N new (no "last synced": the pull
+  indicator, `SpectrumScreens.lastSynced`, still shows it).

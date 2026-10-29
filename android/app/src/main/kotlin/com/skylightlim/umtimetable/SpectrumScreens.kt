@@ -88,8 +88,9 @@ object SpectrumScreens {
 
     /**
      * The small line under a Spectrum tab's name: what that page holds, at a glance. It used to be the
-     * week of the semester and today's date on every tab; the week is on Day's strip. Courses counts what's
-     * new in their folds: announcements for the user and marks not seen yet.
+     * week of the semester and today's date on every tab; the week is on Day's strip. Courses: how many,
+     * the timetable's week ("L12 T5 · 11 classes": each kind's hours by its initial), and what's new in their
+     * folds (announcements for the user and marks not seen yet). When it last synced shows on pulling down.
      */
     fun summary(h: SpectrumHost, view: String): String {
         val c = h.ui.context
@@ -109,11 +110,14 @@ object SpectrumScreens {
                     late.size.takeIf { it > 0 }?.let { "$it late" },
                 ).take(3)
             }
-            else -> listOfNotNull(
-                count(SpectrumStore.array(c, "courses").length(), "course"),
-                newCount(h).takeIf { it > 0 }?.let { "$it new" },
-                lastSynced(c).replaceFirstChar { it.lowercase() },
-            )
+            else -> {
+                val classes = h.timetable.sessions
+                listOfNotNull(
+                    count(SpectrumStore.array(c, "courses").length(), "course"),
+                    classes.takeIf { it.isNotEmpty() }?.let { "${hoursShort(it)} · ${it.size} ${if (it.size == 1) "class" else "classes"}" },
+                    newCount(h).takeIf { it > 0 }?.let { "$it new" },
+                )
+            }
         }
         return parts.joinToString(" · ")
     }
@@ -639,36 +643,7 @@ object SpectrumScreens {
             val code = c.optString("code")
             page.addView(courseEntry(h, c, code, myOcc(h, occurrences, code).takeIf { it > 0 }, news[id].orEmpty(), grades[id].orEmpty()))
         }
-        if (courses.isNotEmpty()) totalHours(h)?.let(page::addView)
         return page
-    }
-
-    /**
-     * Under the courses, the timetable's week in total (it was under Week's grid): under a heavier line,
-     * each kind's hours by its initial ("L12 T5") and how many classes, and the hours large on the right.
-     * Null without a timetable.
-     */
-    private fun totalHours(h: SpectrumHost): View? {
-        val ui = h.ui
-        val p = ui.p
-        val sessions = h.timetable.sessions
-        if (sessions.isEmpty()) return null
-        val all = sessions.sumOf { it.end - it.start }
-        val count = "${sessions.size} ${if (sessions.size == 1) "class" else "classes"} a week"
-        return ui.column().apply {
-            addView(View(ui.context).apply { setBackgroundColor(p.text) }, ui.wide(top = 4f).apply { height = ui.dp(1.5f) })
-            addView(ui.row(gap = 12f).apply {
-                minimumHeight = ui.dp(60)
-                // In line with the courses' names (after their 12dp dot and 12dp gap).
-                setPadding(ui.dp(24), ui.dp(10), 0, ui.dp(10))
-                contentDescription = "Total: $count, ${hoursByType(sessions)}, ${hoursText(all)}"
-                addView(ui.column().apply {
-                    addView(ui.text("Total", 15f, p.text, ui.f.bodyBold))
-                    addView(ui.text("${hoursShort(sessions)} · $count", 12.5f, p.muted), ui.wide(top = 2f))
-                }, ui.grow())
-                addView(ui.text(hoursText(all), 26f, p.text, ui.f.sign))
-            })
-        }
     }
 
     /**
