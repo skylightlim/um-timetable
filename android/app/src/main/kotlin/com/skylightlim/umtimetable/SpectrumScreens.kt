@@ -768,8 +768,8 @@ object SpectrumScreens {
             setPadding(0, ui.dp(18), 0, ui.dp(14))
             addView(ui.text((code.ifEmpty { "Course" }).uppercase(), 38f, p.courseText(color), ui.f.sign))
             addView(ui.text(courseName(h, c.optString("name"), code), 20f, p.text, ui.f.bodyBold).apply { RichText.selectable(this) }, ui.wide(top = 6f))
+            hoursLine(h, code)?.let { addView(it, ui.wide(top = 4f)) }
         })
-        hours(h, code)?.let { page.addView(it, ui.wide(bottom = 6f)) }
         h.courseError(id)?.let {
             page.addView(ui.text(it, 13.5f).apply { background = ui.shape(Palette.mix(0xFFF2645F.toInt(), p.surface, 0.14f), 12f); setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10)) })
             return page
@@ -875,34 +875,19 @@ object SpectrumScreens {
     }
 
     /**
-     * A course page's Hours, first, before Spectrum's sections: its classes' hours a week by kind ("Lecture
-     * 2 h · Tutorial 1 h"), how many classes, and the hours large on the right (they were in a Courses
-     * section under Week's grid). A tap opens the course's class sheet, with each class's day, time and room.
-     * Null for a course with no classes in the timetable.
+     * A course page's classes in one line under its name: the hours a week by kind and how many classes
+     * ("Lecture 2 h · Tutorial 1 h · 3 classes a week"). A tap opens the course's class sheet, with each
+     * class's day, time and room. Null for a course with no classes in the timetable.
      */
-    private fun hours(h: SpectrumHost, code: String): View? {
+    private fun hoursLine(h: SpectrumHost, code: String): View? {
         val ui = h.ui
-        val p = ui.p
         val course = h.timetable.courses.firstOrNull { code.isNotEmpty() && it.code == code } ?: return null
         val sessions = h.timetable.sessions.filter { it.course == course }
         if (sessions.isEmpty()) return null
-        val total = sessions.sumOf { it.end - it.start }
-        val count = "${sessions.size} ${if (sessions.size == 1) "class" else "classes"} a week${if (sessions.any { it.room == "Online" }) " · online" else ""}"
-        return ui.column().apply {
-            // A heading as the sections' own.
-            addView(ui.text("Hours", 18f, p.text, ui.f.bodyBold), ui.wide(bottom = 8f))
-            addView(ui.row(gap = 12f).apply {
-                minimumHeight = ui.dp(60)
-                background = ui.pressable(ui.shape(p.surface, 12f, p.line), 12f)
-                setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10))
-                contentDescription = "Hours: ${hoursByType(sessions)}, $count, ${hoursText(total)} a week. Opens the class times."
-                setOnClickListener { h.openSheet(course, null) }
-                addView(ui.column().apply {
-                    addView(ui.text(hoursByType(sessions), 15f, p.text, ui.f.bodySemi))
-                    addView(ui.text(count, 12.5f, p.muted), ui.wide(top = 2f))
-                }, ui.grow())
-                addView(ui.text(hoursText(total), 26f, p.text, ui.f.sign))
-            })
+        val line = "${hoursByType(sessions)} · ${sessions.size} ${if (sessions.size == 1) "class" else "classes"} a week${if (sessions.any { it.room == "Online" }) " · online" else ""}"
+        return ui.text(line, 13.5f, ui.p.muted).apply {
+            contentDescription = "$line. Opens the class times."
+            setOnClickListener { h.openSheet(course, null) }
         }
     }
 
