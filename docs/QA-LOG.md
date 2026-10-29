@@ -18,6 +18,26 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (The attendance log in the app, its problems in red)
+
+**Asked for:** let the user see the attendance log, with the errors.
+
+**Change:** Settings' Attendance section has an **Attendance log** row ("2 problems in the past week",
+"No problems in the past week", "Nothing logged yet") that opens the log as a page in the Settings tab
+(title "Attendance log"; Back, or tapping Settings again, returns to Settings where it was scrolled). The
+page reads the same file adb reads (`AttendanceLog.read`/`parse`), newest first under a label per day,
+with each step's time in mono and its text. Problems are in red: a read or a run that failed, Spectrum's
+answer naming an error (`{"error":…}`), no attendance activity for a class, the run cut short, and
+notifications being off (`AttendanceLog.isProblem`). Problems / All across the top (Problems first, unless
+there are none; remembered as `logAll`). It shows the newest 200 steps, a long press selects a step's text,
+and **Copy log** puts the whole file on the clipboard.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. The main and debug sources
+type-check (Kotlin 2.4.20 against Robolectric's Android 17 jar, stub `R`), and the JVM tests were compiled
+and run with JUnit against that jar: 66 pass, including the new `AttendanceLogTest` (lines with a time,
+lines that carry on the one before, what counts as a problem). Still to try on the phone: the row's line,
+the page with a real log, Copy log, Back.
+
 ## 29 October 2026 (Settings as a tab of their own)
 
 **Asked for:** a standalone Settings panel, as a fourth tab (Day, Due, Courses, Settings once Grades and
