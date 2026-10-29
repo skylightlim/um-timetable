@@ -18,6 +18,30 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (Grades and News fold out of each course on Courses)
+
+**Asked for:** remove the Grades and News pages and put them in Courses, only the user's occurrence's
+items; pressing a course's main body opens its course page, and only the rightmost part opens its news,
+then its grades below, in place.
+
+**Change:** the tabs are Day, Due, Courses and Settings. On Courses, each row's body (dot, code and
+occurrence, name) opens the course page as before. Past a short line at its end, a 56dp part (a count of
+what's new in the accent, over a chevron) opens the course's **News** (its announcements for the user, as
+News's rows: tap one for its text and files), then its **Grades** ("2 of 5 marked", the mark cards with
+New until seen, the course total, Not marked yet) under the row. The fold is built the first time it
+opens, and opening it marks what's new there as seen after a moment. Only the user's occurrence's
+things: announcements for other occurrences only are left out (no For me / All switch any more), as are
+unmarked items named for other occurrences. The Courses tab's badge and the line under its title count
+what's new ("5 courses · 2 new · last synced 11:32"). Notifications of a new announcement or mark open
+Courses with that course's fold open (`EXTRA_FOLD`), and old ones, or a page last left on Grades or
+News, open Courses. The Grades and News icons are deleted.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (76) with JUnit against Robolectric's Android 17 jar. Still to try on the phone: the row's two
+tap zones (is the right part easy to hit and plain enough as a separate button?), the fold's look with real
+news and marks, New going after opening, the badge, a notification opening a fold, and the tab bar
+with four tabs.
+
 ## 29 October 2026 (News reads the user's occurrence's own forum)
 
 **Asked for:** find out why the latest GUL1001 announcement in the user's occurrence's tab never arrived.

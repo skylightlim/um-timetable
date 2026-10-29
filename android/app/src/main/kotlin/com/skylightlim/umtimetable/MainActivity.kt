@@ -40,7 +40,8 @@ import kotlin.concurrent.thread
 import kotlin.math.hypot
 
 /**
- * The app's main screen, drawn natively: Day (with the Week grid), Grades, Due, News, Courses and Settings.
+ * The app's main screen, drawn natively: Day (with the Week grid), Due, Courses (with each course's news
+ * and grades) and Settings.
  * The timetable comes from the MAYA import.
  */
 class MainActivity : Activity(), SpectrumHost {
@@ -156,9 +157,9 @@ class MainActivity : Activity(), SpectrumHost {
         seenNews = uiPrefs(this).getStringSet("newsSeen", emptySet()) ?: emptySet()
         seenGrades = uiPrefs(this).getStringSet("gradesSeen", emptySet()) ?: emptySet()
         sel = homeDay(timetable, now())
-        view = intent.getStringExtra(EXTRA_VIEW)?.takeIf { it in VIEWS }
-            ?: uiPrefs(this).getString("view", "day")?.takeIf { it in VIEWS } ?: "day"
+        view = viewOf(intent.getStringExtra(EXTRA_VIEW)) ?: viewOf(uiPrefs(this).getString("view", "day")) ?: "day"
         intent.getIntExtra(EXTRA_COURSE, 0).takeIf { it > 0 }?.let { view = "files"; openCourse = it }
+        intent.getIntExtra(EXTRA_FOLD, 0).takeIf { it > 0 }?.let { view = "files"; openFold(it) }
         buildShell()
         render()
         if (!SpectrumStore.signedIn(this) && timetable.sessions.isEmpty()) showWelcome()
@@ -174,7 +175,8 @@ class MainActivity : Activity(), SpectrumHost {
         super.onNewIntent(intent)
         setIntent(intent)
         intent.getIntExtra(EXTRA_COURSE, 0).takeIf { it > 0 }?.let { openCourse = it; setView("files"); return }
-        intent.getStringExtra(EXTRA_VIEW)?.takeIf { it in VIEWS }?.let {
+        intent.getIntExtra(EXTRA_FOLD, 0).takeIf { it > 0 }?.let { openFold(it); if (view == "files") render() else setView("files"); return }
+        viewOf(intent.getStringExtra(EXTRA_VIEW))?.let {
             if (it == "day") { pickedDay = false; weekShift = 0; sel = homeDay(timetable, now()) }
             go(it, null)
         }
@@ -187,7 +189,7 @@ class MainActivity : Activity(), SpectrumHost {
         if (fresh) fresh = false else render(keepScroll = true)
         ticker.post(tick)
         // Grades arrive after the rest of a sync (they can take Spectrum much longer).
-        SpectrumSync.onGrades = { if (view == "grades") render(keepScroll = true) else renderTabs() }
+        SpectrumSync.onGrades = { if (view == "files" && openCourse == null) render(keepScroll = true) else renderTabs() }
         if (SpectrumStore.signedIn(this) && System.currentTimeMillis() - SpectrumStore.lastSync(this) > 10 * 60_000L) refresh()
     }
 
@@ -377,9 +379,7 @@ class MainActivity : Activity(), SpectrumHost {
         val page = try {
             when (view) {
                 "week" -> WeekScreen.build(this)
-                "grades" -> SpectrumScreens.grades(this).also { markGradesSeenSoon() }
                 "due" -> SpectrumScreens.due(this)
-                "news" -> SpectrumScreens.news(this).also { markNewsSeenSoon() }
                 "files" -> SpectrumScreens.courses(this).also { openCourse?.let { loadCourse(it) } }
                 "settings" -> if (settingsLog) AttendanceLogPage.build(this) else settingsPage()
                 else -> DayScreen.build(this, sel)
@@ -404,7 +404,7 @@ class MainActivity : Activity(), SpectrumHost {
             else -> null
         }
         // Spectrum's tabs sync when pulled down.
-        scroll.onPull = if (view in setOf("grades", "due", "news", "files") && SpectrumStore.signedIn(this)) ::refresh else null
+        scroll.onPull = if (view in setOf("due", "files") && SpectrumStore.signedIn(this)) ::refresh else null
         // The Courses list (where Settings used to sit, under the courses) opens them when pulled up.
         scroll.onPullUp = if (view == "files" && openCourse == null) ::openSettings else null
         if (pendingSlide != 0) {
@@ -689,9 +689,8 @@ class MainActivity : Activity(), SpectrumHost {
 
     private fun renderTabs() {
         val p = ui.p
-        val unread = SpectrumStore.array(this, "news").objects().count { it.optBoolean("forMe", true) && it.getInt("id").toString() !in seenNews }
-        val newMarks = SpectrumStore.array(this, "grades").objects().count { !it.isNull("raw") && !SpectrumSync.isAttendance(it) && SpectrumSync.gradeKey(it) !in seenGrades }
-        val counts = mapOf("news" to unread, "grades" to newMarks, "due" to SpectrumScreens.openAttendance(this))
+        // Courses: the announcements and marks not seen yet, in the courses' folds.
+        val counts = mapOf("files" to SpectrumScreens.newCount(this), "due" to SpectrumScreens.openAttendance(this))
         // On the week grid the Day tab is Week, with the grid's icon: the label rolls over and the icon draws itself in.
         val week = view == "week"
         if (week != dayTabWeek) tabViews["day"]?.let { (tab, icon, text) ->
@@ -721,8 +720,7 @@ class MainActivity : Activity(), SpectrumHost {
             badgeCounts[id] = n
         }
         // The pill glides to the lit tab, whose icon plays its little scene: Day's list writes itself in,
-        // Grades' medal and ribbon meet, Due's tick draws, News' bell rings, a page drops into Courses' folder,
-        // Settings' sliders slide.
+        // Due's tick draws, a page drops into Courses' folder, Settings' sliders slide.
         val shown = TABS[lit].first
         if (tabShown != null && tabShown != shown && Motion.enabled) (tabViews[shown]?.second?.drawable as? android.graphics.drawable.AnimatedVectorDrawable)?.start()
         tabShown = shown
@@ -752,24 +750,29 @@ class MainActivity : Activity(), SpectrumHost {
         }.start()
     }
 
-    private fun markNewsSeenSoon() {
+    /**
+     * A course's fold on the Courses list was opened: what's new in it is seen after a moment. Its New tags
+     * (and the top line's count) stay until the page is next drawn, so they're seen first; the tab's badge goes now.
+     */
+    override fun markSeen(news: Collection<String>, grades: Collection<String>) {
+        if (news.isEmpty() && grades.isEmpty()) return
         ticker.postDelayed({
-            val ids = SpectrumStore.array(this, "news").objects().map { it.getInt("id").toString() }
-            if (ids.all { it in seenNews }) return@postDelayed
-            seenNews = (seenNews + ids).toList().takeLast(500).toSet()
-            uiPrefs(this).edit().putStringSet("newsSeen", seenNews).apply()
-            renderTabs() // the dots on the cards stay until the next redraw, so they're seen first
+            if (news.any { it !in seenNews }) {
+                seenNews = (seenNews + news).toList().takeLast(500).toSet()
+                uiPrefs(this).edit().putStringSet("newsSeen", seenNews).apply()
+            }
+            if (grades.any { it !in seenGrades }) {
+                seenGrades = (seenGrades + grades).toList().takeLast(500).toSet()
+                uiPrefs(this).edit().putStringSet("gradesSeen", seenGrades).apply()
+            }
+            renderTabs()
         }, 1500)
     }
 
-    private fun markGradesSeenSoon() {
-        ticker.postDelayed({
-            val keys = SpectrumStore.array(this, "grades").objects().filter { !it.isNull("raw") }.map { SpectrumSync.gradeKey(it) }
-            if (keys.all { it in seenGrades }) return@postDelayed
-            seenGrades = (seenGrades + keys).toList().takeLast(500).toSet()
-            uiPrefs(this).edit().putStringSet("gradesSeen", seenGrades).apply()
-            renderTabs() // the dots on the marks stay until the next redraw, so they're seen first
-        }, 1500)
+    /** Course [id]'s fold of news and grades opens on the Courses list (a notification about it was tapped). */
+    private fun openFold(id: Int) {
+        openCourse = null
+        expanded += SpectrumScreens.foldKey(id)
     }
 
     // --- navigation ------------------------------------------------------------------------
@@ -1077,6 +1080,8 @@ class MainActivity : Activity(), SpectrumHost {
         const val SIGN_OUT_BODY = "All your data in the app will be deleted.\nYou can sign in again any time."
         /** A Spectrum course id to open in the Courses tab. */
         const val EXTRA_COURSE = "course"
+        /** A Spectrum course id whose fold of news and grades to open on the Courses list. */
+        const val EXTRA_FOLD = "fold"
         private const val REQ_LOGIN = 1
         private const val REQ_NOTIFY = 2
         private const val REQ_MAYA = 3
@@ -1084,15 +1089,20 @@ class MainActivity : Activity(), SpectrumHost {
         private val TABS = listOf(
             // Animated icons (res/drawable/avd_tab_*): at rest each is its ic_tab_* drawing.
             Triple("day", "Day", R.drawable.avd_tab_day),
-            Triple("grades", "Grades", R.drawable.avd_tab_grades),
             Triple("due", "Due", R.drawable.avd_tab_due),
-            Triple("news", "News", R.drawable.avd_tab_news),
             Triple("files", "Courses", R.drawable.avd_tab_courses),
             Triple("settings", "Settings", R.drawable.avd_tab_settings),
         )
         /** The tabs' names after Day, shown large in the top bar. */
-        private val PAGE_TITLES = mapOf("grades" to "Grades", "due" to "Due", "news" to "News", "files" to "Courses", "settings" to "Settings")
+        private val PAGE_TITLES = mapOf("due" to "Due", "files" to "Courses", "settings" to "Settings")
         /** The week grid has no tab of its own; it's the Week chip under Day. */
         private val VIEWS = TABS.map { it.first }.toSet() + "week"
+
+        /** [name] as a page shown now: Grades and News were tabs, and are in Courses now (an old notification, the page last open). */
+        private fun viewOf(name: String?) = when (name) {
+            "grades", "news" -> "files"
+            in VIEWS -> name
+            else -> null
+        }
     }
 }

@@ -576,7 +576,7 @@ object SpectrumSync {
                     c, Notify.NEWS, "news-${n.getInt("id")}",
                     "${n.getString("code").ifEmpty { n.getString("course") }} · ${n.getString("subject")}",
                     plain(n.getString("html")).take(400),
-                    Notify.openApp(c, "news"),
+                    Notify.openFold(c, n.getInt("courseId")),
                 )
             }
         }
@@ -600,7 +600,7 @@ object SpectrumSync {
         SpectrumStore.putStringSet(c, "seenDue", (seen + fresh.map { it.getInt("id").toString() }).toList().takeLast(500).toSet())
     }
 
-    /** An attendance grade item: kept out of the Grades tab, its badge and its notifications. */
+    /** An attendance grade item: kept out of the courses' marks, the Courses badge and the notifications. */
     fun isAttendance(g: JSONObject) = g.optString("kind") == "Attendance"
 
     /** A notification per newly released (or changed) mark; the first sync with grades only records them. */
@@ -613,7 +613,7 @@ object SpectrumSync {
                     c, Notify.GRADES, "grade-${g.getInt("id")}",
                     "New mark · ${g.getString("code").ifEmpty { g.getString("course") }}",
                     "${g.getString("name")}: ${markText(g)}",
-                    Notify.openApp(c, "grades"),
+                    Notify.openFold(c, g.getInt("courseId")),
                 )
             }
         }
@@ -832,6 +832,13 @@ object Notify {
     fun openApp(c: Context, view: String): PendingIntent = PendingIntent.getActivity(
         c, "view-$view".hashCode(),
         Intent(c, MainActivity::class.java).putExtra(MainActivity.EXTRA_VIEW, view).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
+    /** The Courses list with course [courseId]'s fold of news and grades open (a new announcement or mark there). */
+    fun openFold(c: Context, courseId: Int): PendingIntent = PendingIntent.getActivity(
+        c, "fold-$courseId".hashCode(),
+        Intent(c, MainActivity::class.java).putExtra(MainActivity.EXTRA_FOLD, courseId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
