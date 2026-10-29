@@ -264,10 +264,6 @@ object SpectrumSync {
                 .onFailure { Log.w(TAG, "groups failed: ${it.message}") }.getOrDefault(emptyList())
         })
         val forums = api.call("mod_forum_get_forums_by_courses", mapOf("courseids" to byId.keys.toList())) as JSONArray
-        val newsForums = forums.objects().filter { it.optString("type") == "news" && byId.containsKey(it.optInt("course")) }
-        val since = System.currentTimeMillis() / 1000 - NEWS_DAYS * 86_400L
-        // Each course's announcement forum at once.
-        val requests = newsForums.map { f -> f to requestPool.submit(Callable { discussions(api, f.getInt("id"), since) }) }
         val groups = groupsRequest.await()
         val myGroups = groups.groupBy({ it.optInt("courseid") }, { it.optInt("id") })
         // The user's occurrence in each course, saved for building the timetable from TimeEdit.
@@ -284,6 +280,10 @@ object SpectrumSync {
         val savedOccurrences = SpectrumStore.occurrences(c)
         val timetable = Timetable.load(c)
         fun myOcc(code: String) = savedOccurrences.optInt(code).takeIf { it > 0 } ?: timetable.courses.firstOrNull { it.code == code }?.occ ?: 0
+        // Each course's Announcements forum, and its forum for the user's occurrence if it has one ([NewsForums]), at once.
+        val newsForums = NewsForums.pick(forums.objects().filter { byId.containsKey(it.optInt("course")) }) { id -> myOcc(byId.getValue(id).getString("code")) }
+        val since = System.currentTimeMillis() / 1000 - NEWS_DAYS * 86_400L
+        val requests = newsForums.map { f -> f to requestPool.submit(Callable { discussions(api, f.getInt("id"), since) }) }
         val items = mutableListOf<JSONObject>()
         for ((f, request) in requests) {
             val course = byId.getValue(f.optInt("course"))
@@ -301,6 +301,8 @@ object SpectrumSync {
                     .put("subject", subject)
                     .put("html", d.optString("message"))
                     .put("author", d.optString("userfullname"))
+                    // Posted in a forum other than the course's Announcements (an occurrence's own): its name.
+                    .put("forum", if (f.optString("type") == "news") "" else plain(f.optString("name")))
                     .put("time", created * 1000)
                     .put("attachments", JSONArray((d.optJSONArray("attachments") ?: JSONArray()).objects().map { file(it.optString("filename"), it) }))
                     // Posted to the user's group, or in a course where they have none, or to everyone (group -1)
@@ -314,7 +316,7 @@ object SpectrumSync {
         val unique = items.sortedWith(compareByDescending<JSONObject> { it.getBoolean("forMe") }.thenByDescending { it.getLong("time") })
             .distinctBy { Triple(it.getInt("courseId"), it.getString("subject"), plain(it.getString("html"))) }
             .sortedByDescending { it.getLong("time") }
-        Log.i(TAG, "news: ${unique.size} announcements, ${unique.count { !it.getBoolean("forMe") }} for other occurrences")
+        Log.i(TAG, "news: ${unique.size} announcements from ${newsForums.size} forums (${newsForums.count { it.optString("type") != "news" }} not Announcements), ${unique.count { !it.getBoolean("forMe") }} for other occurrences")
         return JSONArray(unique)
     }
 

@@ -72,3 +72,18 @@ the tested logic, but not resource errors (AAPT), lint, R8 or behaviour on scree
 - `SpectrumHost.redraw()` (default `render()`; MainActivity: `render(keepScroll = true)`, no entrance):
   redraws the page in place.
 - Try by hand: dismissing the first, middle and last rows, the fold, Bring back, reminders.
+
+## 5. News missing a GUL1001 announcement in the user's occurrence's section
+
+- Likely cause (from the code and `SPECTRUM-COURSES.md`, not confirmed on the user's data): News read
+  only `type == "news"` forums. GUL1001 has one section per occurrence, and an announcement in the user's
+  occurrence's section there is probably a post in a forum inside that section.
+- `NewsForums.pick(forums, occOf)` (new file, tested in `NewsForumsTest`) picks every course's news
+  forum, any forum whose name holds the user's occurrence (`AttendanceMatch.occurrences`), and up to
+  `PER_COURSE` (3) announcement-named forums naming no occurrence. Forums named for other occurrences are
+  dropped.
+- `SpectrumSync.fetchNews` now awaits the groups before picking forums, so `myOcc` is known. Each item has
+  a `forum` field (empty for the Announcements forum), and `SpectrumScreens.author()` shows it.
+- To confirm: sync and check logcat's `news:` line; use `DebugSpectrumReceiver --es call
+  mod_forum_get_forums_by_courses` to see GUL1001's forum names. If the announcement turns out to be section
+  text rather than a forum post, that's a separate feature (notify on changes to the user's section).

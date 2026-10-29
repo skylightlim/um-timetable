@@ -18,6 +18,28 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (News reads the user's occurrence's own forum)
+
+**Asked for:** find out why the latest GUL1001 announcement in the user's occurrence's tab never arrived.
+
+**Change:** News read only each course's Announcements forum (`type == "news"`). GUL1001 shows one
+section per occurrence (a card per group, see `docs/SPECTRUM-COURSES.md`), and an announcement in the
+user's occurrence's section is most likely a post in a forum of that section, which News never read. The likely cause,
+from the code; the user's Spectrum data wasn't available to confirm it. News now also reads
+(`NewsForums.pick`) any forum named for the user's occurrence in that course ("Announcement OCC 4",
+"Forum Occ4", "Group 4 …"), and a course's other announcement-named forums ("Pengumuman", "Notices") when
+there are at most three; more than that are one per group, whose is whose can't be told. Forums named for
+other occurrences are left out. A post from such a forum says the forum's name after its author. The sync
+logs how many forums it read (logcat `news:`). The groups are now read before the forums are picked, so
+the first sync after sign-in already knows the user's occurrence.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (76) with JUnit against Robolectric's Android 17 jar, including the new `NewsForumsTest`.
+Still to check on the phone: sync, then look for the missing post in News and in logcat's `news:` line. If it
+isn't there, the post may be text on the section's page rather than a forum post:
+`DebugSpectrumReceiver --es call mod_forum_get_forums_by_courses --es params '{"courseids":[GUL1001's id]}'`
+lists the course's forums and their names.
+
 ## 29 October 2026 (Long press to dismiss a deadline)
 
 **Asked for:** let the user long press to dismiss an item in Due.

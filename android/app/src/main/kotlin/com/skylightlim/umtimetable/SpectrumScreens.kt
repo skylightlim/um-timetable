@@ -677,7 +677,8 @@ object SpectrumScreens {
         extra?.let { addView(it) }
     }
 
-    private fun author(a: JSONObject) = listOf(a.optString("author").replace(TRAILING_DOT, ""), if (a.optString("code").isEmpty()) a.optString("course") else "")
+    /** Who posted, and where when it isn't the course's Announcements forum: "Dr Lee · Announcement OCC 4". */
+    private fun author(a: JSONObject) = listOf(a.optString("author").replace(TRAILING_DOT, ""), a.optString("forum"), if (a.optString("code").isEmpty()) a.optString("course") else "")
         .filter { it.isNotBlank() }.joinToString(" · ")
 
     /** A post's text and files. */
