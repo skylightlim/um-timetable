@@ -20,6 +20,10 @@ The items, from the user's "Things to fix" list (`thingstodo.md`, kept out of gi
 | 7 | Hours from Week to Courses | Hours on each course page and their total under Courses |
 | 8 | Week until midnight, with a toggle | Week until midnight, a toggle in Settings |
 | 9 | Sections overview on the left, hide and show | Course page: a Sections panel from the left, and sections that fold |
+| 10 | (second list) L/T hours and classes in Courses' top line, no Total row, no "last synced" | Courses: the week's L/T hours and classes in the top line |
+| 11 | (second list) Mark my attendance: "settles it for you" | Settings: Mark my attendance settles your attendance for you |
+| 12 | (second list) A course's hours as one simple line | Course page: its classes and hours in one line under its name |
+| 13 | (second list) Day's top the same height as other tabs' | Every tab's title the same size as Day's |
 
 Questions left for the user (see each item): whether the missing announcement was a forum post or text on
 the section's page (5), and whether the Sections tab on the left edge covers anything (9).
