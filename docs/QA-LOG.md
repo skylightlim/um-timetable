@@ -18,6 +18,18 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (Mark my attendance: "settles your attendance for you")
+
+**Asked for:** change the Mark my attendance setting's description to say it settles attendance for you.
+
+**Change:** Settings → Attendance → Mark my attendance now reads "Settles your attendance for you: as
+each class starts, the app marks you present on Spectrum. If it can't, a notification says why." (It
+was "As each class starts, the app marks you present on Spectrum, and tries again while no session is
+open. If it can't, or a password is needed, a notification says why.") What it does is unchanged.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone; type-checked. Still to look
+at on the phone: the row's wrapping.
+
 ## 29 October 2026 (Courses' week in its top line, not in a Total row)
 
 **Asked for:** remove the Total row (L and T hours, classes a week, hours) from the bottom of Courses.

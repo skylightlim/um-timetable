@@ -176,3 +176,7 @@ the tested logic, but not resource errors (AAPT), lint, R8 or behaviour on scree
 - `SpectrumScreens.totalHours()` and its row under the course list are deleted. `summary(h, "files")` is
   now courses · `hoursShort(timetable.sessions)` · N classes · N new (no "last synced": the pull
   indicator, `SpectrumScreens.lastSynced`, still shows it).
+
+## 11. Mark my attendance's description (second list)
+
+- Only the row's text in `SettingsSheet.build` changed: "Settles your attendance for you: …".
