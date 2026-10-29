@@ -18,6 +18,26 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (Hours on each course's page and their total under Courses, not under Week)
+
+**Asked for:** remove the Courses section from Week. Put each course's lecture and tutorial hours in a
+new section on that course's page, and the total hours after the courses, written as L and T hours
+("L12 T5").
+
+**Change:** Week is the grid, its key and the plans line; its Courses section is gone, with the redraw
+it waited for after a week swipe. A course's page starts with **Hours**, before Spectrum's sections: the
+hours a week by kind ("Lecture 2 h · Tutorial 1 h"), how many classes, and the hours large on the right.
+A tap opens the course's class sheet (days, times, rooms), as a course row under Week did. Under the
+Courses list, after a heavier line, **Total** gives each kind's hours by its initial and the number of
+classes ("L12 T5 · 11 classes a week"), with the week's hours on the right (`hoursByType`, `hoursShort`,
+`minutesByType` in `Ui.kt`). These are the usual week's hours. Week took a holiday's classes off the
+hours of the week shown; with no week chosen on Courses, nothing is taken off.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (78) with JUnit against Robolectric's Android 17 jar, including the new `HoursTest` (kinds in
+order, half hours, a lab not taken for a lecture). Still to try on the phone: the Hours card on a course
+page and its tap, the Total row's look under the course rows, and Week without its section (swiping weeks).
+
 ## 29 October 2026 (Grades and News fold out of each course on Courses)
 
 **Asked for:** remove the Grades and News pages and put them in Courses, only the user's occurrence's

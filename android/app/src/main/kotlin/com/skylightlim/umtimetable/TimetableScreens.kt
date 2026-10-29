@@ -466,10 +466,7 @@ object DayScreen {
 
 object WeekScreen {
     /** The parts of a Week page that change with the week, so going to another week changes only them ([shift]). */
-    class Parts(val offSlot: FrameLayout, val gridBox: FrameLayout, val coursesSlot: FrameLayout?) {
-        /** The Courses list's redraw after a shift, waiting for the slide to end. */
-        var pending: Runnable? = null
-    }
+    class Parts(val offSlot: FrameLayout, val gridBox: FrameLayout)
 
     /** The week grid and the courses; [plans] instead of the saved ones (a still drawing's made-up plans). */
     fun build(h: Host, plans: List<Plan>? = null): View {
@@ -506,14 +503,9 @@ object WeekScreen {
             addView(ui.text("Plan · long-press a free time to add one", 12f, p.muted))
         })
         page.addView(card)
-        if (tt.sessions.isEmpty()) {
-            page.addView(ui.text("No timetable yet · sign in to Spectrum in Courses", 13.5f, p.muted), ui.wide(top = 12f))
-            page.tag = Parts(offSlot, gridBox, null)
-            return page
-        }
-        val coursesSlot = FrameLayout(ui.context).apply { addView(courses(h)) }
-        page.addView(coursesSlot, ui.wide(top = 30f))
-        page.tag = Parts(offSlot, gridBox, coursesSlot)
+        if (tt.sessions.isEmpty()) page.addView(ui.text("No timetable yet · sign in to Spectrum in Courses", 13.5f, p.muted), ui.wide(top = 12f))
+        // Each course's hours are on its course page now, and the week's total under the Courses list.
+        page.tag = Parts(offSlot, gridBox)
         return page
     }
 
@@ -528,8 +520,8 @@ object WeekScreen {
     /**
      * [page] going to the week shown now ([Host.weekShift] has just moved, [dir] +1 for a later week):
      * only what changes changes. The grid's new week slides in from that side as the old one carries on
-     * out from where the finger left it (at its speed, [pxPerSecond]), the two together like a carousel; the break card follows; the
-     * Courses list is redrawn once the slide is over (it's below the grid). False if [page] isn't Week.
+     * out from where the finger left it (at its speed, [pxPerSecond]), the two together like a carousel; the break card follows.
+     * False if [page] isn't Week.
      */
     fun shift(page: View, h: Host, dir: Int, pxPerSecond: Float = 0f): Boolean {
         val parts = page.tag as? Parts ?: return false
@@ -554,97 +546,7 @@ object WeekScreen {
             parts.offSlot.addView(card)
             Motion.fade(card, 0f, 1f, 200)
         }
-        val slot = parts.coursesSlot ?: return true
-        parts.pending?.let(slot::removeCallbacks)
-        val redraw = Runnable {
-            parts.pending = null
-            slot.removeAllViews()
-            slot.addView(courses(h))
-        }
-        parts.pending = redraw
-        slot.postDelayed(redraw, if (Motion.enabled) Motion.SETTLE.duration else 0)
         return true
-    }
-
-    /**
-     * Each course with its hours this week, laid out and ordered as the Courses tab (by code): code and
-     * occurrence, the name, the hours by kind of class, and the week's hours on the right; lines between
-     * courses only; then the totals. A course opens its class sheet. Classes that don't happen this week
-     * (on a public holiday, or all of them in a break, revision or exam week) are taken off the hours:
-     * a kind of class with none left is struck through, and a course with none left is struck through
-     * whole, at 0 h.
-     */
-    private fun courses(h: Host): View {
-        val ui = h.ui
-        val p = ui.p
-        val tt = h.timetable
-        val monday = h.dateOf(1)
-        val offWeek = weekOff(monday) != null
-        fun cancelled(s: Session) = offWeek || Holidays.on(monday.plusDays((s.day - 1).toLong())) != null
-        val anyCancelled = tt.sessions.any(::cancelled)
-        val list = ui.column()
-        list.addView(ui.text("COURSES", 28f, p.text, ui.f.sign).apply { letterSpacing = 0.02f }, ui.wide(bottom = 4f))
-        val order = listOf("Lecture", "Tutorial")
-        fun types(sessions: List<Session>) = sessions.groupBy { it.type }.toList()
-            .sortedWith(compareBy({ order.indexOf(it.first).let { i -> if (i < 0) order.size else i } }, { it.first }))
-        fun byType(sessions: List<Session>) = types(sessions).map { (type, ss) -> "$type ${hoursText(ss.sumOf { it.end - it.start })}" }
-        /** "Lecture 2 h · Tutorial 1 h", with each kind's hours this week; a kind with nothing left struck through at its usual hours. */
-        fun parts(sessions: List<Session>): CharSequence {
-            val out = android.text.SpannableStringBuilder()
-            for ((type, ss) in types(sessions)) {
-                if (out.isNotEmpty()) out.append(" · ")
-                val left = ss.filterNot(::cancelled)
-                val from = out.length
-                out.append("$type ${hoursText((if (left.isEmpty()) ss else left).sumOf { it.end - it.start })}")
-                if (left.isEmpty()) out.setSpan(android.text.style.StrikethroughSpan(), from, out.length, 0)
-            }
-            return out
-        }
-        fun strike(t: android.widget.TextView) = t.apply { paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG }
-        tt.courses.sortedWith(compareBy({ it.code.ifEmpty { "~" } }, { it.name })).forEachIndexed { n, course ->
-            if (n > 0) list.addView(View(ui.context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
-            val sessions = tt.sessions.filter { it.course == course }
-            val left = sessions.filterNot(::cancelled)
-            val none = sessions.isNotEmpty() && left.isEmpty()
-            val total = left.sumOf { it.end - it.start }
-            val sub = android.text.SpannableStringBuilder(parts(sessions)).apply { if (sessions.any { it.room == "Online" }) append(" · online") }
-            val codeLine = ui.row().apply {
-                addView(ui.text(course.code, 12f, p.courseText(course.color), ui.f.monoBold).also { if (none) strike(it) })
-                addView(ui.text(" · Occ ${course.occ}", 12f, p.faint, ui.f.mono))
-                setPadding(0, 0, 0, ui.dp(2))
-            }
-            list.addView(ui.row(gap = 12f).apply {
-                minimumHeight = ui.dp(60)
-                setPadding(0, ui.dp(10), 0, ui.dp(10))
-                background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
-                contentDescription = "${course.code}, occurrence ${course.occ}, ${course.name}: ${if (none) "no classes this week" else "$sub, ${hoursText(total)}"}"
-                setOnClickListener { h.openSheet(course, null) }
-                addView(View(ui.context).apply { background = ui.shape(course.color, 99f); if (none) alpha = 0.4f }, LinearLayout.LayoutParams(ui.dp(12), ui.dp(12)))
-                addView(ui.column().apply {
-                    addView(codeLine)
-                    addView(ui.text(course.name, 15f, if (none) p.muted else p.text, ui.f.bodySemi).also { if (none) strike(it) })
-                    addView(ui.text(sub, 12.5f, p.muted).also { if (none) strike(it) }, ui.wide(top = 2f))
-                }, ui.grow())
-                addView(ui.text(hoursText(total), 22f, if (none) p.muted else p.text, ui.f.sign))
-            })
-        }
-        // The week in total, under a heavier line.
-        list.addView(View(ui.context).apply { setBackgroundColor(p.text) }, ui.wide(top = 4f).apply { height = ui.dp(1.5f) })
-        val held = tt.sessions.filterNot(::cancelled)
-        val all = held.sumOf { it.end - it.start }
-        val count = "${held.size} ${if (held.size == 1) "class" else "classes"} ${if (anyCancelled) "this week" else "a week"}"
-        val totals = listOf(count) + byType(held)
-        list.addView(ui.row(gap = 12f).apply {
-            minimumHeight = ui.dp(60)
-            setPadding(ui.dp(24), ui.dp(10), 0, ui.dp(10))
-            contentDescription = "Total: $count, ${hoursText(all)}"
-            addView(ui.column().apply {
-                addView(ui.text("Total", 15f, p.text, ui.f.bodyBold))
-                addView(ui.text(totals.joinToString(" · "), 12.5f, p.muted), ui.wide(top = 2f))
-            }, ui.grow())
-            addView(ui.text(hoursText(all), 26f, p.text, ui.f.sign))
-        })
-        return list
     }
 }
 
