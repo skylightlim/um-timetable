@@ -56,3 +56,19 @@ the tested logic, but not resource errors (AAPT), lint, R8 or behaviour on scree
 - `SpectrumSync.fetchDue(c, api, courses)` now stores `courseId`, `module`, `instance` and `eventtype` on
   each due item, runs both filters, and logs the counts (`due: N events, …`).
 - Try by hand: sync, then look at Due and logcat's `due:` line.
+
+## 4. Long press to dismiss a deadline
+
+- `SpectrumStore.due(c)`: the stored due list less `dismissedDue(c)` (a string set of
+  `DueList.activityKey`s). `dismissDue(c, item, gone)` adds or removes one, keeping only keys still listed.
+  Every reader of what's due uses `due(c)`: `SpectrumScreens.summary("due")`, `MainActivity.weekDeadlines`,
+  `Reminders.upcoming`, and `SpectrumStore.widgetAlert`.
+- `SpectrumScreens.due()`: rows are built by `dueRow(h, item, now, faded)`. A long press on a row opens
+  `popMenu(ui, row, menuCard(ui, ic_close, "Dismiss"))`. Dismissing hides the row and its line with
+  `Motion.resize`, reschedules `Reminders`, updates the widget, then calls `h.redraw()`.
+  `dismissedFold()` lists dismissed rows faded (alpha 0.45) under "Dismissed · N"; its open state is
+  `expanded` key `due-dismissed`, and a long press there shows "Bring back".
+- `pinMenu`/`pinCard` now go through the shared `popMenu`/`menuCard`.
+- `SpectrumHost.redraw()` (default `render()`; MainActivity: `render(keepScroll = true)`, no entrance):
+  redraws the page in place.
+- Try by hand: dismissing the first, middle and last rows, the fold, Bring back, reminders.

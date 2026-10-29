@@ -33,6 +33,8 @@ interface SpectrumHost : Host {
     /** Sign out's question, its card flying out of [from] (the Sign out button) when there is one. */
     fun signOut(from: View? = null)
     fun refresh()
+    /** The page drawn again as it is now, where it's scrolled to, with no entrance (as each minute's redraw). */
+    fun redraw() = render()
     fun openMaya()
     fun openTimeEdit()
     fun enableNotifications()
@@ -107,7 +109,7 @@ object SpectrumScreens {
             }
             "due" -> {
                 val now = System.currentTimeMillis()
-                val (late, coming) = SpectrumStore.array(c, "due").objects().partition { it.optBoolean("overdue") || it.getLong("due") <= now }
+                val (late, coming) = SpectrumStore.due(c).partition { it.optBoolean("overdue") || it.getLong("due") <= now }
                 val next = coming.minOfOrNull { it.getLong("due") }
                 listOfNotNull(
                     "Attendance open".takeIf { openAttendance(c) > 0 },
@@ -231,7 +233,9 @@ object SpectrumScreens {
 
     /**
      * What's due, as in redesign 1i (in the app's own fonts): open attendance as a band to tap, then
-     * one ruled row per deadline, led by how long is left. Pull down to sync.
+     * one ruled row per deadline, led by how long is left. Pull down to sync. A long press on a row
+     * offers to dismiss it: it goes from the list, the reminders and the widget, into a Dismissed fold at
+     * the end, faded, where a long press brings it back.
      */
     fun due(
         h: SpectrumHost,
@@ -246,51 +250,115 @@ object SpectrumScreens {
             return page
         }
         val now = System.currentTimeMillis()
-        val items = dueItems.sortedBy { it.getLong("due") }
+        val gone = SpectrumStore.dismissedDue(ui.context)
+        val (dismissed, items) = dueItems.sortedBy { it.getLong("due") }.partition { DueList.activityKey(it) in gone }
         problem(h, page)
         backgroundTip(h, page)
         attendance(h, page, sessions)
-        if (items.isEmpty()) {
-            page.addView(emptyOrLoading(ui, "Nothing due on Spectrum right now."))
-            return page
-        }
+        if (items.isEmpty()) page.addView(emptyOrLoading(ui, if (dismissed.isEmpty()) "Nothing due on Spectrum right now." else "Nothing else due on Spectrum right now."))
         // Ruled inside only, as in 1i: lines between the rows and down the middle, none above or below.
-        for ((n, i) in items.withIndex()) {
-            if (n > 0) page.addView(rule(ui))
-            val due = i.getLong("due")
-            val overdue = i.optBoolean("overdue") || due <= now
-            val code = i.optString("code")
-            val color = when {
-                overdue -> LATE
-                due - now < 24 * 3_600_000L -> p.accentText
-                else -> p.text
-            }
-            val row = ui.row().apply {
-                background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
-                setOnClickListener { h.openUrl(i.optString("url")) }
-            }
-            // Left: how long is left, as large as the cell's width allows, and when it's due, centred in the
-            // cell's height.
-            row.addView(ui.column().apply {
-                setPadding(0, ui.dp(14), ui.dp(4), ui.dp(14))
-                addView(countdown(ui, if (overdue) "Late" else span(due), color, ui.dp(76)))
-                addView(ui.text(whenDue(due), 11f, p.muted, ui.f.mono), ui.wide(top = 4f))
-            // Wrapping its content so the row grows to fit it, and centred when the other side is taller.
-            }, LinearLayout.LayoutParams(ui.dp(80), ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER_VERTICAL })
-            row.addView(View(ui.context).apply { setBackgroundColor(p.line) }, LinearLayout.LayoutParams(1, ViewGroup.LayoutParams.MATCH_PARENT))
-            // Right: course, name, and what kind of activity it is.
-            row.addView(ui.column().apply {
-                setPadding(ui.dp(16), ui.dp(14), 0, ui.dp(14))
-                addView(ui.row(gap = 6f).apply {
-                    addView(View(ui.context).apply { background = ui.shape(colorOf(h, code), 99f) }, LinearLayout.LayoutParams(ui.dp(8), ui.dp(8)))
-                    addView(ui.text(code.ifEmpty { "Spectrum" }, 12f, p.courseText(colorOf(h, code)), ui.f.monoBold))
-                })
-                addView(ui.text(i.optString("name"), 16f, p.text, ui.f.bodySemi), ui.wide(top = 4f))
-                addView(ui.text(listOf(i.optString("moduleLabel"), courseName(h, i.optString("course"), code)).filter { it.isNotBlank() }.joinToString(" · "), 12.5f, p.muted), ui.wide(top = 2f))
-            }, ui.grow())
+        val rows = items.map { i -> dueRow(h, i, now, faded = false) }
+        for ((n, row) in rows.withIndex()) {
+            val line = if (n > 0) rule(ui).also(page::addView) else null
             page.addView(row)
+            row.setOnLongClickListener { at ->
+                popMenu(ui, at, menuCard(ui, R.drawable.ic_close, "Dismiss")) {
+                    SpectrumStore.dismissDue(ui.context, items[n], gone = true)
+                    Reminders.schedule(ui.context)
+                    TimetableWidget.updateAll(ui.context)
+                    // It folds away where it is (and the line that led to it, or the first row's line after
+                    // it); the page is then drawn again, with it under Dismissed.
+                    Motion.resize(row)
+                    row.visibility = View.GONE
+                    (line ?: (page.getChildAt(page.indexOfChild(row) + 1)?.takeIf { rows.size > 1 }))?.visibility = View.GONE
+                    row.postDelayed({ h.redraw() }, Motion.QUICK.duration + 60)
+                }
+                true
+            }
         }
+        if (dismissed.isNotEmpty()) page.addView(dismissedFold(h, dismissed, now), ui.wide(top = if (items.isEmpty()) 0f else 18f))
         return page
+    }
+
+    /** The deadlines dismissed from Due, folded under "Dismissed · 2": faded rows a long press brings back. */
+    private fun dismissedFold(h: SpectrumHost, items: List<JSONObject>, now: Long): View {
+        val ui = h.ui
+        val p = ui.p
+        val key = "due-dismissed"
+        val shown = key in h.expanded
+        val chevron = Motion.chevron(ui, shown, p.faint)
+        val list = ui.column().apply { visibility = if (shown) View.VISIBLE else View.GONE }
+        for ((n, i) in items.withIndex()) {
+            if (n > 0) list.addView(rule(ui))
+            list.addView(dueRow(h, i, now, faded = true).apply {
+                setOnLongClickListener { at ->
+                    popMenu(ui, at, menuCard(ui, R.drawable.ic_repeat, "Bring back")) {
+                        SpectrumStore.dismissDue(ui.context, i, gone = false)
+                        Reminders.schedule(ui.context)
+                        TimetableWidget.updateAll(ui.context)
+                        h.redraw()
+                    }
+                    true
+                }
+            })
+        }
+        val head = ui.row(gap = 8f).apply {
+            minimumHeight = ui.dp(48)
+            background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
+            addView(ui.label("Dismissed · ${items.size}", p.muted, 10.5f), ui.grow())
+            addView(chevron, LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)))
+            contentDescription = "${items.size} dismissed. Long press one to bring it back."
+            setOnClickListener {
+                Motion.resize(this)
+                val open = h.expanded.add(key) || !h.expanded.remove(key)
+                list.visibility = if (open) View.VISIBLE else View.GONE
+                Motion.turn(chevron, open)
+            }
+        }
+        return ui.column().apply {
+            addView(head)
+            addView(list)
+        }
+    }
+
+    /** One deadline's row: how long is left, large, and when; then its course, name and kind. [faded]: dismissed. */
+    private fun dueRow(h: SpectrumHost, i: JSONObject, now: Long, faded: Boolean): LinearLayout {
+        val ui = h.ui
+        val p = ui.p
+        val due = i.getLong("due")
+        val overdue = i.optBoolean("overdue") || due <= now
+        val code = i.optString("code")
+        val color = when {
+            overdue -> LATE
+            due - now < 24 * 3_600_000L -> p.accentText
+            else -> p.text
+        }
+        val row = ui.row().apply {
+            background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
+            isHapticFeedbackEnabled = false // the menu's own vibration instead
+            if (faded) alpha = 0.45f
+            setOnClickListener { h.openUrl(i.optString("url")) }
+        }
+        // Left: how long is left, as large as the cell's width allows, and when it's due, centred in the
+        // cell's height.
+        row.addView(ui.column().apply {
+            setPadding(0, ui.dp(14), ui.dp(4), ui.dp(14))
+            addView(countdown(ui, if (overdue) "Late" else span(due), color, ui.dp(76)))
+            addView(ui.text(whenDue(due), 11f, p.muted, ui.f.mono), ui.wide(top = 4f))
+        // Wrapping its content so the row grows to fit it, and centred when the other side is taller.
+        }, LinearLayout.LayoutParams(ui.dp(80), ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER_VERTICAL })
+        row.addView(View(ui.context).apply { setBackgroundColor(p.line) }, LinearLayout.LayoutParams(1, ViewGroup.LayoutParams.MATCH_PARENT))
+        // Right: course, name, and what kind of activity it is.
+        row.addView(ui.column().apply {
+            setPadding(ui.dp(16), ui.dp(14), 0, ui.dp(14))
+            addView(ui.row(gap = 6f).apply {
+                addView(View(ui.context).apply { background = ui.shape(colorOf(h, code), 99f) }, LinearLayout.LayoutParams(ui.dp(8), ui.dp(8)))
+                addView(ui.text(code.ifEmpty { "Spectrum" }, 12f, p.courseText(colorOf(h, code)), ui.f.monoBold))
+            })
+            addView(ui.text(i.optString("name"), 16f, p.text, ui.f.bodySemi), ui.wide(top = 4f))
+            addView(ui.text(listOf(i.optString("moduleLabel"), courseName(h, i.optString("course"), code)).filter { it.isNotBlank() }.joinToString(" · "), 12.5f, p.muted), ui.wide(top = 2f))
+        }, ui.grow())
+        return row
     }
 
     /**
@@ -964,21 +1032,27 @@ object SpectrumScreens {
     }
 
     /** [pinMenu]'s card: a pin and "Pin to top", or an outline pin and "Unpin". */
-    fun pinCard(ui: Ui, pinned: Boolean) = ui.row(gap = 10f).apply {
+    fun pinCard(ui: Ui, pinned: Boolean) = menuCard(ui, if (pinned) R.drawable.ic_pin else R.drawable.ic_pin_on, if (pinned) "Unpin" else "Pin to top")
+
+    /** A long press's one-choice card ([popMenu]): an icon in the accent and what it does. */
+    fun menuCard(ui: Ui, icon: Int, label: String) = ui.row(gap = 10f).apply {
         background = ui.pressable(ui.shape(ui.p.surface, 14f, ui.p.line), 14f)
         elevation = ui.dp(10f).toFloat()
         setPadding(ui.dp(14), ui.dp(12), ui.dp(18), ui.dp(12))
-        addView(ui.icon(if (pinned) R.drawable.ic_pin else R.drawable.ic_pin_on, ui.p.accentText, 18f))
-        addView(ui.text(if (pinned) "Unpin" else "Pin to top", 15f, ui.p.text, ui.f.bodySemi))
+        addView(ui.icon(icon, ui.p.accentText, 18f))
+        addView(ui.text(label, 15f, ui.p.text, ui.f.bodySemi))
     }
 
     /**
-     * What a long press on a section's name offers: "Pin to top", or "Unpin" for a pinned one, on a small
-     * card that grows out of the name (anchored where the finger asked), with a vibration as it comes up.
-     * A tap on it runs [toggle]; a tap anywhere else puts it away.
+     * What a long press on a section's name offers: "Pin to top", or "Unpin" for a pinned one ([popMenu]).
      */
-    private fun pinMenu(ui: Ui, heading: View, pinned: Boolean, toggle: () -> Unit) {
-        val card = pinCard(ui, pinned)
+    private fun pinMenu(ui: Ui, heading: View, pinned: Boolean, toggle: () -> Unit) = popMenu(ui, heading, pinCard(ui, pinned), toggle)
+
+    /**
+     * [card] (a [menuCard]) on a small popup that grows out of [heading], what was long pressed, with a
+     * vibration as it comes up. A tap on it runs [action]; a tap anywhere else puts it away.
+     */
+    private fun popMenu(ui: Ui, heading: View, card: View, action: () -> Unit) {
         // Room around the card for its shadow, which the popup's window would otherwise cut.
         val room = FrameLayout(ui.context).apply {
             setPadding(ui.dp(12), ui.dp(4), ui.dp(12), ui.dp(16))
@@ -994,7 +1068,7 @@ object SpectrumScreens {
         card.setOnClickListener {
             Haptics.tick(card)
             popup.dismiss()
-            toggle()
+            action()
         }
         Haptics.threshold(heading, true)
         popup.showAsDropDown(heading, -ui.dp(12), -ui.dp(6))
