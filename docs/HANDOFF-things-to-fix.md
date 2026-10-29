@@ -2,8 +2,27 @@
 
 What this branch changed, so the next agent can pick it up without reading the whole repo. It was made in a
 cloud session from the **public snapshot** (`origin/main` at "UM Timetable 1.7.0-beta.1"), not from the
-user's local `main`. To use it: fetch the branch and rebase or cherry-pick its commits onto local `main`
-(one commit per item, in the order below).
+user's local `main`. To use it, on the user's machine: `git fetch origin fix/things-to-fix`, then
+`git cherry-pick df7c0b8..origin/fix/things-to-fix` onto local `main` (the commits after
+`df7c0b8`, one per item, in the order below; conflicts are likely only if local `main` changed the same
+files since 1.7.0-beta.1). Don't merge the branch: its base is the public snapshot, not local history.
+
+The items, from the user's "Things to fix" list (`thingstodo.md`, kept out of git):
+
+| # | Item | Commit subject |
+|---|---|---|
+| 1 | Settings as a fourth tab | Settings as a tab of their own |
+| 2 | See the attendance log and its errors | Attendance log in Settings, problems in red |
+| 3 | Duplicated Due items | Due: one row per activity, none for other occurrences |
+| 4 | Long press to dismiss a Due item | Due: long press to dismiss a deadline |
+| 5 | A missing GUL1001 announcement | News: read the user's occurrence's own forum too |
+| 6 | Grades and News into Courses | Courses: each course's news and grades fold out of its row |
+| 7 | Hours from Week to Courses | Hours on each course page and their total under Courses |
+| 8 | Week until midnight, with a toggle | Week until midnight, a toggle in Settings |
+| 9 | Sections overview on the left, hide and show | Course page: a Sections panel from the left, and sections that fold |
+
+Questions left for the user (see each item): whether the missing announcement was a forum post or text on
+the section's page (5), and whether the Sections tab on the left edge covers anything (9).
 
 **Not built with Gradle or run on the phone.** The session had no Android SDK. Instead, each commit was
 type-checked: all of `src/main` and `src/debug` compiled with the Kotlin compiler (2.4.20) against
