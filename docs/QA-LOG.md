@@ -18,6 +18,21 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (Every tab's title the same size as Day's)
+
+**Asked for:** Day's top section the same height as the other tabs': its title came out at another size.
+
+**Change:** Day's title shrinks to fit its widest, "Wednesday 30 Sep", while Due, Courses and Settings
+kept 56sp. So the title, and the top bar with it, changed size between tabs. Every tab's title is now
+sized by Day's widest (`titleText`'s `widest` defaults to `DAY_WIDEST`), so all are the same size as
+Day's on any phone width and font size. Measured in Big Shoulders 800's own widths: "Wednesday 30 Sep"
+is wider than every other title (Week's widest ranges, "Attendance log", "Settings"), so none shrinks
+further.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked. The widths
+were read from `bigshoulders_800.ttf`'s advance widths with fontTools. Still to look at on the phone:
+going Day → Due → Courses → Settings, the titles and the line under them shouldn't change size or move.
+
 ## 29 October 2026 (A course's classes and hours in one line under its name)
 
 **Asked for:** a course page's lectures, classes and hours as one simple line, not a section of their own.

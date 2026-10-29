@@ -185,3 +185,8 @@ the tested logic, but not resource errors (AAPT), lint, R8 or behaviour on scree
 
 - `SpectrumScreens.hours()` (heading + card) is now `hoursLine(h, code)`: a 13.5sp muted text under the
   course name in `coursePage`'s header, still opening `openSheet(course, null)` on a tap.
+
+## 13. Every tab's title as big as Day's (second list)
+
+- `TimetableScreens.titleText(ui, text, widest = DAY_WIDEST)`: `pageTitle` and `weekTitle` now size by
+  "Wednesday 30 Sep" too, so all titles match Day's (it's the widest title in Big Shoulders 800).

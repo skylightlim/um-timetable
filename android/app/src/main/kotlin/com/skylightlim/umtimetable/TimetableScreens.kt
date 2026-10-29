@@ -124,14 +124,15 @@ fun weekRange(monday: Int): String =
 /** Top-bar titles: Big Shoulders 56sp everywhere (as 1i and 1m's headings). */
 private const val TITLE_SIZE = 56f
 
-/** Day's widest title: the longest day name with a wide date. */
+/** Day's widest title: the longest day name with a wide date. Every tab's title is sized by it. */
 private const val DAY_WIDEST = "Wednesday 30 Sep"
 
 /**
  * A top-bar title at 56sp, or smaller when [widest] (the longest title shown in its place) wouldn't fit the
- * width it's given. Sized by the widest, every day's title is the same size, so it doesn't jump as days
- * change. On a 427dp-wide phone they all fit at 56sp in the 395dp the title has (no settings button
- * beside it any more); at 360dp Day's come out at about 47sp.
+ * width it's given. Every tab's is sized by Day's widest, so each title is the same size as Day's and the
+ * top bar doesn't change height going from tab to tab (Day's shrank to fit while "Due" stayed at 56sp).
+ * At 360dp they come out at about 47sp; a title wider than Day's widest ("Attendance log" isn't) shrinks
+ * further to fit.
  */
 /**
  * The small line's place under a title: wrapping its text too. A full-width child in a column whose other
@@ -139,7 +140,7 @@ private const val DAY_WIDEST = "Wednesday 30 Sep"
  */
 private fun underTitle(ui: Ui) = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(4) }
 
-private fun titleText(ui: Ui, text: String, widest: String = text) =
+private fun titleText(ui: Ui, text: String, widest: String = DAY_WIDEST) =
     ui.fitText(text, TITLE_SIZE, ui.p.text, ui.f.sign, widest = widest, lines = 1).apply {
         setLineSpacing(0f, 1f)
         // Wrapping its text: as a column's default full-width child, the column measured it again at its own
