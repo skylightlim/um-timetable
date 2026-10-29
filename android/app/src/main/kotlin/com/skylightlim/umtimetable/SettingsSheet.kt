@@ -149,7 +149,7 @@ object SettingsSheet {
 
         // Marking attendance by itself, as each class starts (AutoAttendance), and its log: each try and what went wrong.
         if (signedIn) section("Attendance", listOf(
-            row("Mark my attendance", "As each class starts, the app marks you present on Spectrum, and tries again while no session is open. If it can't, or a password is needed, a notification says why.",
+            row("Mark my attendance", "Settles your attendance for you: as each class starts, the app marks you present on Spectrum. If it can't, a notification says why.",
                 Toggle(ui, AutoAttendance.enabled(context)) { on -> AutoAttendance.setEnabled(context, on) }.apply { contentDescription = "Mark my attendance" }, null),
             row("Attendance log", AttendanceLogPage.summary(context), chevron()) { openLog() },
         ))
