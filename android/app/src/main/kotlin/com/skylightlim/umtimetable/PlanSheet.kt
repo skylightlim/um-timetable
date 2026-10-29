@@ -166,7 +166,7 @@ object PlanSheet {
             addView(ui.label(title, p.muted, 10.5f), ui.wide(bottom = 8f))
             addView(content)
         }
-        // How long: every half hour that fits before the next class or plan (or 19:00).
+        // How long: every half hour that fits before the next class or plan (or the end of the day, DayEnd).
         val lengths = Plan.lengths(maxEnd - plan.start).ifEmpty { listOf((maxEnd - plan.start) to "${maxEnd - plan.start} min") }
         val chosenLength = lengths.indexOfFirst { plan.start + it.first == end }.takeIf { it >= 0 } ?: lengths.lastIndex.also { end = plan.start + lengths.last().first; showTime() }
         val howLong = column("How long", ui.wheel(lengths.map { it.second }, chosenLength) { i ->

@@ -129,6 +129,9 @@ object SettingsSheet {
         section("Timetable", listOfNotNull(
             row("Get timetable from TimeEdit", if (tt.sessions.isEmpty()) "No timetable yet" else listOfNotNull("${tt.sessions.size} classes a week", tt.term).joinToString(" · "), chevron()) { h.openTimeEdit() },
             row("Import from MAYA instead", "If TimeEdit can't: you sign in to MAYA yourself", chevron()) { h.openMaya() },
+            // Week's grid (and plans) to midnight, for evening plans; classes end by 19:00 anyway.
+            row("Week until midnight", "Week's grid runs to 00:00 instead of 19:00, for plans in the evening",
+                Toggle(ui, DayEnd.late(context)) { on -> DayEnd.setLate(context, on) }.apply { contentDescription = "Week until midnight" }, null),
             if (signedIn) occurrences(h, context, ::row) else null,
         ))
 

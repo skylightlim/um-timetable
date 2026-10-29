@@ -122,3 +122,14 @@ the tested logic, but not resource errors (AAPT), lint, R8 or behaviour on scree
   `SpectrumScreens.totalHours(h)`: the Total row after the course list.
 - The hours are the usual week's. Week used to take holidays off the shown week; that's gone with it.
 - Try by hand: a course page's Hours card, the Total row, Week swipes.
+
+## 8. Week until midnight
+
+- `DayEnd` (top of `TimetableScreens.kt`, before `WeekScreen`): `late(c)`/`setLate(c, on)` (`uiPrefs`
+  key `weekToMidnight`) and `minutes(c)` (19:00 or 24:00).
+- `WeekGrid`: `endMin` and `hours` replace the fixed 19:00 and 11 hours: height, hour labels (`h % 24`,
+  so midnight is "00"), lines, the now line, `halfHourAt`'s range, `room()`'s and `moveBox()`'s max end.
+  Day's plan card uses `DayEnd.minutes` for its max end.
+- Settings → Timetable → "Week until midnight" (a `Toggle`).
+- Not changed: the widget (`WidgetRenderer.DAY_END`, still 19:00), `dayGlance`.
+- Try by hand: the toggle, an evening plan, a week swipe's smoothness with the taller grid.

@@ -18,6 +18,22 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 29 October 2026 (Week until midnight, a toggle in Settings)
+
+**Asked for:** run the Week grid from 19:00 to 12 am, with a toggle in Settings.
+
+**Change:** Settings' Timetable section has **Week until midnight** (off by default, remembered as
+`weekToMidnight`). On, Week's grid runs 08:00 to 00:00 (16 hours, the last line labelled 00) instead
+of to 19:00, so plans can go in the evening: the selection box goes down to 23:30, a plan can run to
+midnight (its How long wheel too), and the now line shows until midnight. The same end holds for a plan
+opened from Day (`DayEnd.minutes`). Classes are unchanged; the widget still ends at 19:00. With the
+toggle off again, plans after 19:00 are kept but fall outside the grid until it's back on.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked, and the JVM
+tests pass (78) with JUnit against Robolectric's Android 17 jar. Still to try on the phone: the toggle,
+the taller grid (scrolling, the swipe between weeks, the bench: a week swipe was 4.6 ms), a plan at
+22:00, the now line in the evening, and the toggle back off.
+
 ## 29 October 2026 (Hours on each course's page and their total under Courses, not under Week)
 
 **Asked for:** remove the Courses section from Week. Put each course's lecture and tutorial hours in a
