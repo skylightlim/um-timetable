@@ -892,7 +892,7 @@ class WeekGrid(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         // Should a dot never land (the flight cut short), its class doesn't stay empty.
-        filling?.let { map -> postDelayed({ if (map.values.any { it <= 0f }) { map.replaceAll { _, _ -> 1f }; invalidate() } }, 1800) }
+        filling?.let { map -> postDelayed({ if (map.values.any { it <= 0f }) { map.replaceAll { _, f -> if (f <= 0f) 1f else f }; invalidate() } }, 1800) }
         if (landId == null || !Motion.enabled) return
         landScale = 0.55f
         android.animation.ValueAnimator.ofFloat(0.55f, 1f).apply {

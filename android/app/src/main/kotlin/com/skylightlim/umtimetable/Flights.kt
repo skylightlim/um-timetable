@@ -26,10 +26,12 @@ import kotlin.math.sin
  * ([dot]). Prototyped as a canvas drawing first; sizes are in dp, drawn at the phone's density.
  *
  * Everything keeps time on one [TimeAnimator] and the layer takes itself off the window once nothing is left
- * flying ([onIdle]). Targets are asked for each frame, so a title still rising into place is hit where it is.
+ * flying ([onIdle]). Taken off any other way (the window's content replaced), whatever is flying lands at once,
+ * so nothing it brings stays hidden. Targets are asked for each frame, so a title still rising into place is hit
+ * where it is.
  */
 @SuppressLint("ViewConstructor")
-class FlightLayer(private val ui: Ui, private val onIdle: () -> Unit) : View(ui.context) {
+class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit) : View(ui.context) {
     private val p = ui.p
     private val d = resources.displayMetrics.density
     private val clock = TimeAnimator()
@@ -129,15 +131,16 @@ class FlightLayer(private val ui: Ui, private val onIdle: () -> Unit) : View(ui.
         }
         puffs.removeAll { now - it.born > PUFF_LIFE }
         bursts.removeAll { now - it.born > HIT }
-        if (rockets.isEmpty() && dots.isEmpty() && puffs.isEmpty() && bursts.isEmpty()) {
-            clock.cancel()
-            (parent as? ViewGroup)?.removeView(this)
-            onIdle()
-        }
+        if (rockets.isEmpty() && dots.isEmpty() && puffs.isEmpty() && bursts.isEmpty()) (parent as? ViewGroup)?.removeView(this)
     }
 
     override fun onDetachedFromWindow() {
         clock.cancel()
+        land()
+        dots.clear()
+        puffs.clear()
+        bursts.clear()
+        onIdle(this)
         super.onDetachedFromWindow()
     }
 

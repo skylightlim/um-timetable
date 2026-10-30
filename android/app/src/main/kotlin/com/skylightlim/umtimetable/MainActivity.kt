@@ -502,8 +502,8 @@ class MainActivity : Activity(), SpectrumHost {
         // On Week the strip is its five days only, each over its column of the grid (which has no row of day
         // names of its own); the Week chip's label is in the title. On Day, the days and the Week chip.
         val onWeek = view == "week"
-        // Between the two, each day glides from where it was to its new place.
-        val from = if (stripWeek != null && stripWeek != onWeek && stripDays.size == 5) stripDays.map { (chip, _, _) -> chip.left to chip.width } else null
+        // Between the two, each day glides from where it was (still gliding, where it's drawn) to its new place.
+        val from = if (stripWeek != null && stripWeek != onWeek && stripDays.size == 5) stripDays.map { (chip, _, _) -> (chip.left + chip.translationX).toInt() to chip.width } else null
         stripWeek = onWeek
         strip.removeAllViews()
         stripTrack.removeAllViews()
@@ -615,7 +615,7 @@ class MainActivity : Activity(), SpectrumHost {
         return { flights().rocket(picture, from, label, { rocketTarget(to) }, { arrived -> rocketHit(to, arrived) }) }
     }
 
-    private fun flights(): FlightLayer = flights ?: FlightLayer(ui) { flights = null }.also { layer ->
+    private fun flights(): FlightLayer = flights?.takeIf { it.isAttachedToWindow } ?: FlightLayer(ui) { if (flights === it) flights = null }.also { layer ->
         findViewById<FrameLayout>(android.R.id.content).addView(layer, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         flights = layer
     }
