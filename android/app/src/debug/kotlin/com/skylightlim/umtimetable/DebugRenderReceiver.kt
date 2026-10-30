@@ -136,6 +136,8 @@ class DebugRenderReceiver : BroadcastReceiver() {
             setBackgroundColor(host.ui.p.ground)
             // A sheet runs edge to edge, from the bottom of the screen.
             if (view != "sheet" && view != "signin" && view != "webbar") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
+            // As the app's page holder: what reaches into the margins (Week's grid) isn't cut off there.
+            clipToPadding = false
             addView(page)
         }
         frame.measure(

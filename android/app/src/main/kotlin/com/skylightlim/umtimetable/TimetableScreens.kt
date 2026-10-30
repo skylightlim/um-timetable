@@ -495,15 +495,16 @@ object WeekScreen {
         val offSlot = FrameLayout(ui.context)
         offCard(h)?.let { offSlot.addView(it) }
         page.addView(offSlot, ui.wide())
-        val card = ui.column().apply {
-            background = ui.shape(p.surface, 18f, p.line)
-            setPadding(ui.dp(2), ui.dp(10), ui.dp(6), ui.dp(8))
-        }
+        // No card behind the grid: it sits on the page, out into the page's left margin ([WeekGrid.BLEED]), so the
+        // hours line up under the title's left edge and the days get the room the card's padding took.
+        page.clipChildren = false
         // The grid in a box of its own: going to another week, the grids slide through it as a carousel.
         val gridBox = FrameLayout(ui.context)
         gridBox.addView(grid(h, plans))
-        card.addView(gridBox, ui.wide())
-        val key = ui.row(gap = 16f).apply { setPadding(ui.dp(30), ui.dp(4), 0, 0) }
+        page.addView(gridBox, ui.wide().apply { marginStart = -ui.dp(WeekGrid.BLEED) })
+        // The key and the plans line start where the first day's column does.
+        val first = ui.dp(WeekGrid.AXIS + WeekGrid.GAP - WeekGrid.BLEED)
+        val key = ui.row(gap = 16f).apply { setPadding(first, ui.dp(4), 0, 0) }
         fun keyItem(swatch: View, label: String) = ui.row(gap = 6f).apply {
             addView(swatch)
             addView(ui.text(label, 12f, p.muted))
@@ -511,14 +512,13 @@ object WeekScreen {
         key.addView(keyItem(View(ui.context).apply { background = ui.shape(p.text, 3f); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(10)) }, "Lecture"))
         key.addView(keyItem(View(ui.context).apply { background = ui.shape(Color.TRANSPARENT, 3f, p.text, 1.5f); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(10)) }, "Tutorial"))
         key.addView(keyItem(View(ui.context).apply { setBackgroundColor(p.accent); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(3)) }, "Now"))
-        card.addView(key)
+        page.addView(key)
         // Plans: what a long press on a free time adds.
-        card.addView(ui.row(gap = 6f).apply {
-            setPadding(ui.dp(30), ui.dp(8), 0, ui.dp(2))
+        page.addView(ui.row(gap = 6f).apply {
+            setPadding(first, ui.dp(8), 0, ui.dp(2))
             addView(View(ui.context).apply { background = ui.shape(Palette.mix(p.text, p.surface, 0.12f), 3f, p.muted, 1.2f, dash = 2.5f); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(10)) })
             addView(ui.text("Plan · long-press a free time to add one", 12f, p.muted))
         })
-        page.addView(card)
         if (tt.sessions.isEmpty()) page.addView(ui.text("No timetable yet · sign in to Spectrum in Courses", 13.5f, p.muted), ui.wide(top = 12f))
         // Each course's hours are on its course page now, and the week's total under the Courses list.
         page.tag = Parts(offSlot, gridBox)
@@ -581,8 +581,8 @@ class WeekGrid(
     private val p = ui.p
     private val hour = ui.dp(48f).toFloat()
     private val head = ui.dp(22f).toFloat()
-    private val axis = ui.dp(28f).toFloat()
-    private val gapX = ui.dp(4f).toFloat()
+    private val axis = ui.dp(AXIS).toFloat()
+    private val gapX = ui.dp(GAP).toFloat()
     private val padY = ui.dp(8f).toFloat()
     private val startMin = 8 * 60
     /** 19:00, or midnight with Settings' Week until midnight ([DayEnd]); and the grid's hours from 08:00. */
@@ -1123,6 +1123,11 @@ class WeekGrid(
     }
 
     companion object {
+        /** The hour axis's width, room for the now line's time ("12:34"), and the gap before each day's column (dp). */
+        const val AXIS = 28f
+        const val GAP = 4f
+        /** How far the grid reaches out into the page's left margin (dp), the axis with it: the page's 16dp less 4. */
+        const val BLEED = 12f
         /** The id of a plan just saved, for the next grid drawn to pop it into place. */
         var landing: String? = null
         /** A selection box is up: the page shouldn't be redrawn under it (the minute's redraw waits). */
