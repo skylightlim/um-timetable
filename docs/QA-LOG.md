@@ -18,6 +18,27 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 30 October 2026 (The rocket is the week's tile itself, reshaped)
+
+**Asked for:** the rocket should be transformed from the Week tile (it popped out of the tile's middle as the
+tile shrank away).
+
+**Change:** the tile itself becomes the rocket. Read off the real view (`FlightLayer.tile`: its place, the
+tile colour and 12dp corners, and each line's text, paint and baseline on screen), it crouches as before, then
+tips from upright towards where it's going and narrows into the rocket's body, all in one shape
+(`FlightLayer.body`: a rounded rectangle whose corners become a capsule's, then a pointed nose and a tight
+tail). Its "W5" turns from level to run along the body and shrinks to the body's label; "OF 14" fades. Last,
+the nose sharpens and takes its gold cap, the fins grow out of the sides and the flame lights. The rocket keeps
+the tile's colours (the tile colour with "W5" in the text colour; it was a dark body), with a soft shadow down
+the screen. Going back, the tile on Week's title does the same. 280ms from tap to lift-off (200 before), then
+the same arc and hit. Prototyped in a canvas first and rendered frame by frame at 3px a dp, light and dark.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). The prototype's frames: no grey in-between (the body
+stays the tile colour) and the label turns once. Read in the code, not drawn: the morph's last frame draws the
+same body and label as the flight's first. Still to look at on the phone: the first frame matching the chip (no jump), the white rocket on the
+light page, and the tile going back from the title.
+
 ## 30 October 2026 (Week's title: the dates at Day's size, the week as a tile; double tap for this week)
 
 **Asked for:** make Week's dates ("2–6 Nov") as big as Day's title, and keep "W5 of 14" as a tile the size of a
