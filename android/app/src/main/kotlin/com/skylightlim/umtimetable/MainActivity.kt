@@ -597,8 +597,8 @@ class MainActivity : Activity(), SpectrumHost {
     }
 
     /**
-     * Going from Day to Week, the Week chip turns into a rocket and flies up into Week's title, where the week's tile
-     * then shows; going back, that tile turns into the rocket and flies down into the strip, where the Week chip
+     * Going from Day to Week, the Week chip turns into a rocket and flies up into Week's title, where the week's
+     * words then show; going back, they turn into the rocket and it flies down into the strip, where the Week chip
      * comes back. Any way between the two (a tap, a swipe, the tab, Back). Taken before the title and the strip
      * change, launched after.
      */
@@ -613,9 +613,9 @@ class MainActivity : Activity(), SpectrumHost {
         if (!Motion.enabled) return null
         val source = (if (to == ROCKET_TITLE) weekChip else titleMark()) as? ViewGroup ?: return null
         if (!source.isAttachedToWindow || source.width == 0) return null
-        // The Week chip on its slot, or the title's tile: both the tile colour with 12dp corners.
-        val tile = FlightLayer.tile(source, ui.dp(12f).toFloat(), ui.p.surface)
-        // It becomes the rocket: the title's tile (fading with its title) goes now; the chip goes with the strip's change.
+        // The Week chip on its slot (the tile colour, 12dp corners), or the title's words, which grow a tile as they reshape.
+        val tile = FlightLayer.tile(source, ui.dp(12f).toFloat(), ui.p.surface, solid = to == ROCKET_TITLE)
+        // It becomes the rocket: the title's words (fading with their title) go now; the chip goes with the strip's change.
         if (to == ROCKET_STRIP) source.alpha = 0f
         rocketTo = to
         return { flights().rocket(tile, { rocketTarget(to) }, { arrived -> rocketHit(to, arrived) }) }
