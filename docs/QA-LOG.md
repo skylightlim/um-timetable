@@ -18,6 +18,26 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 30 October 2026 (Swipe up on Day for Week, down on Week for Day)
+
+**Asked for:** on Day, swipe up to open Week, with the same vibration as swiping between days. Week opens as
+the finger crosses the line, without letting go (the user's choice), and a swipe down on Week goes back to Day.
+
+**Change:** `SwipeScrollView` takes a swipe up (`onFlipUp`, from the page's end, so a long Day scrolls first)
+and a swipe down (`onFlipDown`, from the top). The page follows the finger at 0.9 of its speed, fading a
+little, as it does across; at 60dp, the same line as between days, it gives the same click
+(`Haptics.threshold`) and the other page opens there and then, the rest of the touch moving nothing. Let go
+short of the line, it springs back, unless it was a flick that way (900dp/s, as across), which opens it with
+that click. Day goes to Week, and Week back to the day it came from. The new page rises from below (or drops
+from above) already moving at the finger's speed (`Motion.riseIn`), and the title rises in, or drops in going
+down. CLAUDE.md's swipe model says so.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar. Still to try on the phone: a slow swipe up (the click and Week at the line), a
+flick up, one let go short, a long Day (with plans) scrolled to its end first, a swipe down on Week
+from the top (and not mid-grid with Week until midnight on), and that a long press on the grid and a swipe
+across it still work.
+
 ## 30 October 2026 (Week: "W5 of 14" in the title, the days over their columns)
 
 **Asked for:** on Week, take "W5 of 14" out of the Monday-to-Friday row and write it on the big title's line,

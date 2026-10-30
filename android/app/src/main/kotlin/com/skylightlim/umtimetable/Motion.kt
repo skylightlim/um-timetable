@@ -391,6 +391,14 @@ object Motion {
         fade(page, 0.4f, 1f, 200)
     }
 
+    /** A page rising into place from [dy] below (dropping from above, negative): swiped up or down to, already moving at [pxPerSecond]. */
+    fun riseIn(page: View, dy: Float, pxPerSecond: Float = 0f) {
+        if (!enabled) return
+        page.translationY = dy
+        page.animate().translationY(0f).spring(SETTLE.toward(dy, 0f, pxPerSecond)).start()
+        fade(page, 0.4f, 1f, 200)
+    }
+
     /**
      * A title changing: the [old] one slips away while the [new] one's parts (words, a chip) follow
      * each other in, 45 ms apart, from [dx] sideways, or rising by [rise] when [dx] is 0. The old views
