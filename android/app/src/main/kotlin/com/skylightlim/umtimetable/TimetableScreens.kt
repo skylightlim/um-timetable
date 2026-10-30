@@ -172,9 +172,30 @@ fun dayTitle(ui: Ui, day: String, date: String, today: Boolean, line: String?): 
     }, underTitle(ui))
 }
 
-/** Week's title: the dates of the strip's week, with [line] (its deadlines) under them. */
-fun weekTitle(ui: Ui, range: String, line: String?): LinearLayout = ui.column().apply {
-    addView(titleText(ui, range))
+/** The tag of the week of the semester on Week's title ([weekTitle]), for the activity to find it. */
+const val WEEK_MARK = "weekMark"
+
+/**
+ * Week's title: the dates of the week shown and, on the same line, its week of the semester ([week] "W5" over
+ * [of] "OF 14", or "Break", "Revision", "Exams"), as the Week chip showed it in the strip; [line] (its deadlines)
+ * under them. The dates are as large as Day's title (they're measured first, with the whole width); the week
+ * takes what's left beside them, shrinking if it must, its last line on the dates' baseline.
+ */
+fun weekTitle(ui: Ui, range: String, week: String, of: String?, line: String?): LinearLayout = ui.column().apply {
+    addView(LinearLayout(ui.context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        isBaselineAligned = true
+        addView(titleText(ui, range))
+        val mark = ui.column().apply {
+            tag = WEEK_MARK
+            addView(ui.fitText(week, 26f, ui.p.text, ui.f.sign, lines = 1).apply {
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            })
+            of?.let { addView(ui.text(it, 10.5f, ui.p.muted, ui.f.bodyBold, caps = true, spacing = 0.1f), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)) }
+            baselineAlignedChildIndex = childCount - 1 // after the children: it must name one that's there
+        }
+        addView(mark, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = ui.dp(10) })
+    }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     addView(smallLine(ui, line), underTitle(ui))
 }
 
@@ -580,9 +601,9 @@ class WeekGrid(
 ) : View(ui.context) {
     private val p = ui.p
     private val hour = ui.dp(48f).toFloat()
-    private val head = ui.dp(22f).toFloat()
     private val axis = ui.dp(AXIS).toFloat()
     private val gapX = ui.dp(GAP).toFloat()
+    /** Above the first hour line and below the last. No row of day names: the strip's days are over their columns ([AXIS], [GAP], [BLEED] line them up). */
     private val padY = ui.dp(8f).toFloat()
     private val startMin = 8 * 60
     /** 19:00, or midnight with Settings' Week until midnight ([DayEnd]); and the grid's hours from 08:00. */
@@ -604,7 +625,6 @@ class WeekGrid(
     private fun sp(v: Float) = v * resources.displayMetrics.density * minOf(resources.configuration.fontScale, 1.15f)
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = ui.dp(1.5f).toFloat() }
-    private val dayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodyBold; textSize = sp(12f); textAlign = Paint.Align.CENTER }
     private val axisPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.mono; textSize = sp(10f); color = p.faint; textAlign = Paint.Align.RIGHT }
     private val codePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.monoBold; textSize = sp(9f) }
     private val namePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodySemi; textSize = sp(10f) }
@@ -627,14 +647,14 @@ class WeekGrid(
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (head + padY * 2 + hour * hours).toInt())
+        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (padY * 2 + hour * hours).toInt())
     }
 
     override fun onDraw(canvas: Canvas) {
         blocks.clear()
         planBlocks.clear()
         val colW = (width - axis - gapX * 5) / 5
-        val top = head + padY
+        val top = padY
         val bottom = top + hour * hours
         // Now: on a weekday between 08:00 and the end of the day.
         val nowY = if (today != null && now.min >= startMin && now.min <= endMin) top + (now.min - startMin) / 60 * hour else null
@@ -649,8 +669,6 @@ class WeekGrid(
             val left = axis + gapX + (d - 1) * (colW + gapX)
             val isToday = d == today
             val holiday = holidays[d - 1]
-            dayPaint.color = if (isToday || holiday != null) p.accentText else p.muted
-            canvas.drawText(DAY_SHORT[d], left + colW / 2, head - ui.dp(8f), dayPaint)
             if (isToday) {
                 fill.color = Palette.mix(p.accent, p.surface, 0.07f)
                 canvas.drawRoundRect(RectF(left, top, left + colW, bottom), ui.dp(6f).toFloat(), ui.dp(6f).toFloat(), fill)
@@ -868,7 +886,7 @@ class WeekGrid(
 
     private val colW get() = (width - axis - gapX * 5) / 5
     private fun colLeft(d: Int) = axis + gapX + (d - 1) * (colW + gapX)
-    private val gridTop get() = head + padY
+    private val gridTop get() = padY
     private fun yOf(min: Int) = gridTop + (min - startMin) / 60f * hour
     private fun cell(d: Int, start: Int, end: Int) = RectF(colLeft(d) + ui.dp(1f), yOf(start) + 1, colLeft(d) + colW - ui.dp(1f), yOf(end) - 1)
 

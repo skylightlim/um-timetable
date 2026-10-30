@@ -18,6 +18,29 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 30 October 2026 (Week: "W5 of 14" in the title, the days over their columns)
+
+**Asked for:** on Week, take "W5 of 14" out of the Monday-to-Friday row and write it on the big title's line,
+beside the dates. Line the Monday-to-Friday chips up with the week grid, so the grid doesn't need its own row
+of day names.
+
+**Change:** on Week the strip is the five days only. They start where Monday's column does and are as far apart
+as the columns (`WeekGrid.AXIS`, `GAP`, `BLEED`), each over its own column, and the grid's row of day names
+is gone (its 22dp too). Their dots are in the grid below; their row stays, empty, so the strip is as tall as
+on Day. No day is chosen on Week, so the selection pill fades away (`Glider.hide`); today's date is in the
+accent as before. Going between Day and Week, each day glides to its new place and its slot stretches with it
+(`Motion.reflow`), and the Week chip pops back in after Friday. Week's title is the dates and, on the same line,
+the week of the semester as the chip showed it: "W5" in the title's face over "OF 14", its last line on the
+dates' baseline. The dates stay the size of Day's title; the week shrinks if it must ("Revision" on a narrow
+phone). The double tap that brought this week back moved with it: double-tap "W5" in the title.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). Widths from Big Shoulders 800's advance widths: at
+Day's title size the widest range, "28 Sep – 2 Oct", leaves about 87dp beside it on a 412dp-wide screen; "W14"
+needs 38dp and "Revision" 79dp. Still to look at on the phone: each day over its column (Monday's left edge on
+Monday's), the glide between Day and Week, the title with "W5 OF 14" (and a break week), the double tap on it
+after swiping to another week, and the strip's height staying put.
+
 ## 30 October 2026 (Week's grid without the card behind it)
 
 **Asked for:** remove the padded panel behind the whole week grid, so the times sit further left and every
