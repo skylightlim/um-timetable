@@ -119,6 +119,13 @@ class MainActivity : Activity(), SpectrumHost {
     private var stripWeek: Boolean? = null
     /** Day's Week chip, after Friday (Week's strip has none: its label is in the title). */
     private var weekChip: View? = null
+    /** What flies over the app between Day and Week ([FlightLayer]), while something does. */
+    private var flights: FlightLayer? = null
+    /**
+     * A rocket is on its way to Week's title ([ROCKET_TITLE]) or Day's strip ([ROCKET_STRIP]) with the week of the
+     * semester: what it brings (the title's "W5", the Week chip) stays hidden, even through a redraw, until it hits.
+     */
+    private var rocketTo: String? = null
     /** When Week's title's week of the semester was last tapped: a second tap soon after, on another week, brings back this one. */
     private var weekMarkTap = 0L
     private var tabShown: String? = null
@@ -458,9 +465,11 @@ class MainActivity : Activity(), SpectrumHost {
     private fun renderTop(n: Now) {
         val p = ui.p
         val tt = timetable
+        // Before the title and the strip change: what's leaving them flies as a rocket.
+        val launch = rocketLaunch()
         showTitle(n)
         stripFrame.visibility = if (view == "day" || view == "week") View.VISIBLE else View.GONE
-        if (stripFrame.visibility != View.VISIBLE) { stripWeek = null; return }
+        if (stripFrame.visibility != View.VISIBLE) { stripWeek = null; launch?.invoke(); return }
         // On Week the strip is its five days only, each over its column of the grid (which has no row of day
         // names of its own); the Week chip's label is in the title. On Day, the days and the Week chip.
         val onWeek = view == "week"
@@ -532,6 +541,7 @@ class MainActivity : Activity(), SpectrumHost {
         if (onWeek) {
             stripGlider.hide()
             stripIndex = index
+            launch?.invoke()
             return
         }
         // The week grid lives under Day: one more chip after Friday, saying which week of the semester it is.
@@ -544,10 +554,67 @@ class MainActivity : Activity(), SpectrumHost {
         }
         strip.addView(chipView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.15f).apply { marginStart = gap })
         weekChip = chipView
-        // Back from Week: the Week chip and its slot come back.
-        if (from != null) listOf(chipView, stripTrack.getChildAt(5)).forEach { Motion.pop(it, 0.5f) }
+        // Back from Week: the Week chip and its slot wait for the rocket bringing them back.
+        if (rocketTo == ROCKET_STRIP) listOf(chipView, stripTrack.getChildAt(5)).forEach { it.alpha = 0f }
         stripGlider.moveTo(index, if (daysTo(sel) == 0) p.accent else p.text)
         stripIndex = index
+        launch?.invoke()
+    }
+
+    /**
+     * Going from Day to Week, the Week chip turns into a rocket and flies up into Week's title, where its "W5 of 14"
+     * then shows; going back, it flies from there down into the strip, where the Week chip comes back. Any way
+     * between the two (a tap, a swipe, the tab, Back). Taken before the title and the strip change, launched after.
+     */
+    private fun rocketLaunch(): (() -> Unit)? {
+        val to = when {
+            stripWeek == false && view == "week" -> ROCKET_TITLE
+            stripWeek == true && view == "day" -> ROCKET_STRIP
+            else -> return null
+        }
+        // One still on its way lands where it was going.
+        flights?.land()
+        if (!Motion.enabled) return null
+        val source = (if (to == ROCKET_TITLE) weekChip else titleMark())?.takeIf { it.isAttachedToWindow && it.width > 0 } ?: return null
+        val from = Motion.onScreen(source)
+        // The chip on its slot; the title's week as it is.
+        val picture = FlightLayer.picture(source, if (to == ROCKET_TITLE) ui.p.surface else Color.TRANSPARENT, ui.dp(12f).toFloat())
+        // The rocket comes out of it: the title's week (fading with its title) goes now; the chip goes with the strip's change.
+        if (to == ROCKET_STRIP) source.alpha = 0f
+        val label = semesterLabel().first
+        rocketTo = to
+        return { flights().rocket(picture, from, label, { rocketTarget(to) }, { arrived -> rocketHit(to, arrived) }) }
+    }
+
+    private fun flights(): FlightLayer = flights ?: FlightLayer(ui) { flights = null }.also { layer ->
+        findViewById<FrameLayout>(android.R.id.content).addView(layer, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        flights = layer
+    }
+
+    /** Week's title's week of the semester, on the title shown now (the newest, while an old one slips away). */
+    private fun titleMark(): View? = titleBox.getChildAt(titleBox.childCount - 1)?.findViewWithTag(WEEK_MARK)
+
+    /** Where the rocket going [to] the title or the strip hits, on screen: the middle of what it brings back. */
+    private fun rocketTarget(to: String): android.graphics.PointF? {
+        val v = (if (to == ROCKET_TITLE) titleMark() else weekChip)?.takeIf { it.isAttachedToWindow && it.width > 0 } ?: return null
+        val r = Motion.onScreen(v)
+        return android.graphics.PointF(r.centerX(), r.centerY())
+    }
+
+    /** The rocket going [to] the title or the strip hit ([arrived]), or was landed by another move: what it brought shows. */
+    private fun rocketHit(to: String, arrived: Boolean) {
+        if (rocketTo == to) rocketTo = null
+        val here = if (to == ROCKET_TITLE) view == "week" else stripWeek == false
+        val brought = if (!here) emptyList() else if (to == ROCKET_TITLE) listOfNotNull(titleMark()) else listOfNotNull(weekChip, stripTrack.getChildAt(5))
+        brought.forEach { it.alpha = 1f }
+        if (!arrived || brought.isEmpty()) return
+        // It pops out where it hit, which takes a little knock, with a light tap.
+        brought.forEach { Motion.pop(it, 0.5f) }
+        val struck = if (to == ROCKET_TITLE) titleBox else stripFrame
+        struck.animate().translationY(ui.dp(3f).toFloat()).setDuration(50).setInterpolator(Motion.EXIT).withEndAction {
+            struck.animate().translationY(0f).spring(Motion.BOUNCY).start()
+        }.start()
+        Haptics.threshold(shell, false)
     }
 
     /**
@@ -587,6 +654,8 @@ class MainActivity : Activity(), SpectrumHost {
             view == "day" -> dayTitle(ui, DAY_NAMES[sel], dateText(days), today, line)
             view == "week" -> weekTitle(ui, words.first(), semester.first, semester.second, line).also { t ->
                 t.findViewWithTag<View>(WEEK_MARK)?.apply {
+                    // Brought up by the rocket: there once it hits.
+                    if (rocketTo == ROCKET_TITLE) alpha = 0f
                     contentDescription = semester.third
                     // On another week, a double tap brings back this one (as on the Week chip, before it moved up here).
                     setOnClickListener {
@@ -1155,6 +1224,9 @@ class MainActivity : Activity(), SpectrumHost {
 
     companion object {
         const val EXTRA_VIEW = "view"
+        /** Where a rocket is going ([rocketTo]): Week's title, or Day's strip. */
+        private const val ROCKET_TITLE = "title"
+        private const val ROCKET_STRIP = "strip"
         /** The Sign out question (redesign 1q). Sign out deletes everything ([AppReset]). */
         const val SIGN_OUT_TITLE = "Sign out?"
         const val SIGN_OUT_BODY = "All your data in the app will be deleted.\nYou can sign in again any time."
