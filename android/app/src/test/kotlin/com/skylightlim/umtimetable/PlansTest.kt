@@ -61,6 +61,11 @@ class PlansTest {
         assertEquals(0, heldAt(10 * 60, 10 * 60, 13 * 60)) // by its top
         assertEquals(0, heldAt(9 * 60 + 30, 10 * 60, 10 * 60 + 30)) // a half hour plan: nowhere else to hold it
         assertEquals(18 * 60 + 30, draggedStart(18 * 60 + 30, 0)) // a new plan: its start under the finger
+        assertEquals(18 * 60 + 30, draggedStart(21 * 60, 0)) // the grid ends at 19:00: its last half hour
+        // Week until midnight: the evening's half hours take a plan, to 23:30.
+        assertEquals(21 * 60, draggedStart(21 * 60, 0, 23 * 60 + 30))
+        assertEquals(23 * 60 + 30, draggedStart(23 * 60 + 30, 0, 23 * 60 + 30))
+        assertEquals(22 * 60, draggedStart(23 * 60 + 30, 90, 23 * 60 + 30)) // held by its bottom
     }
 
     @Test fun lengthsAndReminders() {

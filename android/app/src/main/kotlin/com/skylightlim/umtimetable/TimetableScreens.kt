@@ -195,8 +195,11 @@ private fun smallLine(ui: Ui, text: String?) = ui.label(text ?: "Week", ui.p.mut
  */
 internal fun heldAt(at: Int, start: Int, end: Int) = (at - start).coerceIn(0, maxOf(0, end - start - 30))
 
-/** Where a plan held [grab] minutes below its start begins with the finger at half hour [at]: 08:00 to 18:30. */
-internal fun draggedStart(at: Int, grab: Int) = (at - grab).coerceIn(8 * 60, 18 * 60 + 30)
+/**
+ * Where a plan held [grab] minutes below its start begins with the finger at half hour [at]: 08:00 to the grid's
+ * [last] half hour (18:30, or 23:30 with Week until midnight: a plan can go in the evening's slots too).
+ */
+internal fun draggedStart(at: Int, grab: Int, last: Int = 18 * 60 + 30) = (at - grab).coerceIn(8 * 60, last)
 
 /** Day at a glance: "3 classes · 08:00–19:00", or "No classes". */
 fun dayGlance(list: List<Session>): String =
@@ -897,7 +900,7 @@ class WeekGrid(
     /** The box to the half hour [grab] above the one under ([x], [y]): it moves with the finger from where it was taken. */
     private fun dragTo(x: Float, y: Float) {
         val (d, at) = halfHourAt(x, y)
-        moveBox(d, draggedStart(at, grab))
+        moveBox(d, draggedStart(at, grab, endMin - 30))
     }
 
     /**
