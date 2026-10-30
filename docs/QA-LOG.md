@@ -18,6 +18,31 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 30 October 2026 (The Week chip flies to Week's title as a rocket, and back)
+
+**Asked for:** when the Week chip is pressed from a day, it turns into a rocket missile, flies and hits the big
+title, which then shows "W5 of 14"; the same idea going from Week back to a day. The user chose: every way
+into Week (the chip, the Day tab, a swipe) and every way back to Day (a day chip, a swipe, the tab, Back).
+
+**Change:** a layer over the whole window (`FlightLayer`, new `Flights.kt`, no touches) draws the flight. A
+picture of the Week chip on its slot crouches (a squash), then shrinks away as a rocket pops out of its middle,
+pointing where it goes: a dark body (the theme's text colour) with "W5" along its side, never upside down, a
+gold nose and fins and a flickering flame. It flies in an arc, over the top and in from above, accelerating
+like a missile, leaving puffs of smoke, and its nose hits the middle of the title's "W5 OF 14". The hit is a
+gold flash, a ring and eight sparks; the week pops out there, the title takes a 3dp knock and springs back,
+with a light tap (`Haptics.threshold(…, false)`). Going back, the rocket comes out of the title's week and
+dives into the strip after Friday, where the Week chip and its slot pop back in. What the rocket brings stays
+hidden until it hits, through the minute's redraw too; another move while one is flying lands it at once,
+without its hit. About 0.6 s from tap to hit, 0.95 s until the smoke is gone. With Remove animations on,
+nothing flies. Prototyped as a canvas drawing first and rendered frame by frame at 3px a dp in Chromium,
+light and dark, then ported shape for shape.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). The prototype's frames (the squash, the pop, the
+arc, the hit) were looked at at the phone's scale. Still to try on the phone: a tap on the Week chip, the Day
+tab, a swipe past Friday and up, back by a day chip, Back and a swipe down; the arc on a narrow phone (does it
+stay on screen?), the knock on the title, the tap's strength, dark mode, and two moves in quick succession.
+
 ## 30 October 2026 (Swipe up on Day for Week, down on Week for Day)
 
 **Asked for:** on Day, swipe up to open Week, with the same vibration as swiping between days. Week opens as
