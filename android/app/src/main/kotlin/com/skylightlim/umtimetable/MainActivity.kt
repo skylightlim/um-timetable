@@ -137,6 +137,8 @@ class MainActivity : Activity(), SpectrumHost {
     private var slideFar = false
     /** The next page rises from below (1: Day swiped up to Week) or drops from above (-1: Week swiped down to Day). */
     private var pendingRise = 0
+    /** Day is being swiped to Week (up, or on past Monday or Friday): the strip's dots fly into the grid's classes. */
+    private var dotsFly = false
     /** onCreate has just drawn the page; drawing it again in onResume would cut its entrance short. */
     private var fresh = false
     private var lastMinute = ""
@@ -404,6 +406,8 @@ class MainActivity : Activity(), SpectrumHost {
     private fun render(keepScroll: Boolean, enter: Boolean = false) {
         val n = now()
         lastMinute = "${n.dow}-${n.min.toInt()}"
+        // Where the dots are before the strip changes, and the grid to come waiting for them.
+        val dots = flyingDots()
         renderTop(n)
         renderTabs()
         val y = scroll.scrollY
@@ -434,7 +438,7 @@ class MainActivity : Activity(), SpectrumHost {
         scroll.swipeTarget = if (view == "week") { { content.getChildAt(content.childCount - 1)?.let(WeekScreen::grid) } } else null
         scroll.onSwipeTarget = if (view == "week") { dir -> slideFar = true; shiftWeek(dir, scroll.releaseVelocity) } else null
         scroll.onSwipe = when (view) {
-            "day" -> { dir -> slideFar = true; goCell(stripCell(sel, dir), dir) }
+            "day" -> { dir -> slideFar = true; dotsFly = stripCell(sel, dir) == WEEK_CELL; goCell(stripCell(sel, dir), dir) }
             "week" -> { dir -> slideFar = true; goCell(stripCell(WEEK_CELL, dir), dir) }
             else -> null
         }
@@ -459,7 +463,32 @@ class MainActivity : Activity(), SpectrumHost {
         }
         slideFar = false
         if (keepScroll) scroll.post { scroll.scrollTo(0, y) } else scroll.scrollTo(0, 0)
+        dots?.invoke()
         updateBack()
+    }
+
+    /**
+     * Swiped from Day to Week: each class's dot under its day in the strip pops out and flies down into its class
+     * on the grid, which fills in from where it lands; a day after the one before, and the dots of a day one after
+     * another. Taken from the strip before it changes, launched once the grid is on the page.
+     */
+    private fun flyingDots(): (() -> Unit)? {
+        val swiped = dotsFly
+        dotsFly = false
+        if (!swiped || view != "week" || stripWeek != false || !Motion.enabled || stripDots.size != 5) return null
+        val starts = stripDots.mapIndexed { k, row ->
+            val day = timetable.day(k + 1)
+            row.mapIndexedNotNull { i, v -> day.getOrNull(i)?.let { s -> Triple(i, s.course.color, Motion.onScreen(v).let { r -> android.graphics.PointF(r.centerX(), r.centerY()) }) } }
+        }
+        if (starts.all { it.isEmpty() }) return null
+        WeekGrid.incoming = true
+        return {
+            val layer = flights()
+            for ((k, row) in starts.withIndex()) for ((i, colour, at) in row) {
+                val day = k + 1
+                layer.dot(colour, at, k * 30L + i * 25L, { weekGrid()?.classAt(day, i) }) { landed -> weekGrid()?.land(day, i, landed) }
+            }
+        }
     }
 
     private fun renderTop(n: Now) {
@@ -990,6 +1019,7 @@ class MainActivity : Activity(), SpectrumHost {
     /** A swipe up ([rise] 1) or down (-1) went past its line, which already vibrated: [cell] comes from that side. */
     private fun flip(cell: Int, rise: Int) {
         pendingRise = rise
+        dotsFly = cell == WEEK_CELL
         slideFar = true
         goCell(cell)
     }

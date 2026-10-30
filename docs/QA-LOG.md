@@ -18,6 +18,27 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 30 October 2026 (Swiping into Week, the strip's dots fly into their classes)
+
+**Asked for:** when the user swipes up, or swipes from Monday or Friday into Week, the coloured dots on the
+Monday-to-Friday chips fly out and fill in the week grid's coloured blocks.
+
+**Change:** a swipe that lands on Week from Day (up, right from Monday, left from Friday; not a tap, which
+has the rocket alone) takes each dot's place before the strip changes. On the flight layer each dot pops 10dp
+up out of its chip, swelling by half, then arcs over a little hump and down into the middle of its class's
+block on the new grid (looked up each frame, so it follows the page sliding or rising in), a day 30ms after
+the one before and each dot of a day 25ms after the last. The grid starts with its classes not there
+(`WeekGrid.incoming`) and each fills in as its dot lands, a circle spreading out from the dot to the block's
+corners (`land`, about 250ms). Should a dot never land (the flight cut short), every class is filled after 1.8s.
+A minute's redraw mid-flight draws a full grid, which the dots land on. With Remove animations on, nothing flies.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). A canvas prototype of the dots' path and the
+fill-in, rendered at 3px a dp, was looked at frame by frame (all landed by about 0.8s). Still to try on the
+phone: a swipe up, a swipe right on Monday and left on Friday (the page sliding while the dots fly), a day
+without classes, a holiday week (faded classes), and smoothness with the rocket flying at the same time
+(`--ei bench` covers neither).
+
 ## 30 October 2026 (The Week chip flies to Week's title as a rocket, and back)
 
 **Asked for:** when the Week chip is pressed from a day, it turns into a rocket missile, flies and hits the big
