@@ -155,7 +155,7 @@ Playful, physical motion (pops, hops, a carousel, text rolling over), kept smoot
 frames. Cancelled or past things fade; slashes drawn over classes looked bad (struck-through text in a
 list is fine). Their swipe model: on Day a swipe steps Monday to Friday, then Week, and a swipe up opens
 Week (down on Week goes back), going as it passes the line rather than on letting go; on Week a swipe
-changes the week, and the Week tab, a double tap on the title's "W5", Back or another tab bring this week back.
+changes the week, and the Week tab, a double tap on the title, Back or another tab bring this week back.
 
 ## graphify
 

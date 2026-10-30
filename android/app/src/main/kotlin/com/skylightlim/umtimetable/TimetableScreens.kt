@@ -174,31 +174,53 @@ fun dayTitle(ui: Ui, day: String, date: String, today: Boolean, line: String?): 
     }, underTitle(ui))
 }
 
-/** The tag of the week of the semester on Week's title ([weekTitle]), for the activity to find it. */
+/** The tag of the week of the semester's tile on Week's title ([weekTitle]), for the activity to find it. */
 const val WEEK_MARK = "weekMark"
 
 /**
- * Week's title: the dates of the week shown and, on the same line, its week of the semester ([week] "W5" over
- * [of] "OF 14", or "Break", "Revision", "Exams"), as the Week chip showed it in the strip; [line] (its deadlines)
- * under them. The dates are as large as Day's title (they're measured first, with the whole width); the week
- * takes what's left beside them, shrinking if it must, its last line on the dates' baseline.
+ * Week's title: the dates of the week shown, as large as Day's title, and on the same line the week of the
+ * semester as a tile ([week] "W5" over [of] "OF 14", or "Break", "Revision", "Exams"), the Week chip as it was in
+ * the strip ([WeekTitleLine] sizes it); [line] (its deadlines) under them.
  */
 fun weekTitle(ui: Ui, range: String, week: String, of: String?, line: String?): LinearLayout = ui.column().apply {
-    addView(LinearLayout(ui.context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        isBaselineAligned = true
-        addView(titleText(ui, range))
-        val mark = ui.column().apply {
-            tag = WEEK_MARK
-            addView(ui.fitText(week, 26f, ui.p.text, ui.f.sign, lines = 1).apply {
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            })
-            of?.let { addView(ui.text(it, 10.5f, ui.p.muted, ui.f.bodyBold, caps = true, spacing = 0.1f), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)) }
-            baselineAlignedChildIndex = childCount - 1 // after the children: it must name one that's there
-        }
-        addView(mark, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = ui.dp(10) })
-    }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    val dates = titleText(ui, range)
+    val tile = ui.column().apply {
+        tag = WEEK_MARK
+        gravity = Gravity.CENTER
+        background = ui.shape(ui.p.surface, 12f)
+        setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(4))
+        addView(ui.fitText(week, 22f, ui.p.text, ui.f.sign, lines = 1).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        })
+        of?.let { addView(ui.text(it, 10.5f, ui.p.muted, ui.f.bodyBold, caps = true, spacing = 0.1f), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(2) }) }
+    }
+    addView(WeekTitleLine(ui, dates, tile), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     addView(smallLine(ui, line), underTitle(ui))
+}
+
+/**
+ * Week's title line: the [dates], measured first with the whole width (so they're Day's title's size), and the
+ * week's [tile] beside them, as wide as a day's tile in the strip under the title (the same width less the grid's
+ * axis, in five with the columns' gaps) and as tall as the dates' line, so the top bar is as tall as on Day.
+ */
+@SuppressLint("ViewConstructor")
+private class WeekTitleLine(private val ui: Ui, private val dates: View, private val tile: View) : LinearLayout(ui.context) {
+    init {
+        orientation = HORIZONTAL
+        isBaselineAligned = false
+        addView(dates)
+        addView(tile, LayoutParams(0, 0).apply { marginStart = ui.dp(12) })
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val room = MeasureSpec.getSize(widthMeasureSpec)
+        val lp = tile.layoutParams as LayoutParams
+        val bounded = MeasureSpec.getMode(widthMeasureSpec) != MeasureSpec.UNSPECIFIED
+        lp.width = if (bounded) (room - ui.dp(WeekGrid.AXIS + WeekGrid.GAP - WeekGrid.BLEED) - 4 * ui.dp(WeekGrid.GAP)) / 5 else LayoutParams.WRAP_CONTENT
+        dates.measure(if (bounded) MeasureSpec.makeMeasureSpec(room, MeasureSpec.AT_MOST) else widthMeasureSpec, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+        lp.height = dates.measuredHeight
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+    }
 }
 
 /**
