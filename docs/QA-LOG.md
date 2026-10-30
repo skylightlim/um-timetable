@@ -18,6 +18,19 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 30 October 2026 (Week's strip: each day's name and date in the middle of its tile)
+
+**Asked for:** on Week, the Monday-to-Friday tiles' words and dates aligned to the centre.
+
+**Change:** on Week the tiles have no dots (they're in the grid), but their row stayed, empty, under the date,
+so the name and date sat high in the tile. The row goes on Week and its room (5dp above it, 6dp of dots) is
+split between the tile's top and bottom padding: the name and date are in the middle, and the strip is exactly
+as tall as on Day (the halves add up to the same pixels).
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). Still to look at on the phone: the tiles on Week, and
+the strip not changing height between Day and Week.
+
 ## 30 October 2026 (Flights: nothing left hidden when one is cut short)
 
 **Asked for:** nothing new: found reading over the day's changes before pushing them.

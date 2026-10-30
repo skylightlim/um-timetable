@@ -548,14 +548,20 @@ class MainActivity : Activity(), SpectrumHost {
                 if (moved && selected) Motion.tint(t, fg(today, false), fg(today, true))
                 if (moved && stripIndex == d - 1) Motion.tint(t, fg(today, true), fg(today, false), 90)
             }
-            // A dot for each class in its course's colour. On Week they're in the grid below, and their row stays
-            // empty, so the strip is as tall as on Day.
+            // A dot for each class in its course's colour. On Week they're in the grid below: their row goes, and its
+            // room (5dp above it, 6dp of dots) is split above and below, so the name and date sit in the middle of
+            // the tile and the strip is as tall as on Day.
             val dots = ui.row(gap = 3f).apply {
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ui.dp(6))
-                if (!onWeek) for (s in tt.day(d)) addView(View(context).apply { background = ui.shape(s.course.color, 99f) }, LinearLayout.LayoutParams(ui.dp(6), ui.dp(6)))
+                if (onWeek) visibility = View.GONE
+                else for (s in tt.day(d)) addView(View(context).apply { background = ui.shape(s.course.color, 99f) }, LinearLayout.LayoutParams(ui.dp(6), ui.dp(6)))
             }
             val dayChip = chip(dayWords(d, days), name, date, dots).apply {
                 setOnClickListener { pickedDay = true; goDay(d) }
+                if (onWeek) {
+                    val room = ui.dp(5) + ui.dp(6)
+                    setPadding(paddingLeft, ui.dp(8) + room / 2, paddingRight, ui.dp(8) + room - room / 2)
+                }
             }
             strip.addView(dayChip, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { if (d > 1) marginStart = gap })
             stripDays += Triple(dayChip, name, date)
