@@ -22,8 +22,8 @@ import kotlin.math.sin
 
 /**
  * What flies over the app going between Day and Week, drawn on one layer over the whole window (it takes no
- * touches): the week's tile (the Week chip, or the tile on Week's title) turning into a rocket that flies up into
- * Week's title and back down into the strip ([rocket]), and, swiping into Week, each day's dots flying out of the strip into their classes on the grid
+ * touches): the week's tile (the Week chip, or its words on Week's title) turning into a rocket that flies up
+ * into Week's title and back down into the strip ([rocket]), and, swiping into Week, each day's dots flying out of the strip into their classes on the grid
  * ([dot]). Prototyped as a canvas drawing first; sizes are in dp, drawn at the phone's density.
  *
  * Everything keeps time on one [TimeAnimator] and the layer takes itself off the window once nothing is left
@@ -73,7 +73,7 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
     }
 
     /**
-     * The week's [tile] (the Week chip, or the tile on Week's title going back) crouches and turns into a rocket,
+     * The week's [tile] (the Week chip, or its words on Week's title going back) crouches and turns into a rocket,
      * labelled with its first line ("W5"), that flies in an arc over to the point [to] gives (on screen) and hits
      * it: a flash, a ring and sparks. [hit] runs then (with true), for what was hit to show what the rocket
      * brought; or at once with false if another move [land]s it first.
@@ -197,9 +197,10 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
      * The body, its middle at (0, 0) and heading right, [hx] half long and [hy] half thick, in the tile's [colour]: a
      * tile's rounded rectangle with [corner] corners while [parts] is 0, the rocket as it grows to 1 (its nose
      * sharpening and capped in gold, the tail's corners tightening, the fins and the flame growing out). It's
-     * turned [angle] (radians) on the screen, for its shadow to fall down the screen.
+     * turned [angle] (radians) on the screen, for its shadow to fall down the screen, and [opacity] shown (words
+     * with no tile of their own grow one as they reshape).
      */
-    private fun drawBody(canvas: Canvas, hx: Float, hy: Float, corner: Float, parts: Float, colour: Int, angle: Float) {
+    private fun drawBody(canvas: Canvas, hx: Float, hy: Float, corner: Float, parts: Float, colour: Int, angle: Float, opacity: Float = 1f) {
         if (parts > 0f) {
             canvas.save()
             canvas.translate(L - hx, 0f) // the parts' tail (-L) at the body's (-hx)
@@ -218,10 +219,13 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
         canvas.save()
         canvas.translate(sin(angle) * 1.5f * d, cos(angle) * 1.5f * d)
         fill.color = shadow
+        fill.alpha = (Color.alpha(shadow) * opacity).toInt()
         canvas.drawPath(body, fill)
         canvas.restore()
         fill.color = colour
+        fill.alpha = (Color.alpha(colour) * opacity).toInt()
         canvas.drawPath(body, fill)
+        fill.alpha = 255
         if (parts > 0f) {
             canvas.save()
             canvas.clipPath(body)
@@ -326,7 +330,7 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
             // Upright (its long side down the screen) to along its heading.
             val turn = -PI.toFloat() / 2 + wrap(heading + PI.toFloat() / 2) * m
             canvas.rotate(turn * 180 / PI.toFloat())
-            drawBody(canvas, lerp(from.height() / 2, L / 2, m), lerp(from.width() / 2, R, m), lerp(tile.radius, R, m), parts, tile.fill, turn)
+            drawBody(canvas, lerp(from.height() / 2, L / 2, m), lerp(from.width() / 2, R, m), lerp(tile.radius, R, m), parts, tile.fill, turn, if (tile.solid) 1f else m)
             canvas.restore()
             for ((i, w) in tile.words.withIndex()) {
                 if (i > 0) {
@@ -386,8 +390,11 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
         }
     }
 
-    /** A tile as it looks on screen, for a rocket to be made from: its place, corners and colour, and its lines of text. */
-    class Tile(val rect: RectF, val radius: Float, val fill: Int, val words: List<Word>)
+    /**
+     * A tile as it looks on screen, for a rocket to be made from: its place, corners and colour, and its lines of
+     * text; [solid] if its colour shows (the Week chip on its slot), not for words alone (Week's title).
+     */
+    class Tile(val rect: RectF, val radius: Float, val fill: Int, val solid: Boolean, val words: List<Word>)
 
     /** A line of a tile's text as shown: its middle across and its baseline on screen, in its own paint. */
     class Word(val text: String, val x: Float, val baseline: Float, val paint: TextPaint)
@@ -412,8 +419,8 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
         private const val PUFF_EVERY = 22L
         private const val PUFF_LIFE = 380L
 
-        /** [v] (a tile: a column of lines) as it looks on screen, on a [fill] with [radius] corners (its own, or its slot's). */
-        fun tile(v: ViewGroup, radius: Float, fill: Int): Tile {
+        /** [v] (a column of lines) as it looks on screen, on a [fill] with [radius] corners if it's [solid] (its slot's), the rocket's colour either way. */
+        fun tile(v: ViewGroup, radius: Float, fill: Int, solid: Boolean): Tile {
             val at = IntArray(2)
             val words = (0 until v.childCount).map(v::getChildAt).filterIsInstance<TextView>().filter { it.visibility == VISIBLE && it.width > 0 }.map { tv ->
                 tv.getLocationOnScreen(at)
@@ -423,7 +430,7 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
                 Word(shown, at[0] + tv.compoundPaddingLeft + lineLeft + lineWidth / 2, (at[1] + tv.baseline).toFloat(),
                     TextPaint(tv.paint).apply { color = tv.currentTextColor; textAlign = Paint.Align.CENTER })
             }
-            return Tile(Motion.onScreen(v), radius, fill, words)
+            return Tile(Motion.onScreen(v), radius, fill, solid, words)
         }
 
         private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t

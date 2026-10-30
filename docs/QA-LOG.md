@@ -18,6 +18,21 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 30 October 2026 (Week's title: the week as words, without a tile)
+
+**Asked for:** on Week's title, don't show "W5 of 14" as a tile: the words alone are enough.
+
+**Change:** the week on the title line is the Week chip's words with no tile behind them: "W5" over "OF 14" (or
+Break, Revision, Exams) in the chip's faces and sizes, 12dp after the dates, in the middle of the dates' line
+and no taller (so the top bar is still as tall as on Day). The dates are unchanged, at Day's title size. The
+rocket still hits the words' middle, and they pop in there. Going back to a day, the words turn into the rocket
+as the chip does going up, but having no tile of their own, the rocket's body fades in as they reshape
+(`FlightLayer.Tile.solid`).
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). Still to look at on the phone: the words beside the
+dates (a long range, a break week), the rocket's hit on them, and the rocket leaving them going back to a day.
+
 ## 30 October 2026 (The rocket is the week's tile itself, reshaped)
 
 **Asked for:** the rocket should be transformed from the Week tile (it popped out of the tile's middle as the
