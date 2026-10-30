@@ -128,6 +128,8 @@ class MainActivity : Activity(), SpectrumHost {
     private var pendingSlide = 0
     /** The next day arrives from the side it was swiped in from, rather than from close by (a tap). */
     private var slideFar = false
+    /** The next page rises from below (1: Day swiped up to Week) or drops from above (-1: Week swiped down to Day). */
+    private var pendingRise = 0
     /** onCreate has just drawn the page; drawing it again in onResume would cut its entrance short. */
     private var fresh = false
     private var lastMinute = ""
@@ -429,11 +431,18 @@ class MainActivity : Activity(), SpectrumHost {
             "week" -> { dir -> slideFar = true; goCell(stripCell(WEEK_CELL, dir), dir) }
             else -> null
         }
+        // Up from Day is Week, and down from Week the day it came from: the page goes as the swipe passes the line.
+        scroll.onFlipUp = if (view == "day") { { flip(WEEK_CELL, 1) } } else null
+        scroll.onFlipDown = if (view == "week") { { flip(sel, -1) } } else null
         // Spectrum's tabs sync when pulled down.
         scroll.onPull = if (view in setOf("due", "files") && SpectrumStore.signedIn(this)) ::refresh else null
         // The Courses list (where Settings used to sit, under the courses) opens them when pulled up.
         scroll.onPullUp = if (view == "files" && openCourse == null) ::openSettings else null
-        if (pendingSlide != 0) {
+        if (pendingRise != 0) {
+            // Swiped up or down to: the page carries on from the side the finger took the last one, at its speed.
+            Motion.riseIn(page, pendingRise * scroll.height * 0.35f, scroll.flipVelocity)
+            pendingRise = 0
+        } else if (pendingSlide != 0) {
             // Another day: from the side it was swiped in from, or from close by after a tap.
             // A swipe's page carries on at the finger's speed; a tap's comes from close by, from rest.
             Motion.slideIn(page, pendingSlide * if (slideFar) scroll.width * 0.35f else ui.dp(40f).toFloat(), if (slideFar) scroll.releaseVelocity else 0f)
@@ -596,7 +605,8 @@ class MainActivity : Activity(), SpectrumHost {
         titleBox.addView(title, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
         if (old.isEmpty()) return
         if (!Motion.enabled) return old.forEach(titleBox::removeView)
-        Motion.retitle(old, title, pendingSlide * ui.dp(32f).toFloat(), ui.dp(10f).toFloat())
+        // Swiped down to, the new title drops in from above rather than rising.
+        Motion.retitle(old, title, pendingSlide * ui.dp(32f).toFloat(), (if (pendingRise < 0) -1 else 1) * ui.dp(10f).toFloat())
     }
 
     /** Settings (theme, imports, notifications, vibration, account), as in redesign 1p: the last tab. */
@@ -908,6 +918,13 @@ class MainActivity : Activity(), SpectrumHost {
         goCell(d, dir)
     }
 
+    /** A swipe up ([rise] 1) or down (-1) went past its line, which already vibrated: [cell] comes from that side. */
+    private fun flip(cell: Int, rise: Int) {
+        pendingRise = rise
+        slideFar = true
+        goCell(cell)
+    }
+
     /**
      * Shows the strip's [cell]: a day (1–5) or the Week grid ([WEEK_CELL]). From another cell the page slides
      * in from the side it's on ([dir] for a swipe), as from one day to the next; from another tab it rises.
@@ -920,8 +937,8 @@ class MainActivity : Activity(), SpectrumHost {
             "day" -> sel
             else -> null
         }
-        if (here == cell) return
-        pendingSlide = if (here == null) 0 else if (dir != 0) dir else if (cell > here) 1 else -1
+        if (here == cell) { pendingRise = 0; return }
+        pendingSlide = if (here == null || pendingRise != 0) 0 else if (dir != 0) dir else if (cell > here) 1 else -1
         // A tap vibrates (a swipe already bumped at its threshold). Day to day here: the view stays "day", so go doesn't.
         if (view == "day" && !week && !slideFar) Haptics.tick(shell)
         if (!week) sel = cell
