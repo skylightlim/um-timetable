@@ -2,15 +2,16 @@ package com.skylightlim.umtimetable
 
 import android.animation.TimeAnimator
 import android.annotation.SuppressLint
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PointF
 import android.graphics.RectF
+import android.text.TextPaint
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -21,8 +22,8 @@ import kotlin.math.sin
 
 /**
  * What flies over the app going between Day and Week, drawn on one layer over the whole window (it takes no
- * touches): the Week chip turning into a rocket that flies up into Week's title and back down into the strip
- * ([rocket]), and, swiping into Week, each day's dots flying out of the strip into their classes on the grid
+ * touches): the week's tile (the Week chip, or the tile on Week's title) turning into a rocket that flies up into
+ * Week's title and back down into the strip ([rocket]), and, swiping into Week, each day's dots flying out of the strip into their classes on the grid
  * ([dot]). Prototyped as a canvas drawing first; sizes are in dp, drawn at the phone's density.
  *
  * Everything keeps time on one [TimeAnimator] and the layer takes itself off the window once nothing is left
@@ -45,19 +46,12 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
-    private val bitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG)
-    private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.sign; textSize = 11 * d; textAlign = Paint.Align.CENTER; color = p.ground }
     private val flameCore = Palette.mix(Color.WHITE, p.accent, 0.7f)
+    private val shadow = Color.argb(36, 0, 0, 0)
 
-    // The rocket, pointing right with its nose at (0, 0): a body with a pointed, gold-capped nose, two gold fins
-    // and a flame (drawn each frame: it flickers).
-    private val body = Path().apply {
-        moveTo(-L + 2 * d, -R); lineTo(-12 * d, -R)
-        quadTo(-3 * d, -R, 0f, 0f); quadTo(-3 * d, R, -12 * d, R)
-        lineTo(-L + 2 * d, R); quadTo(-L, R, -L, R - 2 * d); lineTo(-L, -R + 2 * d); quadTo(-L, -R, -L + 2 * d, -R)
-        close()
-    }
-    private val nose = Path().apply { moveTo(-12 * d, -R); quadTo(-3 * d, -R, 0f, 0f); quadTo(-3 * d, R, -12 * d, R); close() }
+    // The rocket's parts, its nose at (0, 0) and its tail at -L: two gold fins and a flame (made each frame: it
+    // flickers). Its body is the tile's, reshaped ([body]).
+    private val body = Path()
     private val fins = Path().apply {
         for (s in listOf(-1f, 1f)) {
             moveTo(-L + 11 * d, s * R * 0.9f); lineTo(-L + d, s * (R + 7 * d))
@@ -79,13 +73,13 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
     }
 
     /**
-     * The Week chip (or Week's "W5", going back) drawn in [picture], at [from] on screen, crouches, shrinks away as
-     * a rocket labelled [label] pops out of its middle, flies in an arc over to the point [to] gives (on screen) and
-     * hits it: a flash, a ring and sparks. [hit] runs then (with true), for what was hit to show what the rocket
+     * The week's [tile] (the Week chip, or the tile on Week's title going back) crouches and turns into a rocket,
+     * labelled with its first line ("W5"), that flies in an arc over to the point [to] gives (on screen) and hits
+     * it: a flash, a ring and sparks. [hit] runs then (with true), for what was hit to show what the rocket
      * brought; or at once with false if another move [land]s it first.
      */
-    fun rocket(picture: Bitmap?, from: RectF, label: String, to: () -> PointF?, hit: (Boolean) -> Unit) {
-        rockets += Rocket(picture, RectF(from), label, to, hit, now)
+    fun rocket(tile: Tile, to: () -> PointF?, hit: (Boolean) -> Unit) {
+        rockets += Rocket(tile, to, hit, now)
         start()
     }
 
@@ -186,34 +180,74 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
         }
     }
 
-    /** The rocket, its nose at ([x], [y]) heading [angle] (radians), [grow] its size (popping out, 0 to a little over 1). */
-    private fun drawRocket(canvas: Canvas, x: Float, y: Float, angle: Float, grow: Float, label: String) {
+    /** The rocket in flight: its nose at ([x], [y]) heading [angle] (radians), [label] along its side, never upside down. */
+    private fun drawRocket(canvas: Canvas, x: Float, y: Float, angle: Float, colour: Int, label: Paint, text: String) {
         canvas.save()
         canvas.translate(x, y)
         canvas.rotate(angle * 180 / PI.toFloat())
-        canvas.scale(grow, grow, -L / 2, 0f)
-        if (grow > 0.6f) {
-            val k = ((grow - 0.6f) / 0.4f).coerceAtMost(1f)
-            val f = (9 + 3 * sin(now * 0.09f) + 1.5f * sin(now * 0.23f)) * d * k
+        canvas.translate(-L / 2, 0f)
+        drawBody(canvas, L / 2, R, R, 1f, colour, angle)
+        canvas.translate(-3 * d, 0f)
+        if (cos(angle) < 0) canvas.rotate(180f)
+        canvas.drawText(text, 0f, label.textSize * 0.36f, label)
+        canvas.restore()
+    }
+
+    /**
+     * The body, its middle at (0, 0) and heading right, [hx] half long and [hy] half thick, in the tile's [colour]: a
+     * tile's rounded rectangle with [corner] corners while [parts] is 0, the rocket as it grows to 1 (its nose
+     * sharpening and capped in gold, the tail's corners tightening, the fins and the flame growing out). It's
+     * turned [angle] (radians) on the screen, for its shadow to fall down the screen.
+     */
+    private fun drawBody(canvas: Canvas, hx: Float, hy: Float, corner: Float, parts: Float, colour: Int, angle: Float) {
+        if (parts > 0f) {
+            canvas.save()
+            canvas.translate(L - hx, 0f) // the parts' tail (-L) at the body's (-hx)
+            val f = (9 + 3 * sin(now * 0.09f) + 1.5f * sin(now * 0.23f)) * d * parts
             fill.color = p.accent
             canvas.drawPath(flame(f, 0.65f, 0.75f, 0.7f, 1f), fill)
             fill.color = flameCore
             canvas.drawPath(flame(f, 0.35f, 0.4f, 0.4f, 0.55f), fill)
+            canvas.scale(1f, parts) // the fins grow out of the body's sides
+            fill.color = p.accent
+            canvas.drawPath(fins, fill)
+            canvas.restore()
         }
-        fill.color = p.accent
-        canvas.drawPath(fins, fill)
-        fill.color = p.text
-        canvas.drawPath(body, fill)
+        body(-hx, hx, hy, lerp(corner, 2 * d, parts), lerp(corner, 12 * d, parts), lerp(0f, 3 * d, parts), lerp(hy - corner, 0f, parts))
+        // A soft shadow lifts it off the page: 1.5dp down the screen, whichever way it's turned.
         canvas.save()
-        canvas.clipPath(nose)
-        fill.color = p.accent
-        canvas.drawRect(-6 * d, -R, 2 * d, R, fill)
+        canvas.translate(sin(angle) * 1.5f * d, cos(angle) * 1.5f * d)
+        fill.color = shadow
+        canvas.drawPath(body, fill)
         canvas.restore()
-        // The label along its side, never upside down.
-        canvas.translate(-L / 2 - 3 * d, 0f)
-        if (cos(angle) < 0) canvas.rotate(180f)
-        canvas.drawText(label, 0f, labelPaint.textSize * 0.36f, labelPaint)
-        canvas.restore()
+        fill.color = colour
+        canvas.drawPath(body, fill)
+        if (parts > 0f) {
+            canvas.save()
+            canvas.clipPath(body)
+            fill.color = p.accent
+            canvas.drawRect(hx - 6 * d * parts, -hy, hx + 2 * d, hy, fill)
+            canvas.restore()
+        }
+    }
+
+    /**
+     * Every stage's body in one shape: from the tail at [back] to the front at [front], [hy] half thick, the tail's
+     * corners [tail] round; at the front, straight to [a] short of it, then curving (towards [b] short of it) to
+     * ±[c] across it: a tile's corners (a = its corner, b = 0, c = hy less its corner) or a pointed nose (c = 0).
+     */
+    private fun body(back: Float, front: Float, hy: Float, tail: Float, a: Float, b: Float, c: Float) = body.apply {
+        reset()
+        moveTo(back + tail, -hy)
+        lineTo(front - a, -hy)
+        quadTo(front - b, -hy, front, -c)
+        lineTo(front, c)
+        quadTo(front - b, hy, front - a, hy)
+        lineTo(back + tail, hy)
+        quadTo(back, hy, back, hy - tail)
+        lineTo(back, -hy + tail)
+        quadTo(back, -hy, back + tail, -hy)
+        close()
     }
 
     /** A flame [f] long out of the tail, as wide as [base] and [bulge] of the body's half height, its curve [reach] along. */
@@ -225,12 +259,16 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
         close()
     }
 
-    private inner class Rocket(val picture: Bitmap?, val from: RectF, val label: String, val to: () -> PointF?, val hit: (Boolean) -> Unit, val born: Long) {
+    private inner class Rocket(val tile: Tile, val to: () -> PointF?, val hit: (Boolean) -> Unit, val born: Long) {
         var lastPuff = born
         /** Where the target was last seen: it may be gone by the time the rocket gets there. */
         var end: PointF? = null
+        /** The tile's first line is the rocket's label ("W5"), drawn along its side in flight. */
+        val word = tile.words.firstOrNull()
+        val label = TextPaint(word?.paint ?: Paint(Paint.ANTI_ALIAS_FLAG)).apply { typeface = ui.f.sign; textSize = 11 * d; textAlign = Paint.Align.CENTER }
+        private val from get() = tile.rect
 
-        /** The arc: from the nose's place at launch (in front of the chip's middle), over the top, to the target. */
+        /** The arc: from the nose's place at launch (in front of the tile's middle), over the top, to the target. */
         private fun path(): Triple<PointF, PointF, PointF>? {
             val e = to()?.also { end = it } ?: end ?: return null
             val s0 = PointF(from.centerX(), from.centerY())
@@ -242,7 +280,7 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
             return Triple(s, control(s, e), e)
         }
 
-        /** Over the top and in from above: above both ends, leaning towards the screen's middle (the chip and title are at its right). */
+        /** Over the top and in from above: above both ends, leaning towards the screen's middle (the tiles are at its right). */
         private fun control(s: PointF, e: PointF): PointF {
             val dist = hypot(e.x - s.x, e.y - s.y)
             return PointF((s.x + e.x) / 2 - 0.25f * dist, min(s.y, e.y) - 0.6f * dist)
@@ -266,27 +304,51 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
 
         fun draw(canvas: Canvas) {
             val t = now - born
+            val text = word?.text.orEmpty()
             if (t >= MORPH) {
                 val (nose, a) = at(eased()) ?: return
-                return drawRocket(canvas, nose.x, nose.y, a, 1f, label)
+                return drawRocket(canvas, nose.x, nose.y, a, tile.fill, label, text)
             }
-            // It crouches (a squash), then shrinks away as the rocket pops out of its middle, pointing where it goes.
+            // The tile itself becomes the rocket: it crouches (a squash), then tips towards where it's going and
+            // narrows into the body, its first line turning to run along it and shrinking, the rest fading; last
+            // the nose sharpens and the fins and the flame grow out.
+            val heading = at(0f)?.second ?: (-PI / 2).toFloat()
             val k = t / MORPH.toFloat()
-            val crouch = sin(min(1f, k / 0.45f) * PI.toFloat()) * 0.14f
-            val shrink = if (k < 0.45f) 1f else 1 - ((k - 0.45f) / 0.55f).pow(2)
-            picture?.let { pic ->
+            val crouch = if (k < 0.3f) sin(k / 0.3f * PI.toFloat()) * 0.12f else 0f
+            val m = smooth((k - 0.25f) / 0.55f)
+            val parts = smooth((k - 0.75f) / 0.25f)
+            val cx = from.centerX()
+            val cy = from.centerY()
+            val sink = from.height() * crouch * 0.4f
+            canvas.save()
+            canvas.translate(cx, cy + sink)
+            canvas.scale(1 + crouch, 1 - crouch)
+            // Upright (its long side down the screen) to along its heading.
+            val turn = -PI.toFloat() / 2 + wrap(heading + PI.toFloat() / 2) * m
+            canvas.rotate(turn * 180 / PI.toFloat())
+            drawBody(canvas, lerp(from.height() / 2, L / 2, m), lerp(from.width() / 2, R, m), lerp(tile.radius, R, m), parts, tile.fill, turn)
+            canvas.restore()
+            for ((i, w) in tile.words.withIndex()) {
+                if (i > 0) {
+                    val fade = 1 - smooth(k / 0.4f)
+                    if (fade <= 0f) continue
+                    w.paint.alpha = (fade * 255).toInt()
+                    canvas.drawText(w.text, cx + (w.x - cx) * (1 + crouch), cy + sink + (w.baseline - cy) * (1 - crouch), w.paint)
+                    w.paint.alpha = 255
+                    continue
+                }
+                // From its place in the tile to the label's on the body, turning from level to the rocket's way.
+                val endAngle = wrap(heading + if (cos(heading) < 0) PI.toFloat() else 0f)
+                val size = lerp(w.paint.textSize, label.textSize, m)
+                val midX = lerp(w.x, cx - cos(heading) * 3 * d, m)
+                val midY = lerp(w.baseline - w.paint.textSize * 0.36f, cy - sin(heading) * 3 * d, m) + sink
                 canvas.save()
-                canvas.translate(from.centerX(), from.centerY() + from.height() * crouch * 0.4f)
-                canvas.scale((1 + crouch) * shrink, (1 - crouch) * shrink)
-                bitmapPaint.alpha = (min(1f, shrink * 1.5f) * 255).toInt()
-                canvas.drawBitmap(pic, null, RectF(-from.width() / 2, -from.height() / 2, from.width() / 2, from.height() / 2), bitmapPaint)
+                canvas.translate(midX, midY)
+                canvas.rotate(endAngle * m * 180 / PI.toFloat())
+                label.textSize = size
+                canvas.drawText(w.text, 0f, size * 0.36f, label)
+                label.textSize = 11 * d
                 canvas.restore()
-            }
-            if (k > 0.45f) {
-                val r = (k - 0.45f) / 0.55f
-                val pop = if (r < 0.7f) 1.12f * sin(r / 0.7f * PI.toFloat() / 2) else 1.12f - 0.12f * (r - 0.7f) / 0.3f
-                val (nose, a) = at(0f) ?: return
-                drawRocket(canvas, nose.x, nose.y, a, pop, label)
             }
         }
     }
@@ -324,6 +386,12 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
         }
     }
 
+    /** A tile as it looks on screen, for a rocket to be made from: its place, corners and colour, and its lines of text. */
+    class Tile(val rect: RectF, val radius: Float, val fill: Int, val words: List<Word>)
+
+    /** A line of a tile's text as shown: its middle across and its baseline on screen, in its own paint. */
+    class Word(val text: String, val x: Float, val baseline: Float, val paint: TextPaint)
+
     private class Puff(val x: Float, val y: Float, val born: Long)
     private class Burst(val x: Float, val y: Float, val born: Long)
 
@@ -331,8 +399,8 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
         /** The rocket's length and half its body's height (dp). */
         private const val LENGTH = 40f
         private const val RADIUS = 8f
-        /** How long the chip takes to turn into the rocket, the flight, and the hit's flash and ring (ms). */
-        private const val MORPH = 200L
+        /** How long the tile takes to turn into the rocket, the flight, and the hit's flash and ring (ms). */
+        private const val MORPH = 280L
         private const val FLY = 420L
         private const val HIT = 320L
         /** A dot pops this far up out of the strip (dp) in [DOT_OUT] ms, then takes [DOT_FLY] ms to its class; it's 6dp across. */
@@ -344,14 +412,28 @@ class FlightLayer(private val ui: Ui, private val onIdle: (FlightLayer) -> Unit)
         private const val PUFF_EVERY = 22L
         private const val PUFF_LIFE = 380L
 
-        /** [v] as it looks, on a [fill] of its own (a chip's slot) with [radius] corners, for a flight to start from. */
-        fun picture(v: View, fill: Int = Color.TRANSPARENT, radius: Float = 0f): Bitmap? {
-            if (v.width <= 0 || v.height <= 0) return null
-            val bitmap = Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap)
-            if (fill != Color.TRANSPARENT) canvas.drawRoundRect(RectF(0f, 0f, v.width.toFloat(), v.height.toFloat()), radius, radius, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fill })
-            v.draw(canvas)
-            return bitmap
+        /** [v] (a tile: a column of lines) as it looks on screen, on a [fill] with [radius] corners (its own, or its slot's). */
+        fun tile(v: ViewGroup, radius: Float, fill: Int): Tile {
+            val at = IntArray(2)
+            val words = (0 until v.childCount).map(v::getChildAt).filterIsInstance<TextView>().filter { it.visibility == VISIBLE && it.width > 0 }.map { tv ->
+                tv.getLocationOnScreen(at)
+                val shown = (tv.transformationMethod?.getTransformation(tv.text, tv) ?: tv.text).toString()
+                val lineLeft = tv.layout?.getLineLeft(0) ?: 0f
+                val lineWidth = tv.layout?.getLineWidth(0) ?: tv.paint.measureText(shown)
+                Word(shown, at[0] + tv.compoundPaddingLeft + lineLeft + lineWidth / 2, (at[1] + tv.baseline).toFloat(),
+                    TextPaint(tv.paint).apply { color = tv.currentTextColor; textAlign = Paint.Align.CENTER })
+            }
+            return Tile(Motion.onScreen(v), radius, fill, words)
+        }
+
+        private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
+        private fun smooth(x: Float): Float = x.coerceIn(0f, 1f).let { it * it * (3 - 2 * it) }
+        /** [a] (radians) between -π and π. */
+        private fun wrap(a: Float): Float {
+            var r = a
+            while (r > PI) r -= 2 * PI.toFloat()
+            while (r < -PI) r += 2 * PI.toFloat()
+            return r
         }
     }
 }

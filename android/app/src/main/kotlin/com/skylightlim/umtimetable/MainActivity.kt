@@ -597,9 +597,10 @@ class MainActivity : Activity(), SpectrumHost {
     }
 
     /**
-     * Going from Day to Week, the Week chip turns into a rocket and flies up into Week's title, where its "W5 of 14"
-     * then shows; going back, it flies from there down into the strip, where the Week chip comes back. Any way
-     * between the two (a tap, a swipe, the tab, Back). Taken before the title and the strip change, launched after.
+     * Going from Day to Week, the Week chip turns into a rocket and flies up into Week's title, where the week's tile
+     * then shows; going back, that tile turns into the rocket and flies down into the strip, where the Week chip
+     * comes back. Any way between the two (a tap, a swipe, the tab, Back). Taken before the title and the strip
+     * change, launched after.
      */
     private fun rocketLaunch(): (() -> Unit)? {
         val to = when {
@@ -610,15 +611,14 @@ class MainActivity : Activity(), SpectrumHost {
         // One still on its way lands where it was going.
         flights?.land()
         if (!Motion.enabled) return null
-        val source = (if (to == ROCKET_TITLE) weekChip else titleMark())?.takeIf { it.isAttachedToWindow && it.width > 0 } ?: return null
-        val from = Motion.onScreen(source)
-        // The chip on its slot; the title's week as it is.
-        val picture = FlightLayer.picture(source, if (to == ROCKET_TITLE) ui.p.surface else Color.TRANSPARENT, ui.dp(12f).toFloat())
-        // The rocket comes out of it: the title's week (fading with its title) goes now; the chip goes with the strip's change.
+        val source = (if (to == ROCKET_TITLE) weekChip else titleMark()) as? ViewGroup ?: return null
+        if (!source.isAttachedToWindow || source.width == 0) return null
+        // The Week chip on its slot, or the title's tile: both the tile colour with 12dp corners.
+        val tile = FlightLayer.tile(source, ui.dp(12f).toFloat(), ui.p.surface)
+        // It becomes the rocket: the title's tile (fading with its title) goes now; the chip goes with the strip's change.
         if (to == ROCKET_STRIP) source.alpha = 0f
-        val label = semesterLabel().first
         rocketTo = to
-        return { flights().rocket(picture, from, label, { rocketTarget(to) }, { arrived -> rocketHit(to, arrived) }) }
+        return { flights().rocket(tile, { rocketTarget(to) }, { arrived -> rocketHit(to, arrived) }) }
     }
 
     private fun flights(): FlightLayer = flights?.takeIf { it.isAttachedToWindow } ?: FlightLayer(ui) { if (flights === it) flights = null }.also { layer ->
