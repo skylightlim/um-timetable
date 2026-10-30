@@ -18,6 +18,20 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 30 October 2026 (A plan can be put in Week until midnight's evening slots)
+
+**Asked for:** make sure a plan can be added in the new extra time slots (Week until midnight's 19:00 to 00:00).
+
+**Change:** dragging the selection box stopped at 18:30 whatever the grid's end: `draggedStart` kept a plan's
+start between 08:00 and 18:30, so a long press at 21:00 brought the box up there and the first move of the
+finger sent it back to 18:30. It now stops at the grid's last half hour (`endMin - 30`): 18:30 to 19:00, 23:30
+with Week until midnight. A double tap and the plan card already went to the end of the day.
+
+**Checked:** no Android SDK in this session (Google's download host is blocked), so no Gradle build and no
+phone. Type-checked with kotlinc 2.4.20 against Robolectric's Android 17 jar, and the JVM tests pass (78), with
+`PlansTest.dragHoldsWhereTaken` now also covering a plan dragged at 21:00 and 23:30, and held by its bottom.
+Still to try on the phone: Week until midnight on, long press at 21:00 and drag down to 23:30.
+
 ## 29 October 2026 (1.8.0-beta.1: the "Things to fix" branch built and published)
 
 **Asked for:** after merging pull request #1 (`fix/things-to-fix`) on GitHub, bring it into the local repo
