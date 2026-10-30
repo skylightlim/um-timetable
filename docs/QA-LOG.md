@@ -18,6 +18,28 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 30 October 2026 (Week's title: the dates at Day's size, the week as a tile; double tap for this week)
+
+**Asked for:** make Week's dates ("2–6 Nov") as big as Day's title, and keep "W5 of 14" as a tile the size of a
+day's tile beside them; a double tap on the big title brings back the current week. (The user's answer to: the
+dates and "W5 of 14" can't share one line at Day's size; even "26–30 Oct W5 of 14" is 3% wider than
+"Wednesday 30 Sep".)
+
+**Change:** Week's title line (`WeekTitleLine`) measures the dates first with the whole width, so they're the size
+of Day's title, as before. Beside them, 12dp on, the week is a tile like the Week chip: the tile colour, 12dp
+corners, "W5" over "OF 14" (or Break, Revision, Exams) in the chip's faces and sizes. It's as wide as a day's
+tile in the strip below (the line's width less the grid's axis, in five with the columns' gaps: about 69dp on a
+412dp-wide screen) and as tall as the dates' line (about 64dp at 53sp; a day tile is about 69dp), so the top
+bar is as tall on Week as on Day. The rocket still hits its middle, and it pops in there. A double tap anywhere on
+Week's title (not only on the week, as before) brings this week back when another is shown; only Week's title
+takes taps, so other titles don't sink when touched. A long press still opens Settings.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). Widths from Big Shoulders 800: beside "28 Sep – 2
+Oct" at Day's size there's about 96dp on a 412dp-wide screen (83dp at 360dp) for the 12dp gap and the tile (69dp;
+58dp at 360dp). Still to look at on the phone: the dates against Day's title, the tile's width against Friday's
+tile below, the bar's height going Day to Week, and a double tap on the title after swiping two weeks on.
+
 ## 30 October 2026 (Week's strip: each day's name and date in the middle of its tile)
 
 **Asked for:** on Week, the Monday-to-Friday tiles' words and dates aligned to the centre.

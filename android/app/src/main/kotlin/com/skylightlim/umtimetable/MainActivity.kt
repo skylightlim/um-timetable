@@ -126,8 +126,8 @@ class MainActivity : Activity(), SpectrumHost {
      * semester: what it brings (the title's "W5", the Week chip) stays hidden, even through a redraw, until it hits.
      */
     private var rocketTo: String? = null
-    /** When Week's title's week of the semester was last tapped: a second tap soon after, on another week, brings back this one. */
-    private var weekMarkTap = 0L
+    /** When Week's title was last tapped: a second tap soon after, on another week, brings back this one. */
+    private var titleTap = 0L
     private var tabShown: String? = null
     /** Whether the Day tab says Week (on the week grid); null after the tabs are built, so it's set without animating. */
     private var dayTabWeek: Boolean? = null
@@ -692,19 +692,20 @@ class MainActivity : Activity(), SpectrumHost {
                     // Brought up by the rocket: there once it hits.
                     if (rocketTo == ROCKET_TITLE) alpha = 0f
                     contentDescription = semester.third
-                    // On another week, a double tap brings back this one (as on the Week chip, before it moved up here).
-                    setOnClickListener {
-                        val at = android.os.SystemClock.uptimeMillis()
-                        if (view == "week" && weekShift != 0 && at - weekMarkTap < android.view.ViewConfiguration.getDoubleTapTimeout()) {
-                            weekMarkTap = 0L
-                            Haptics.back(this)
-                            shiftWeek(-weekShift)
-                        } else weekMarkTap = at
-                    }
                 }
             }
             else -> ui.row().apply { addView(ui.label(words.first(), p.muted, 11f)) }
         }
+        // On another week, a double tap on Week's title brings back this one. Only Week's title takes taps (a
+        // title that does nothing shouldn't sink when touched).
+        titleBox.setOnClickListener(if (view != "week") null else View.OnClickListener {
+            val at = android.os.SystemClock.uptimeMillis()
+            if (view == "week" && weekShift != 0 && at - titleTap < android.view.ViewConfiguration.getDoubleTapTimeout()) {
+                titleTap = 0L
+                Haptics.back(it)
+                shiftWeek(-weekShift)
+            } else titleTap = at
+        })
         val old = (0 until titleBox.childCount).map(titleBox::getChildAt)
         titleBox.addView(title, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
         if (old.isEmpty()) return
