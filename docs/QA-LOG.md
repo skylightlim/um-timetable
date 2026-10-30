@@ -18,6 +18,23 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 30 October 2026 (Week's strip: bigger day names and dates, filling the tiles)
+
+**Asked for:** on Week, make the Monday-to-Friday tiles' text bigger to fill the empty space.
+
+**Change:** on Week the tiles have no dots, and the room they left (5dp above them and their 6dp) was split above
+and below the text. Now the text grows into it instead: the day's name at 12sp (10.5 on Day) and the date as
+large as fits what's left of Day's tile height, about 29.5sp (22 on Day). The sizes are found by measuring real
+text at the phone's font size (`weekTileText`), so the tiles are full and the strip stays exactly as tall as
+on Day at any font size; what rounding leaves over is split above and below. Going between Day and Week the
+name and date grow or shrink from the size they were, on the same spring as the tiles' glide.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). From the fonts' line heights (Instrument Sans 700:
+1.22em, Big Shoulders 800: 1.197em): Day's name, date and dots take about 52dp; the 12sp name leaves about 35.5dp
+for the date, about 29.7sp. Still to look at on the phone: the tiles on Week (a wide date like "28" in each),
+the strip's height going Day to Week, and the text growing as the tiles glide.
+
 ## 30 October 2026 (Week's title: the week as words, without a tile)
 
 **Asked for:** on Week's title, don't show "W5 of 14" as a tile: the words alone are enough.
