@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PointF
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -27,6 +28,7 @@ import com.skylightlim.umtimetable.Motion.spring
 import java.time.LocalDate
 import java.util.Calendar
 import kotlin.math.ceil
+import kotlin.math.hypot
 
 /** What the screens need from the activity. */
 interface Host {
@@ -641,6 +643,13 @@ class WeekGrid(
     /** A plan just saved pops into its place ([landing]). */
     private var landId = landing.also { landing = null }
     private var landScale = 1f
+    /**
+     * Swiped into from Day ([incoming]): how far each class has filled in since the strip's dot for it landed
+     * ([land]), 0 (not yet: an empty space) to 1, and where the dot landed, which it fills out from. Null otherwise.
+     */
+    private val filling = if (incoming.also { incoming = false } && Motion.enabled) java.util.IdentityHashMap<Session, Float>().apply { tt.sessions.forEach { put(it, 0f) } } else null
+    private val fillFrom = java.util.IdentityHashMap<Session, PointF>()
+    private val fillClip = android.graphics.Path()
 
     init {
         contentDescription = "Week timetable: " + tt.sessions.joinToString("; ") { "${DAY_NAMES[it.day]} ${clockText(it.start)} ${it.course.code} ${it.type} ${it.room}" }
@@ -758,6 +767,26 @@ class WeekGrid(
 
     private fun drawBlock(canvas: Canvas, s: Session, r: RectF, past: Boolean) {
         blocks += r to s
+        // Its dot still on the way: not there yet. Landed: it fills in, a circle spreading out from the dot.
+        val filled = filling?.get(s)
+        if (filled != null && filled <= 0f) return
+        if (filled != null && filled < 1f) {
+            val at = fillFrom[s] ?: PointF(r.centerX(), r.centerY())
+            val far = maxOf(hypot(r.left - at.x, r.top - at.y), hypot(r.right - at.x, r.top - at.y), hypot(r.left - at.x, r.bottom - at.y), hypot(r.right - at.x, r.bottom - at.y))
+            val dot = ui.dp(FlightLayer.DOT_RADIUS * 1.5f).toFloat()
+            fillClip.reset()
+            fillClip.addCircle(at.x, at.y, dot + (far - dot) * filled, android.graphics.Path.Direction.CW)
+            canvas.save()
+            canvas.clipPath(fillClip)
+            paintBlock(canvas, s, r, past)
+            canvas.restore()
+            return
+        }
+        paintBlock(canvas, s, r, past)
+    }
+
+    /** A class's block: its course's colour (a tutorial's tint and outline), its code, name and room; faded when [past]. */
+    private fun paintBlock(canvas: Canvas, s: Session, r: RectF, past: Boolean) {
         val c = s.course.color
         val radius = ui.dp(7f).toFloat()
         val alpha = if (past) 115 else 255
@@ -835,8 +864,35 @@ class WeekGrid(
         canvas.restore()
     }
 
+    /** Where day [day]'s [index]th class (in the strip's order) is on screen, the middle of its block: where its dot goes. Null before layout. */
+    fun classAt(day: Int, index: Int): PointF? {
+        val s = tt.day(day).getOrNull(index) ?: return null
+        if (width == 0) return null
+        val at = IntArray(2).also(::getLocationOnScreen)
+        val r = cell(day, s.start, s.end)
+        return PointF(at[0] + r.centerX(), at[1] + r.centerY())
+    }
+
+    /** Day [day]'s [index]th class's dot landed at [screen]: the class fills in from there. */
+    fun land(day: Int, index: Int, screen: PointF) {
+        val s = tt.day(day).getOrNull(index) ?: return
+        val map = filling ?: return
+        if ((map[s] ?: 1f) > 0f) return
+        val at = IntArray(2).also(::getLocationOnScreen)
+        fillFrom[s] = PointF(screen.x - at[0], screen.y - at[1])
+        map[s] = 0.001f
+        android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            interpolator = Motion.QUICK
+            duration = Motion.QUICK.duration
+            addUpdateListener { map[s] = maxOf(0.001f, it.animatedValue as Float); invalidate() }
+            start()
+        }
+    }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        // Should a dot never land (the flight cut short), its class doesn't stay empty.
+        filling?.let { map -> postDelayed({ if (map.values.any { it <= 0f }) { map.replaceAll { _, _ -> 1f }; invalidate() } }, 1800) }
         if (landId == null || !Motion.enabled) return
         landScale = 0.55f
         android.animation.ValueAnimator.ofFloat(0.55f, 1f).apply {
@@ -1150,6 +1206,8 @@ class WeekGrid(
         var landing: String? = null
         /** A selection box is up: the page shouldn't be redrawn under it (the minute's redraw waits). */
         var holding = false
+        /** The next grid is swiped into from Day: its classes fill in as the strip's dots land on them ([land]). */
+        var incoming = false
         private val LAYOUTS = android.util.LruCache<String, StaticLayout>(96)
     }
 }

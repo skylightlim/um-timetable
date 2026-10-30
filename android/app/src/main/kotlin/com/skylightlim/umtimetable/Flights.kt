@@ -22,7 +22,8 @@ import kotlin.math.sin
 /**
  * What flies over the app going between Day and Week, drawn on one layer over the whole window (it takes no
  * touches): the Week chip turning into a rocket that flies up into Week's title and back down into the strip
- * ([rocket]). Prototyped as a canvas drawing first; sizes are in dp, drawn at the phone's density.
+ * ([rocket]), and, swiping into Week, each day's dots flying out of the strip into their classes on the grid
+ * ([dot]). Prototyped as a canvas drawing first; sizes are in dp, drawn at the phone's density.
  *
  * Everything keeps time on one [TimeAnimator] and the layer takes itself off the window once nothing is left
  * flying ([onIdle]). Targets are asked for each frame, so a title still rising into place is hit where it is.
@@ -35,6 +36,7 @@ class FlightLayer(private val ui: Ui, private val onIdle: () -> Unit) : View(ui.
     /** Milliseconds since the layer started: what every flight times itself by. */
     private var now = 0L
     private val rockets = mutableListOf<Rocket>()
+    private val dots = mutableListOf<Dot>()
     private val puffs = mutableListOf<Puff>()
     private val bursts = mutableListOf<Burst>()
     private val at = IntArray(2)
@@ -85,6 +87,16 @@ class FlightLayer(private val ui: Ui, private val onIdle: () -> Unit) : View(ui.
         start()
     }
 
+    /**
+     * A dot of [color] at [from] on screen (a class's, under its day in the strip) waits [delay] ms, pops up out of
+     * the strip, then flies in an arc down to the point [to] gives (its class on the grid) and lands: [land] runs
+     * with that point, for the class to fill in from it. A dot whose target is gone just fades.
+     */
+    fun dot(color: Int, from: PointF, delay: Long, to: () -> PointF?, land: (PointF) -> Unit) {
+        dots += Dot(color, PointF(from.x, from.y), now + delay, to, land)
+        start()
+    }
+
     /** Every rocket still flying lands at once, without its hit (another move has begun: what it brings is shown now). */
     fun land() {
         val flying = rockets.toList()
@@ -110,9 +122,14 @@ class FlightLayer(private val ui: Ui, private val onIdle: () -> Unit) : View(ui.
                 r.hit(true)
             }
         }
+        for (dot in dots.toList()) {
+            if (now - dot.born < DOT_OUT + DOT_FLY) continue
+            dots.remove(dot)
+            (dot.to() ?: dot.end)?.let(dot.land)
+        }
         puffs.removeAll { now - it.born > PUFF_LIFE }
         bursts.removeAll { now - it.born > HIT }
-        if (rockets.isEmpty() && puffs.isEmpty() && bursts.isEmpty()) {
+        if (rockets.isEmpty() && dots.isEmpty() && puffs.isEmpty() && bursts.isEmpty()) {
             clock.cancel()
             (parent as? ViewGroup)?.removeView(this)
             onIdle()
@@ -135,6 +152,8 @@ class FlightLayer(private val ui: Ui, private val onIdle: () -> Unit) : View(ui.
             fill.alpha = (0.35f * (1 - k) * 255).toInt()
             canvas.drawCircle(puff.x, puff.y, (2.5f + 5 * k) * d, fill)
         }
+        fill.alpha = 255
+        for (dot in dots) dot.draw(canvas)
         fill.alpha = 255
         for (r in rockets) r.draw(canvas)
         for (b in bursts) drawBurst(canvas, b)
@@ -269,6 +288,39 @@ class FlightLayer(private val ui: Ui, private val onIdle: () -> Unit) : View(ui.
         }
     }
 
+    private inner class Dot(val color: Int, val from: PointF, val born: Long, val to: () -> PointF?, val land: (PointF) -> Unit) {
+        /** Where its class was last seen, should it go (another redraw) before the dot gets there. */
+        var end: PointF? = null
+
+        fun draw(canvas: Canvas) {
+            val t = now - born
+            if (t < 0) return drawDot(canvas, from.x, from.y, 1f, 255)
+            if (t < DOT_OUT) {
+                // Out of the strip: up a little, swelling, easing off at the top.
+                val k = t / DOT_OUT.toFloat()
+                val up = 1 - (1 - k) * (1 - k)
+                return drawDot(canvas, from.x, from.y - DOT_RISE * d * up, 1 + 0.5f * up, 255)
+            }
+            val e = to()?.also { end = it } ?: end
+            val k = ((t - DOT_OUT) / DOT_FLY.toFloat()).coerceIn(0f, 1f)
+            if (e == null) return drawDot(canvas, from.x, from.y - DOT_RISE * d, 1.5f, ((1 - k) * 255).toInt())
+            // Over a little hump and down into its class, slow to leave and quick to land.
+            val sx = from.x
+            val sy = from.y - DOT_RISE * d
+            val cx = (sx + e.x) / 2
+            val cy = sy - 24 * d
+            val u = k * k * (3 - 2 * k)
+            val v = 1 - u
+            drawDot(canvas, v * v * sx + 2 * v * u * cx + u * u * e.x, v * v * sy + 2 * v * u * cy + u * u * e.y, 1.5f, 255)
+        }
+
+        private fun drawDot(canvas: Canvas, x: Float, y: Float, scale: Float, alpha: Int) {
+            fill.color = color
+            fill.alpha = alpha
+            canvas.drawCircle(x, y, DOT_RADIUS * d * scale, fill)
+        }
+    }
+
     private class Puff(val x: Float, val y: Float, val born: Long)
     private class Burst(val x: Float, val y: Float, val born: Long)
 
@@ -280,6 +332,11 @@ class FlightLayer(private val ui: Ui, private val onIdle: () -> Unit) : View(ui.
         private const val MORPH = 200L
         private const val FLY = 420L
         private const val HIT = 320L
+        /** A dot pops this far up out of the strip (dp) in [DOT_OUT] ms, then takes [DOT_FLY] ms to its class; it's 6dp across. */
+        private const val DOT_RISE = 10f
+        private const val DOT_OUT = 110L
+        private const val DOT_FLY = 380L
+        const val DOT_RADIUS = 3f
         /** A puff of smoke behind the rocket this often, each fading over its life (ms). */
         private const val PUFF_EVERY = 22L
         private const val PUFF_LIFE = 380L
