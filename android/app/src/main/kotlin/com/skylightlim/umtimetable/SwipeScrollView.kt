@@ -25,6 +25,10 @@ import kotlin.math.sign
  * 72dp and let go, it syncs, and the page waits lowered over [pullIndicator] until [endPull]. Where
  * [onPullUp] is set (the Courses list: Settings), a page already at its end can be pulled up the same
  * way over [pullUpIndicator]; let go past 72dp, it springs back and [onPullUp] runs.
+ *
+ * Where [onFlipUp] or [onFlipDown] is set (Day: up to Week; Week: down to Day), a swipe up from the page's end
+ * or down from its top moves the page with the finger, and the moment it passes 60dp (the swipe between days'
+ * line, with its click) the other page opens, without waiting for the finger to let go. A flick opens it too.
  */
 class SwipeScrollView(context: Context) : ScrollView(context) {
     /** Called with +1 for a swipe to the left (next) and -1 for a swipe to the right (previous). */
@@ -50,6 +54,13 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     var onPullUp: (() -> Unit)? = null
     /** What pulling up uncovers below the page. */
     var pullUpIndicator: PullUpIndicator? = null
+    /** A swipe up from the page's end went past the line (or was a flick up). */
+    var onFlipUp: (() -> Unit)? = null
+    /** A swipe down from the page's top went past the line (or was a flick down). */
+    var onFlipDown: (() -> Unit)? = null
+    /** The finger's speed up or down (px a second, + down) when the last flip went, for the next page to carry on at. */
+    var flipVelocity = 0f
+        private set
 
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
     private val density = context.resources.displayMetrics.density
@@ -60,8 +71,13 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     private var swiping = false
     private var pulling = false
     private var pullingUp = false
+    /** The page follows a swipe up or down ([onFlipUp], [onFlipDown]); and it went: the rest of the touch is ignored. */
+    private var flipping = false
+    private var flipped = false
     /** The page was at its end when the touch began: only then can a pull up start (not mid-scroll). */
     private var atEnd = false
+    /** And at its top: only then can a swipe down to another page start. */
+    private var atTop = false
     /** Let go past the threshold: the page stays lowered while the sync runs. */
     private var held = false
     /** The drag is past the point where letting go moves on (vibrates on crossing it either way). */
@@ -86,6 +102,14 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
         val dx = e.x - downX
         val dy = downY - e.y
         return dy > slop && dy > abs(dx) * 1.5f
+    }
+
+    /** A swipe up from the page's end or down from its top, where one opens another page. */
+    private fun startsFlip(e: MotionEvent): Boolean {
+        val dx = e.x - downX
+        val dy = e.y - downY
+        if (held || abs(dy) <= slop || abs(dy) <= abs(dx) * 1.5f) return false
+        return if (dy < 0) onFlipUp != null && atEnd else onFlipDown != null && atTop
     }
 
     private fun startsPull(e: MotionEvent): Boolean {
@@ -120,9 +144,12 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
         swiping = false
         pulling = false
         pullingUp = false
+        flipping = false
+        flipped = false
         past = false
         grabbed = false
         atEnd = !canScrollVertically(1)
+        atTop = !canScrollVertically(-1)
     }
 
     /**
@@ -145,10 +172,11 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
             // A touch on a card never reaches onTouchEvent's DOWN, so the drag state starts afresh
             // here too: left over from the last swipe, it swallowed a quick flick's vibration.
             MotionEvent.ACTION_DOWN -> down(e)
-            MotionEvent.ACTION_MOVE -> if (!swiping && !pulling && !pullingUp) {
+            MotionEvent.ACTION_MOVE -> if (!swiping && !pulling && !pullingUp && !flipping) {
                 if (startsSwipe(e)) { swiping = true; return true }
                 if (startsPull(e)) { pulling = true; return true }
                 if (startsPullUp(e)) { pullingUp = true; return true }
+                if (startsFlip(e)) { flipping = true; return true }
             }
         }
         return super.onInterceptTouchEvent(e)
@@ -158,12 +186,16 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
     override fun onTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> down(e)
-            MotionEvent.ACTION_MOVE -> if (!swiping && !pulling && !pullingUp) {
+            MotionEvent.ACTION_MOVE -> if (!swiping && !pulling && !pullingUp && !flipping && !flipped) {
                 if (startsSwipe(e)) swiping = true else if (startsPull(e)) pulling = true else if (startsPullUp(e)) pullingUp = true
+                else if (startsFlip(e)) flipping = true
             }
         }
+        // The other page has opened: the finger still on the glass moves nothing.
+        if (flipped) return true
         if (pulling) return pull(e)
         if (pullingUp) return pullUp(e)
+        if (flipping) return flip(e)
         val swipe = onSwipe
         if (!swiping || swipe == null) return super.onTouchEvent(e)
         val dx = e.x - downX
@@ -202,6 +234,56 @@ class SwipeScrollView(context: Context) : ScrollView(context) {
             MotionEvent.ACTION_CANCEL -> { swiping = false; settle(0f) }
         }
         return true
+    }
+
+    /**
+     * The page follows a swipe up or down, as it does one across; at the line it vibrates as that one does and the
+     * other page opens at once ([flip]). Let go short of it, it springs back, unless it was a flick that way.
+     */
+    private fun flip(e: MotionEvent): Boolean {
+        val page = page ?: return true
+        val dy = e.y - downY
+        when (e.actionMasked) {
+            MotionEvent.ACTION_MOVE -> {
+                // Taken from whatever was moving it (not [grab]: its spring back to rest would fight the finger).
+                if (!grabbed) {
+                    grabbed = true
+                    page.animate().cancel()
+                    settleFade?.cancel()
+                    settleFade = null
+                }
+                page.translationY = (dy - sign(dy) * slop) * 0.9f
+                page.alpha = 1f - (abs(page.translationY) / height.coerceAtLeast(1)) * 0.5f
+                if (abs(dy) > minDistance) flip(dy < 0, speed(true))
+            }
+            MotionEvent.ACTION_UP -> {
+                flipping = false
+                val vy = speed(true)
+                if (abs(vy) > 900 * density && sign(vy) == sign(dy)) flip(dy < 0, vy) else settleFlip(vy * 0.9f)
+            }
+            MotionEvent.ACTION_CANCEL -> { flipping = false; settleFlip(0f) }
+        }
+        return true
+    }
+
+    /** Past the line ([up] or down) or flicked: the click a swipe between days gives there, and the other page opens. */
+    private fun flip(up: Boolean, pxPerSecond: Float) {
+        flipping = false
+        flipped = true
+        Haptics.threshold(this, true)
+        flipVelocity = pxPerSecond * 0.9f // the page moved at 0.9 of the finger
+        settleFade?.cancel()
+        settleFade = null
+        page?.apply { animate().cancel(); translationY = 0f; alpha = 1f }
+        (if (up) onFlipUp else onFlipDown)?.invoke()
+    }
+
+    /** Not far enough up or down: back to where it was, from the speed it was let go at. */
+    private fun settleFlip(pxPerSecond: Float) {
+        val page = page ?: return
+        page.animate().translationY(0f).spring(Motion.BOUNCY.toward(page.translationY, 0f, pxPerSecond)).start()
+        settleFade?.cancel()
+        settleFade = Motion.fade(page, page.alpha, 1f)
     }
 
     /** The page follows a downward drag at half speed; past the threshold, letting go syncs. */

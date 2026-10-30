@@ -18,6 +18,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -109,15 +110,25 @@ class MainActivity : Activity(), SpectrumHost {
     private lateinit var stripGlider: Motion.Glider
     private lateinit var tabGlider: Motion.Glider
     private var presser: Motion.Presser? = null
-    /** Where the strip's pill is (0–4 Monday–Friday, 5 Week) and which tab is lit, so a change animates. */
+    /** Where the strip's pill is (0–4 Monday–Friday; 5 on Week, where it's put away) and which tab is lit, so a change animates. */
     private var stripIndex = -1
-    /** The strip's day chips (the chip, its day name and its date) and the Week chip's labels, for a week shift to change in place. */
+    /** The strip's day chips (the chip, its day name and its date), for a week shift to change in place. */
     private val stripDays = mutableListOf<Triple<View, TextView, TextView>>()
+    /** Each day chip's dots, one a class in that day's order (Day's strip; none on Week's). */
+    private val stripDots = mutableListOf<List<View>>()
+    /** Whether the strip shows Week's days (true) or Day's (false); null while it's hidden (the other tabs). */
+    private var stripWeek: Boolean? = null
+    /** Day's Week chip, after Friday (Week's strip has none: its label is in the title). */
     private var weekChip: View? = null
-    private var weekNameText: TextView? = null
-    private var weekOfText: TextView? = null
-    /** When the Week chip was last tapped: a second tap soon after, on another week, brings back this one. */
-    private var weekChipTap = 0L
+    /** What flies over the app between Day and Week ([FlightLayer]), while something does. */
+    private var flights: FlightLayer? = null
+    /**
+     * A rocket is on its way to Week's title ([ROCKET_TITLE]) or Day's strip ([ROCKET_STRIP]) with the week of the
+     * semester: what it brings (the title's "W5", the Week chip) stays hidden, even through a redraw, until it hits.
+     */
+    private var rocketTo: String? = null
+    /** When Week's title was last tapped: a second tap soon after, on another week, brings back this one. */
+    private var titleTap = 0L
     private var tabShown: String? = null
     /** Whether the Day tab says Week (on the week grid); null after the tabs are built, so it's set without animating. */
     private var dayTabWeek: Boolean? = null
@@ -125,6 +136,10 @@ class MainActivity : Activity(), SpectrumHost {
     private var pendingSlide = 0
     /** The next day arrives from the side it was swiped in from, rather than from close by (a tap). */
     private var slideFar = false
+    /** The next page rises from below (1: Day swiped up to Week) or drops from above (-1: Week swiped down to Day). */
+    private var pendingRise = 0
+    /** Day is being swiped to Week (up, or on past Monday or Friday): the strip's dots fly into the grid's classes. */
+    private var dotsFly = false
     /** onCreate has just drawn the page; drawing it again in onResume would cut its entrance short. */
     private var fresh = false
     private var lastMinute = ""
@@ -244,6 +259,8 @@ class MainActivity : Activity(), SpectrumHost {
         }
         stripGlider = Motion.Glider(stripFrame, strip, ui.dp(12f).toFloat(), 1)
         stripIndex = -1
+        stripWeek = null
+        weekTileText = null
         val top = ui.column().apply {
             addView(titleRow)
             // 16dp under the title, as the Spectrum tabs' pages start 10dp + 6dp under theirs.
@@ -391,6 +408,8 @@ class MainActivity : Activity(), SpectrumHost {
     private fun render(keepScroll: Boolean, enter: Boolean = false) {
         val n = now()
         lastMinute = "${n.dow}-${n.min.toInt()}"
+        // Where the dots are before the strip changes, and the grid to come waiting for them.
+        val dots = flyingDots()
         renderTop(n)
         renderTabs()
         val y = scroll.scrollY
@@ -421,15 +440,22 @@ class MainActivity : Activity(), SpectrumHost {
         scroll.swipeTarget = if (view == "week") { { content.getChildAt(content.childCount - 1)?.let(WeekScreen::grid) } } else null
         scroll.onSwipeTarget = if (view == "week") { dir -> slideFar = true; shiftWeek(dir, scroll.releaseVelocity) } else null
         scroll.onSwipe = when (view) {
-            "day" -> { dir -> slideFar = true; goCell(stripCell(sel, dir), dir) }
+            "day" -> { dir -> slideFar = true; dotsFly = stripCell(sel, dir) == WEEK_CELL; goCell(stripCell(sel, dir), dir) }
             "week" -> { dir -> slideFar = true; goCell(stripCell(WEEK_CELL, dir), dir) }
             else -> null
         }
+        // Up from Day is Week, and down from Week the day it came from: the page goes as the swipe passes the line.
+        scroll.onFlipUp = if (view == "day") { { flip(WEEK_CELL, 1) } } else null
+        scroll.onFlipDown = if (view == "week") { { flip(sel, -1) } } else null
         // Spectrum's tabs sync when pulled down.
         scroll.onPull = if (view in setOf("due", "files") && SpectrumStore.signedIn(this)) ::refresh else null
         // The Courses list (where Settings used to sit, under the courses) opens them when pulled up.
         scroll.onPullUp = if (view == "files" && openCourse == null) ::openSettings else null
-        if (pendingSlide != 0) {
+        if (pendingRise != 0) {
+            // Swiped up or down to: the page carries on from the side the finger took the last one, at its speed.
+            Motion.riseIn(page, pendingRise * scroll.height * 0.35f, scroll.flipVelocity)
+            pendingRise = 0
+        } else if (pendingSlide != 0) {
             // Another day: from the side it was swiped in from, or from close by after a tap.
             // A swipe's page carries on at the finger's speed; a tap's comes from close by, from rest.
             Motion.slideIn(page, pendingSlide * if (slideFar) scroll.width * 0.35f else ui.dp(40f).toFloat(), if (slideFar) scroll.releaseVelocity else 0f)
@@ -439,19 +465,53 @@ class MainActivity : Activity(), SpectrumHost {
         }
         slideFar = false
         if (keepScroll) scroll.post { scroll.scrollTo(0, y) } else scroll.scrollTo(0, 0)
+        dots?.invoke()
         updateBack()
+    }
+
+    /**
+     * Swiped from Day to Week: each class's dot under its day in the strip pops out and flies down into its class
+     * on the grid, which fills in from where it lands; a day after the one before, and the dots of a day one after
+     * another. Taken from the strip before it changes, launched once the grid is on the page.
+     */
+    private fun flyingDots(): (() -> Unit)? {
+        val swiped = dotsFly
+        dotsFly = false
+        if (!swiped || view != "week" || stripWeek != false || !Motion.enabled || stripDots.size != 5) return null
+        val starts = stripDots.mapIndexed { k, row ->
+            val day = timetable.day(k + 1)
+            row.mapIndexedNotNull { i, v -> day.getOrNull(i)?.let { s -> Triple(i, s.course.color, Motion.onScreen(v).let { r -> android.graphics.PointF(r.centerX(), r.centerY()) }) } }
+        }
+        if (starts.all { it.isEmpty() }) return null
+        WeekGrid.incoming = true
+        return {
+            val layer = flights()
+            for ((k, row) in starts.withIndex()) for ((i, colour, at) in row) {
+                val day = k + 1
+                layer.dot(colour, at, k * 30L + i * 25L, { weekGrid()?.classAt(day, i) }) { landed -> weekGrid()?.land(day, i, landed) }
+            }
+        }
     }
 
     private fun renderTop(n: Now) {
         val p = ui.p
         val tt = timetable
+        // Before the title and the strip change: what's leaving them flies as a rocket.
+        val launch = rocketLaunch()
         showTitle(n)
         stripFrame.visibility = if (view == "day" || view == "week") View.VISIBLE else View.GONE
-        if (stripFrame.visibility != View.VISIBLE) return
+        if (stripFrame.visibility != View.VISIBLE) { stripWeek = null; launch?.invoke(); return }
+        // On Week the strip is its five days only, each over its column of the grid (which has no row of day
+        // names of its own); the Week chip's label is in the title. On Day, the days and the Week chip.
+        val onWeek = view == "week"
+        // Between the two, each day glides from where it was (still gliding, where it's drawn) to its new place.
+        val from = if (stripWeek != null && stripWeek != onWeek && stripDays.size == 5) stripDays.map { (chip, _, _) -> (chip.left + chip.translationX).toInt() to chip.width } else null
+        stripWeek = onWeek
         strip.removeAllViews()
         stripTrack.removeAllViews()
         stripDays.clear()
-        val index = if (view == "week") 5 else sel - 1
+        stripDots.clear()
+        val index = if (onWeek) 5 else sel - 1
         // The pill glides; the two labels it leaves and reaches change colour with it.
         val moved = stripIndex != -1 && stripIndex != index
         fun fg(today: Boolean, selected: Boolean) = when {
@@ -460,8 +520,13 @@ class MainActivity : Activity(), SpectrumHost {
             today -> p.accentText
             else -> p.text
         }
-        for (i in 0..5) {
-            stripTrack.addView(View(this).apply { background = ui.shape(p.surface, 12f) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, if (i == 5) 1.15f else 1f).apply { if (i > 0) marginStart = ui.dp(6) })
+        // On Week, the days start where Monday's column does and are as far apart as the columns.
+        val inset = if (onWeek) ui.dp(WeekGrid.AXIS + WeekGrid.GAP - WeekGrid.BLEED) else 0
+        val gap = ui.dp(if (onWeek) WeekGrid.GAP else 6f)
+        strip.setPaddingRelative(inset, 0, 0, 0)
+        stripTrack.setPaddingRelative(inset, 0, 0, 0)
+        for (i in 0..(if (onWeek) 4 else 5)) {
+            stripTrack.addView(View(this).apply { background = ui.shape(p.surface, 12f) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, if (i == 5) 1.15f else 1f).apply { if (i > 0) marginStart = gap })
         }
         // Every chip is as tall as the tallest (match parent in the strip), so the pill covers the Week chip too.
         fun chip(description: String, vararg parts: View) = ui.column().apply {
@@ -481,52 +546,148 @@ class MainActivity : Activity(), SpectrumHost {
             val today = days == 0
             val name = ui.text(DAY_SHORT[d], 10.5f, fg(today, selected), ui.f.bodyBold, caps = true, spacing = 0.1f)
             val date = ui.text(dateIn(days).get(Calendar.DAY_OF_MONTH).toString(), 22f, fg(today, selected), ui.f.sign)
+            // On Week, larger: into the room the dots leave.
+            if (onWeek) weekTileText().let { w ->
+                name.setTextSize(TypedValue.COMPLEX_UNIT_PX, w.name)
+                date.setTextSize(TypedValue.COMPLEX_UNIT_PX, w.date)
+            }
             for (t in listOf(name, date)) {
                 if (moved && selected) Motion.tint(t, fg(today, false), fg(today, true))
                 if (moved && stripIndex == d - 1) Motion.tint(t, fg(today, true), fg(today, false), 90)
             }
+            // Between Day and Week they grow or shrink from the size they were, as the tiles glide.
+            if (from != null && Motion.enabled) {
+                val w = weekTileText()
+                val was = if (onWeek) listOf(name to w.dayName, date to w.dayDate) else listOf(name to w.name, date to w.date)
+                for ((t, size) in was) {
+                    t.scaleX = size / t.textSize
+                    t.scaleY = t.scaleX
+                    t.animate().scaleX(1f).scaleY(1f).spring(Motion.SETTLE).start()
+                }
+            }
+            // A dot for each class in its course's colour. On Week they're in the grid below: their row goes, and
+            // the name and date grow into its room ([weekTileText]).
             val dots = ui.row(gap = 3f).apply {
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ui.dp(6))
-                for (s in tt.day(d)) addView(View(context).apply { background = ui.shape(s.course.color, 99f) }, LinearLayout.LayoutParams(ui.dp(6), ui.dp(6)))
+                if (onWeek) visibility = View.GONE
+                else for (s in tt.day(d)) addView(View(context).apply { background = ui.shape(s.course.color, 99f) }, LinearLayout.LayoutParams(ui.dp(6), ui.dp(6)))
             }
             val dayChip = chip(dayWords(d, days), name, date, dots).apply {
                 setOnClickListener { pickedDay = true; goDay(d) }
+                if (onWeek) weekTileText().let { w -> setPadding(paddingLeft, w.top, paddingRight, w.bottom) }
             }
-            strip.addView(dayChip, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { if (d > 1) marginStart = ui.dp(6) })
+            strip.addView(dayChip, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { if (d > 1) marginStart = gap })
             stripDays += Triple(dayChip, name, date)
+            stripDots += (0 until dots.childCount).map(dots::getChildAt)
+        }
+        from?.let { old ->
+            val days = stripDays.map { it.first }
+            val slots = (0 until 5).map(stripTrack::getChildAt)
+            Motion.reflow(days + slots, old + old, slots.toSet())
+        }
+        weekChip = null
+        if (onWeek) {
+            stripGlider.hide()
+            stripIndex = index
+            launch?.invoke()
+            return
         }
         // The week grid lives under Day: one more chip after Friday, saying which week of the semester it is.
-        val week = index == 5
         val (weekName, weekOf, weekWords) = semesterLabel()
         // One line, shrinking to fit the chip: "Revision" at 22sp is wider than it. "of 14" only in a teaching week.
-        val nameText = ui.fitText(weekName, 22f, if (week) p.ground else p.text, ui.f.sign, lines = 1)
-        val ofText = ui.text(weekOf.orEmpty(), 10.5f, if (week) p.ground else p.muted, ui.f.bodyBold, caps = true, spacing = 0.1f).apply { if (weekOf == null) visibility = View.GONE }
-        val weekParts = listOf(nameText, ofText)
-        for ((k, t) in weekParts.withIndex()) {
-            val rest = if (k == 0) p.text else p.muted
-            if (moved && week) Motion.tint(t, rest, p.ground)
-            if (moved && stripIndex == 5) Motion.tint(t, p.ground, rest, 90)
+        val nameText = ui.fitText(weekName, 22f, p.text, ui.f.sign, lines = 1)
+        val ofText = ui.text(weekOf.orEmpty(), 10.5f, p.muted, ui.f.bodyBold, caps = true, spacing = 0.1f).apply { if (weekOf == null) visibility = View.GONE }
+        val chipView = chip("$weekWords, ${tt.sessions.size} classes a week", nameText, ofText).apply {
+            setOnClickListener { goCell(WEEK_CELL) }
         }
-        val chipView = chip("$weekWords, ${tt.sessions.size} classes a week", *weekParts.toTypedArray()).apply {
-            setOnClickListener {
-                // On another week, a double tap brings back this one; otherwise it opens Week.
-                val t = android.os.SystemClock.uptimeMillis()
-                if (view == "week" && weekShift != 0 && t - weekChipTap < android.view.ViewConfiguration.getDoubleTapTimeout()) {
-                    weekChipTap = 0L
-                    Haptics.back(this)
-                    shiftWeek(-weekShift)
-                } else {
-                    weekChipTap = t
-                    goCell(WEEK_CELL)
-                }
-            }
-        }
-        strip.addView(chipView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.15f).apply { marginStart = ui.dp(6) })
+        strip.addView(chipView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.15f).apply { marginStart = gap })
         weekChip = chipView
-        weekNameText = nameText
-        weekOfText = ofText
-        stripGlider.moveTo(index, if (view == "day" && daysTo(sel) == 0) p.accent else p.text)
+        // Back from Week: the Week chip and its slot wait for the rocket bringing them back.
+        if (rocketTo == ROCKET_STRIP) listOf(chipView, stripTrack.getChildAt(5)).forEach { it.alpha = 0f }
+        stripGlider.moveTo(index, if (daysTo(sel) == 0) p.accent else p.text)
         stripIndex = index
+        launch?.invoke()
+    }
+
+    /** Week's strip tiles' text: the name's and the date's sizes (px), Day's sizes they grow from, and the tiles' top and bottom padding. */
+    private class WeekTileText(val name: Float, val date: Float, val dayName: Float, val dayDate: Float, val top: Int, val bottom: Int)
+    private var weekTileText: WeekTileText? = null
+
+    /**
+     * On Week the tiles' dots are in the grid, so the name (12sp, from 10.5) and the date grow into their room
+     * (the 5dp above the dots and the dots' 6dp), the date as large as fits: the tiles are full and the strip is as
+     * tall as on Day. Measured from real text at the phone's font size; what's left over is split above and below.
+     */
+    private fun weekTileText(): WeekTileText = weekTileText ?: run {
+        fun height(t: TextView) = t.apply { measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED) }.measuredHeight
+        fun name(sp: Float) = ui.text("Wed", sp, face = ui.f.bodyBold, caps = true, spacing = 0.1f)
+        fun date(px: Float) = ui.text("30", 22f, face = ui.f.sign).apply { setTextSize(TypedValue.COMPLEX_UNIT_PX, px) }
+        val dayName = name(10.5f)
+        val dayDate = date(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 22f, resources.displayMetrics))
+        val room = height(dayName) + ui.dp(2) + height(dayDate) + ui.dp(5) + ui.dp(6)
+        val bigName = name(12f)
+        val left = room - height(bigName) - ui.dp(2)
+        // Text's height grows with its size: from Day's date to the size that fills what's left, then down a pixel at a time should rounding overfill it.
+        var size = dayDate.textSize * left / height(dayDate)
+        while (size > dayDate.textSize && height(date(size)) > left) size -= 1f
+        val extra = (left - height(date(size))).coerceAtLeast(0)
+        WeekTileText(bigName.textSize, size, dayName.textSize, dayDate.textSize, ui.dp(8) + extra / 2, ui.dp(8) + extra - extra / 2).also { weekTileText = it }
+    }
+
+    /**
+     * Going from Day to Week, the Week chip turns into a rocket and flies up into Week's title, where the week's
+     * words then show; going back, they turn into the rocket and it flies down into the strip, where the Week chip
+     * comes back. Any way between the two (a tap, a swipe, the tab, Back). Taken before the title and the strip
+     * change, launched after.
+     */
+    private fun rocketLaunch(): (() -> Unit)? {
+        val to = when {
+            stripWeek == false && view == "week" -> ROCKET_TITLE
+            stripWeek == true && view == "day" -> ROCKET_STRIP
+            else -> return null
+        }
+        // One still on its way lands where it was going.
+        flights?.land()
+        if (!Motion.enabled) return null
+        val source = (if (to == ROCKET_TITLE) weekChip else titleMark()) as? ViewGroup ?: return null
+        if (!source.isAttachedToWindow || source.width == 0) return null
+        // The Week chip on its slot (the tile colour, 12dp corners), or the title's words, which grow a tile as they reshape.
+        val tile = FlightLayer.tile(source, ui.dp(12f).toFloat(), ui.p.surface, solid = to == ROCKET_TITLE)
+        // It becomes the rocket: the title's words (fading with their title) go now; the chip goes with the strip's change.
+        if (to == ROCKET_STRIP) source.alpha = 0f
+        rocketTo = to
+        return { flights().rocket(tile, { rocketTarget(to) }, { arrived -> rocketHit(to, arrived) }) }
+    }
+
+    private fun flights(): FlightLayer = flights?.takeIf { it.isAttachedToWindow } ?: FlightLayer(ui) { if (flights === it) flights = null }.also { layer ->
+        findViewById<FrameLayout>(android.R.id.content).addView(layer, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        flights = layer
+    }
+
+    /** Week's title's week of the semester, on the title shown now (the newest, while an old one slips away). */
+    private fun titleMark(): View? = titleBox.getChildAt(titleBox.childCount - 1)?.findViewWithTag(WEEK_MARK)
+
+    /** Where the rocket going [to] the title or the strip hits, on screen: the middle of what it brings back. */
+    private fun rocketTarget(to: String): android.graphics.PointF? {
+        val v = (if (to == ROCKET_TITLE) titleMark() else weekChip)?.takeIf { it.isAttachedToWindow && it.width > 0 } ?: return null
+        val r = Motion.onScreen(v)
+        return android.graphics.PointF(r.centerX(), r.centerY())
+    }
+
+    /** The rocket going [to] the title or the strip hit ([arrived]), or was landed by another move: what it brought shows. */
+    private fun rocketHit(to: String, arrived: Boolean) {
+        if (rocketTo == to) rocketTo = null
+        val here = if (to == ROCKET_TITLE) view == "week" else stripWeek == false
+        val brought = if (!here) emptyList() else if (to == ROCKET_TITLE) listOfNotNull(titleMark()) else listOfNotNull(weekChip, stripTrack.getChildAt(5))
+        brought.forEach { it.alpha = 1f }
+        if (!arrived || brought.isEmpty()) return
+        // It pops out where it hit, which takes a little knock, with a light tap.
+        brought.forEach { Motion.pop(it, 0.5f) }
+        val struck = if (to == ROCKET_TITLE) titleBox else stripFrame
+        struck.animate().translationY(ui.dp(3f).toFloat()).setDuration(50).setInterpolator(Motion.EXIT).withEndAction {
+            struck.animate().translationY(0f).spring(Motion.BOUNCY).start()
+        }.start()
+        Haptics.threshold(shell, false)
     }
 
     /**
@@ -541,9 +702,10 @@ class MainActivity : Activity(), SpectrumHost {
         val log = view == "settings" && settingsLog
         val page = if (log) "Attendance log" else PAGE_TITLES[view]
         val days = daysTo(sel)
+        val semester = semesterLabel()
         val words = when {
             view == "day" -> listOf(DAY_NAMES[sel], dateText(days))
-            view == "week" -> listOf(weekRange(daysTo(1)))
+            view == "week" -> listOf(weekRange(daysTo(1)), semester.first, semester.second.orEmpty())
             page != null -> listOf(page)
             else -> listOf("${DAY_NAMES[n.dow]} ${dateText(0)}")
         }
@@ -563,14 +725,31 @@ class MainActivity : Activity(), SpectrumHost {
         val title: ViewGroup = when {
             page != null -> pageTitle(ui, page, line)
             view == "day" -> dayTitle(ui, DAY_NAMES[sel], dateText(days), today, line)
-            view == "week" -> weekTitle(ui, words.first(), line)
+            view == "week" -> weekTitle(ui, words.first(), semester.first, semester.second, line).also { t ->
+                t.findViewWithTag<View>(WEEK_MARK)?.apply {
+                    // Brought up by the rocket: there once it hits.
+                    if (rocketTo == ROCKET_TITLE) alpha = 0f
+                    contentDescription = semester.third
+                }
+            }
             else -> ui.row().apply { addView(ui.label(words.first(), p.muted, 11f)) }
         }
+        // On another week, a double tap on Week's title brings back this one. Only Week's title takes taps (a
+        // title that does nothing shouldn't sink when touched).
+        titleBox.setOnClickListener(if (view != "week") null else View.OnClickListener {
+            val at = android.os.SystemClock.uptimeMillis()
+            if (view == "week" && weekShift != 0 && at - titleTap < android.view.ViewConfiguration.getDoubleTapTimeout()) {
+                titleTap = 0L
+                Haptics.back(it)
+                shiftWeek(-weekShift)
+            } else titleTap = at
+        })
         val old = (0 until titleBox.childCount).map(titleBox::getChildAt)
         titleBox.addView(title, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
         if (old.isEmpty()) return
         if (!Motion.enabled) return old.forEach(titleBox::removeView)
-        Motion.retitle(old, title, pendingSlide * ui.dp(32f).toFloat(), ui.dp(10f).toFloat())
+        // Swiped down to, the new title drops in from above rather than rising.
+        Motion.retitle(old, title, pendingSlide * ui.dp(32f).toFloat(), (if (pendingRise < 0) -1 else 1) * ui.dp(10f).toFloat())
     }
 
     /** Settings (theme, imports, notifications, vibration, account), as in redesign 1p: the last tab. */
@@ -839,10 +1018,9 @@ class MainActivity : Activity(), SpectrumHost {
         render(keepScroll = true)
     }
 
-    /** The strip for the week shown now, in place: each date and the Week chip's label roll over from the side the week came from. */
+    /** The strip for the week shown now, in place: each date rolls over from the side the week came from (the week's label is in the title). */
     private fun shiftStrip(dir: Int) {
         val p = ui.p
-        val tt = timetable
         if (stripDays.size != 5) return renderTop(now())
         val dx = dir * ui.dp(12f).toFloat()
         for ((k, views) in stripDays.withIndex()) {
@@ -855,13 +1033,6 @@ class MainActivity : Activity(), SpectrumHost {
             roll(date, dateIn(days).get(Calendar.DAY_OF_MONTH).toString(), dx, 0f)
             chip.contentDescription = dayWords(d, days)
         }
-        val (weekName, weekOf, weekWords) = semesterLabel()
-        weekNameText?.let { roll(it, weekName, dx, 0f) }
-        weekOfText?.apply {
-            visibility = if (weekOf == null) View.GONE else View.VISIBLE
-            if (weekOf != null) roll(this, weekOf, dx, 0f)
-        }
-        weekChip?.contentDescription = "$weekWords, ${tt.sessions.size} classes a week"
     }
 
     /** A day chip's words for TalkBack: "Monday 9 Nov, 3 classes". */
@@ -890,6 +1061,14 @@ class MainActivity : Activity(), SpectrumHost {
         goCell(d, dir)
     }
 
+    /** A swipe up ([rise] 1) or down (-1) went past its line, which already vibrated: [cell] comes from that side. */
+    private fun flip(cell: Int, rise: Int) {
+        pendingRise = rise
+        dotsFly = cell == WEEK_CELL
+        slideFar = true
+        goCell(cell)
+    }
+
     /**
      * Shows the strip's [cell]: a day (1–5) or the Week grid ([WEEK_CELL]). From another cell the page slides
      * in from the side it's on ([dir] for a swipe), as from one day to the next; from another tab it rises.
@@ -902,8 +1081,8 @@ class MainActivity : Activity(), SpectrumHost {
             "day" -> sel
             else -> null
         }
-        if (here == cell) return
-        pendingSlide = if (here == null) 0 else if (dir != 0) dir else if (cell > here) 1 else -1
+        if (here == cell) { pendingRise = 0; return }
+        pendingSlide = if (here == null || pendingRise != 0) 0 else if (dir != 0) dir else if (cell > here) 1 else -1
         // A tap vibrates (a swipe already bumped at its threshold). Day to day here: the view stays "day", so go doesn't.
         if (view == "day" && !week && !slideFar) Haptics.tick(shell)
         if (!week) sel = cell
@@ -1120,6 +1299,9 @@ class MainActivity : Activity(), SpectrumHost {
 
     companion object {
         const val EXTRA_VIEW = "view"
+        /** Where a rocket is going ([rocketTo]): Week's title, or Day's strip. */
+        private const val ROCKET_TITLE = "title"
+        private const val ROCKET_STRIP = "strip"
         /** The Sign out question (redesign 1q). Sign out deletes everything ([AppReset]). */
         const val SIGN_OUT_TITLE = "Sign out?"
         const val SIGN_OUT_BODY = "All your data in the app will be deleted.\nYou can sign in again any time."

@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PointF
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -27,6 +28,7 @@ import com.skylightlim.umtimetable.Motion.spring
 import java.time.LocalDate
 import java.util.Calendar
 import kotlin.math.ceil
+import kotlin.math.hypot
 
 /** What the screens need from the activity. */
 interface Host {
@@ -172,10 +174,49 @@ fun dayTitle(ui: Ui, day: String, date: String, today: Boolean, line: String?): 
     }, underTitle(ui))
 }
 
-/** Week's title: the dates of the strip's week, with [line] (its deadlines) under them. */
-fun weekTitle(ui: Ui, range: String, line: String?): LinearLayout = ui.column().apply {
-    addView(titleText(ui, range))
+/** The tag of the week of the semester on Week's title ([weekTitle]), for the activity to find it. */
+const val WEEK_MARK = "weekMark"
+
+/**
+ * Week's title: the dates of the week shown, as large as Day's title, and on the same line the week of the
+ * semester in the Week chip's words, without its tile ([week] "W5" over [of] "OF 14", or "Break", "Revision",
+ * "Exams"); [line] (its deadlines) under them.
+ */
+fun weekTitle(ui: Ui, range: String, week: String, of: String?, line: String?): LinearLayout = ui.column().apply {
+    val dates = titleText(ui, range)
+    val words = ui.column().apply {
+        tag = WEEK_MARK
+        gravity = Gravity.CENTER
+        addView(ui.fitText(week, 22f, ui.p.text, ui.f.sign, lines = 1).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        })
+        of?.let { addView(ui.text(it, 10.5f, ui.p.muted, ui.f.bodyBold, caps = true, spacing = 0.1f), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(2) }) }
+    }
+    addView(WeekTitleLine(ui, dates, words), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     addView(smallLine(ui, line), underTitle(ui))
+}
+
+/**
+ * Week's title line: the [dates], measured first with the whole width (so they're Day's title's size), and the
+ * week's [words] 12dp after them, in the middle of the dates' line and no taller, so the top bar is as tall as
+ * on Day.
+ */
+@SuppressLint("ViewConstructor")
+private class WeekTitleLine(ui: Ui, private val dates: View, private val words: View) : LinearLayout(ui.context) {
+    init {
+        orientation = HORIZONTAL
+        isBaselineAligned = false
+        addView(dates)
+        addView(words, LayoutParams(LayoutParams.WRAP_CONTENT, 0).apply { marginStart = ui.dp(12) })
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val room = MeasureSpec.getSize(widthMeasureSpec)
+        val bounded = MeasureSpec.getMode(widthMeasureSpec) != MeasureSpec.UNSPECIFIED
+        dates.measure(if (bounded) MeasureSpec.makeMeasureSpec(room, MeasureSpec.AT_MOST) else widthMeasureSpec, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+        (words.layoutParams as LayoutParams).height = dates.measuredHeight
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+    }
 }
 
 /**
@@ -195,8 +236,11 @@ private fun smallLine(ui: Ui, text: String?) = ui.label(text ?: "Week", ui.p.mut
  */
 internal fun heldAt(at: Int, start: Int, end: Int) = (at - start).coerceIn(0, maxOf(0, end - start - 30))
 
-/** Where a plan held [grab] minutes below its start begins with the finger at half hour [at]: 08:00 to 18:30. */
-internal fun draggedStart(at: Int, grab: Int) = (at - grab).coerceIn(8 * 60, 18 * 60 + 30)
+/**
+ * Where a plan held [grab] minutes below its start begins with the finger at half hour [at]: 08:00 to the grid's
+ * [last] half hour (18:30, or 23:30 with Week until midnight: a plan can go in the evening's slots too).
+ */
+internal fun draggedStart(at: Int, grab: Int, last: Int = 18 * 60 + 30) = (at - grab).coerceIn(8 * 60, last)
 
 /** Day at a glance: "3 classes · 08:00–19:00", or "No classes". */
 fun dayGlance(list: List<Session>): String =
@@ -492,15 +536,16 @@ object WeekScreen {
         val offSlot = FrameLayout(ui.context)
         offCard(h)?.let { offSlot.addView(it) }
         page.addView(offSlot, ui.wide())
-        val card = ui.column().apply {
-            background = ui.shape(p.surface, 18f, p.line)
-            setPadding(ui.dp(2), ui.dp(10), ui.dp(6), ui.dp(8))
-        }
+        // No card behind the grid: it sits on the page, out into the page's left margin ([WeekGrid.BLEED]), so the
+        // hours line up under the title's left edge and the days get the room the card's padding took.
+        page.clipChildren = false
         // The grid in a box of its own: going to another week, the grids slide through it as a carousel.
         val gridBox = FrameLayout(ui.context)
         gridBox.addView(grid(h, plans))
-        card.addView(gridBox, ui.wide())
-        val key = ui.row(gap = 16f).apply { setPadding(ui.dp(30), ui.dp(4), 0, 0) }
+        page.addView(gridBox, ui.wide().apply { marginStart = -ui.dp(WeekGrid.BLEED) })
+        // The key and the plans line start where the first day's column does.
+        val first = ui.dp(WeekGrid.AXIS + WeekGrid.GAP - WeekGrid.BLEED)
+        val key = ui.row(gap = 16f).apply { setPadding(first, ui.dp(4), 0, 0) }
         fun keyItem(swatch: View, label: String) = ui.row(gap = 6f).apply {
             addView(swatch)
             addView(ui.text(label, 12f, p.muted))
@@ -508,14 +553,13 @@ object WeekScreen {
         key.addView(keyItem(View(ui.context).apply { background = ui.shape(p.text, 3f); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(10)) }, "Lecture"))
         key.addView(keyItem(View(ui.context).apply { background = ui.shape(Color.TRANSPARENT, 3f, p.text, 1.5f); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(10)) }, "Tutorial"))
         key.addView(keyItem(View(ui.context).apply { setBackgroundColor(p.accent); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(3)) }, "Now"))
-        card.addView(key)
+        page.addView(key)
         // Plans: what a long press on a free time adds.
-        card.addView(ui.row(gap = 6f).apply {
-            setPadding(ui.dp(30), ui.dp(8), 0, ui.dp(2))
+        page.addView(ui.row(gap = 6f).apply {
+            setPadding(first, ui.dp(8), 0, ui.dp(2))
             addView(View(ui.context).apply { background = ui.shape(Palette.mix(p.text, p.surface, 0.12f), 3f, p.muted, 1.2f, dash = 2.5f); layoutParams = LinearLayout.LayoutParams(ui.dp(14), ui.dp(10)) })
             addView(ui.text("Plan · long-press a free time to add one", 12f, p.muted))
         })
-        page.addView(card)
         if (tt.sessions.isEmpty()) page.addView(ui.text("No timetable yet · sign in to Spectrum in Courses", 13.5f, p.muted), ui.wide(top = 12f))
         // Each course's hours are on its course page now, and the week's total under the Courses list.
         page.tag = Parts(offSlot, gridBox)
@@ -577,9 +621,9 @@ class WeekGrid(
 ) : View(ui.context) {
     private val p = ui.p
     private val hour = ui.dp(48f).toFloat()
-    private val head = ui.dp(22f).toFloat()
-    private val axis = ui.dp(28f).toFloat()
-    private val gapX = ui.dp(4f).toFloat()
+    private val axis = ui.dp(AXIS).toFloat()
+    private val gapX = ui.dp(GAP).toFloat()
+    /** Above the first hour line and below the last. No row of day names: the strip's days are over their columns ([AXIS], [GAP], [BLEED] line them up). */
     private val padY = ui.dp(8f).toFloat()
     private val startMin = 8 * 60
     /** 19:00, or midnight with Settings' Week until midnight ([DayEnd]); and the grid's hours from 08:00. */
@@ -601,7 +645,6 @@ class WeekGrid(
     private fun sp(v: Float) = v * resources.displayMetrics.density * minOf(resources.configuration.fontScale, 1.15f)
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = ui.dp(1.5f).toFloat() }
-    private val dayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodyBold; textSize = sp(12f); textAlign = Paint.Align.CENTER }
     private val axisPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.mono; textSize = sp(10f); color = p.faint; textAlign = Paint.Align.RIGHT }
     private val codePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.monoBold; textSize = sp(9f) }
     private val namePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = ui.f.bodySemi; textSize = sp(10f) }
@@ -618,20 +661,27 @@ class WeekGrid(
     /** A plan just saved pops into its place ([landing]). */
     private var landId = landing.also { landing = null }
     private var landScale = 1f
+    /**
+     * Swiped into from Day ([incoming]): how far each class has filled in since the strip's dot for it landed
+     * ([land]), 0 (not yet: an empty space) to 1, and where the dot landed, which it fills out from. Null otherwise.
+     */
+    private val filling = if (incoming.also { incoming = false } && Motion.enabled) java.util.IdentityHashMap<Session, Float>().apply { tt.sessions.forEach { put(it, 0f) } } else null
+    private val fillFrom = java.util.IdentityHashMap<Session, PointF>()
+    private val fillClip = android.graphics.Path()
 
     init {
         contentDescription = "Week timetable: " + tt.sessions.joinToString("; ") { "${DAY_NAMES[it.day]} ${clockText(it.start)} ${it.course.code} ${it.type} ${it.room}" }
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (head + padY * 2 + hour * hours).toInt())
+        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (padY * 2 + hour * hours).toInt())
     }
 
     override fun onDraw(canvas: Canvas) {
         blocks.clear()
         planBlocks.clear()
         val colW = (width - axis - gapX * 5) / 5
-        val top = head + padY
+        val top = padY
         val bottom = top + hour * hours
         // Now: on a weekday between 08:00 and the end of the day.
         val nowY = if (today != null && now.min >= startMin && now.min <= endMin) top + (now.min - startMin) / 60 * hour else null
@@ -646,8 +696,6 @@ class WeekGrid(
             val left = axis + gapX + (d - 1) * (colW + gapX)
             val isToday = d == today
             val holiday = holidays[d - 1]
-            dayPaint.color = if (isToday || holiday != null) p.accentText else p.muted
-            canvas.drawText(DAY_SHORT[d], left + colW / 2, head - ui.dp(8f), dayPaint)
             if (isToday) {
                 fill.color = Palette.mix(p.accent, p.surface, 0.07f)
                 canvas.drawRoundRect(RectF(left, top, left + colW, bottom), ui.dp(6f).toFloat(), ui.dp(6f).toFloat(), fill)
@@ -737,6 +785,26 @@ class WeekGrid(
 
     private fun drawBlock(canvas: Canvas, s: Session, r: RectF, past: Boolean) {
         blocks += r to s
+        // Its dot still on the way: not there yet. Landed: it fills in, a circle spreading out from the dot.
+        val filled = filling?.get(s)
+        if (filled != null && filled <= 0f) return
+        if (filled != null && filled < 1f) {
+            val at = fillFrom[s] ?: PointF(r.centerX(), r.centerY())
+            val far = maxOf(hypot(r.left - at.x, r.top - at.y), hypot(r.right - at.x, r.top - at.y), hypot(r.left - at.x, r.bottom - at.y), hypot(r.right - at.x, r.bottom - at.y))
+            val dot = ui.dp(FlightLayer.DOT_RADIUS * 1.5f).toFloat()
+            fillClip.reset()
+            fillClip.addCircle(at.x, at.y, dot + (far - dot) * filled, android.graphics.Path.Direction.CW)
+            canvas.save()
+            canvas.clipPath(fillClip)
+            paintBlock(canvas, s, r, past)
+            canvas.restore()
+            return
+        }
+        paintBlock(canvas, s, r, past)
+    }
+
+    /** A class's block: its course's colour (a tutorial's tint and outline), its code, name and room; faded when [past]. */
+    private fun paintBlock(canvas: Canvas, s: Session, r: RectF, past: Boolean) {
         val c = s.course.color
         val radius = ui.dp(7f).toFloat()
         val alpha = if (past) 115 else 255
@@ -814,8 +882,35 @@ class WeekGrid(
         canvas.restore()
     }
 
+    /** Where day [day]'s [index]th class (in the strip's order) is on screen, the middle of its block: where its dot goes. Null before layout. */
+    fun classAt(day: Int, index: Int): PointF? {
+        val s = tt.day(day).getOrNull(index) ?: return null
+        if (width == 0) return null
+        val at = IntArray(2).also(::getLocationOnScreen)
+        val r = cell(day, s.start, s.end)
+        return PointF(at[0] + r.centerX(), at[1] + r.centerY())
+    }
+
+    /** Day [day]'s [index]th class's dot landed at [screen]: the class fills in from there. */
+    fun land(day: Int, index: Int, screen: PointF) {
+        val s = tt.day(day).getOrNull(index) ?: return
+        val map = filling ?: return
+        if ((map[s] ?: 1f) > 0f) return
+        val at = IntArray(2).also(::getLocationOnScreen)
+        fillFrom[s] = PointF(screen.x - at[0], screen.y - at[1])
+        map[s] = 0.001f
+        android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            interpolator = Motion.QUICK
+            duration = Motion.QUICK.duration
+            addUpdateListener { map[s] = maxOf(0.001f, it.animatedValue as Float); invalidate() }
+            start()
+        }
+    }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        // Should a dot never land (the flight cut short), its class doesn't stay empty.
+        filling?.let { map -> postDelayed({ if (map.values.any { it <= 0f }) { map.replaceAll { _, f -> if (f <= 0f) 1f else f }; invalidate() } }, 1800) }
         if (landId == null || !Motion.enabled) return
         landScale = 0.55f
         android.animation.ValueAnimator.ofFloat(0.55f, 1f).apply {
@@ -865,7 +960,7 @@ class WeekGrid(
 
     private val colW get() = (width - axis - gapX * 5) / 5
     private fun colLeft(d: Int) = axis + gapX + (d - 1) * (colW + gapX)
-    private val gridTop get() = head + padY
+    private val gridTop get() = padY
     private fun yOf(min: Int) = gridTop + (min - startMin) / 60f * hour
     private fun cell(d: Int, start: Int, end: Int) = RectF(colLeft(d) + ui.dp(1f), yOf(start) + 1, colLeft(d) + colW - ui.dp(1f), yOf(end) - 1)
 
@@ -897,7 +992,7 @@ class WeekGrid(
     /** The box to the half hour [grab] above the one under ([x], [y]): it moves with the finger from where it was taken. */
     private fun dragTo(x: Float, y: Float) {
         val (d, at) = halfHourAt(x, y)
-        moveBox(d, draggedStart(at, grab))
+        moveBox(d, draggedStart(at, grab, endMin - 30))
     }
 
     /**
@@ -1120,10 +1215,17 @@ class WeekGrid(
     }
 
     companion object {
+        /** The hour axis's width, room for the now line's time ("12:34"), and the gap before each day's column (dp). */
+        const val AXIS = 28f
+        const val GAP = 4f
+        /** How far the grid reaches out into the page's left margin (dp), the axis with it: the page's 16dp less 4. */
+        const val BLEED = 12f
         /** The id of a plan just saved, for the next grid drawn to pop it into place. */
         var landing: String? = null
         /** A selection box is up: the page shouldn't be redrawn under it (the minute's redraw waits). */
         var holding = false
+        /** The next grid is swiped into from Day: its classes fill in as the strip's dots land on them ([land]). */
+        var incoming = false
         private val LAYOUTS = android.util.LruCache<String, StaticLayout>(96)
     }
 }

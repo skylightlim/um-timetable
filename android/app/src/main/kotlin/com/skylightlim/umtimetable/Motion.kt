@@ -248,16 +248,39 @@ object Motion {
         private val pill = View(frame.context).apply { background = shape }
         private var color: Int? = null
         private var placed = false
+        /** Put away ([hide]): the next [moveTo] puts it straight there and fades it in, rather than gliding from where it was. */
+        private var hidden = false
+        private var fading: Animator? = null
 
         init {
             frame.addView(pill, index, FrameLayout.LayoutParams(0, 0))
         }
 
-        /** Glides to the row's item at [index], turning [color]; the first time it's just put there. */
+        /** Nothing is chosen (Week's strip, its days only): the pill fades away. */
+        fun hide() {
+            // After any move still waiting for the row's layout, as a move is.
+            row.post {
+                if (hidden) return@post
+                hidden = true
+                fading?.cancel()
+                if (!placed || !enabled) { pill.alpha = 0f; return@post }
+                fading = fade(pill, pill.alpha, 0f, 120)
+            }
+        }
+
+        /** Glides to the row's item at [index], turning [color]; the first time (or after [hide]) it's just put there. */
         fun moveTo(index: Int, color: Int) {
             row.post {
                 val target = row.getChildAt(index) ?: return@post
                 if (target.width == 0) return@post
+                if (hidden) {
+                    hidden = false
+                    placed = false
+                    fading?.cancel()
+                    pill.animate().cancel()
+                    pill.alpha = 1f
+                    if (enabled) fading = fade(pill, 0f, 1f, 200)
+                }
                 // One width for the pill, scaled from its left edge to each item's (the Week chip is wider):
                 // changing its layout width mid-glide would jump.
                 val lp = pill.layoutParams
@@ -286,6 +309,38 @@ object Motion {
                 }
             }
         }
+    }
+
+    /**
+     * [views] laid out anew in other places (the strip's days between Day and Week): after the coming layout each
+     * starts where it was ([from]: its old left and width in the same parent) and glides to its new place. Those in
+     * [stretch] (plain shapes; text would stretch with them) also stretch from their old width.
+     */
+    fun reflow(views: List<View>, from: List<Pair<Int, Int>>, stretch: Set<View> = emptySet()) {
+        val first = views.firstOrNull() ?: return
+        if (!enabled) return
+        val observer = first.viewTreeObserver
+        // Before the first frame of the new layout is drawn, or it would show there for a frame and then jump back.
+        observer.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (observer.isAlive) observer.removeOnPreDrawListener(this) else first.viewTreeObserver.removeOnPreDrawListener(this)
+                for ((v, old) in views.zip(from)) {
+                    val (left, width) = old
+                    if (v.width == 0 || width == 0) continue
+                    v.animate().cancel()
+                    if (v in stretch) {
+                        v.pivotX = 0f
+                        v.translationX = (left - v.left).toFloat()
+                        v.scaleX = width / v.width.toFloat()
+                        v.animate().translationX(0f).scaleX(1f).spring(SETTLE).start()
+                    } else {
+                        v.translationX = (left + width / 2f) - (v.left + v.width / 2f)
+                        v.animate().translationX(0f).spring(SETTLE).start()
+                    }
+                }
+                return true
+            }
+        })
     }
 
     /** An icon's tint changing with the pill gliding under it. */
@@ -333,6 +388,14 @@ object Motion {
         if (!enabled) return
         page.translationX = dx
         page.animate().translationX(0f).spring(SETTLE.toward(dx, 0f, pxPerSecond)).start()
+        fade(page, 0.4f, 1f, 200)
+    }
+
+    /** A page rising into place from [dy] below (dropping from above, negative): swiped up or down to, already moving at [pxPerSecond]. */
+    fun riseIn(page: View, dy: Float, pxPerSecond: Float = 0f) {
+        if (!enabled) return
+        page.translationY = dy
+        page.animate().translationY(0f).spring(SETTLE.toward(dy, 0f, pxPerSecond)).start()
         fade(page, 0.4f, 1f, 200)
     }
 

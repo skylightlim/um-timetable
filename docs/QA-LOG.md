@@ -18,6 +18,227 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 30 October 2026 (Week's strip: bigger day names and dates, filling the tiles)
+
+**Asked for:** on Week, make the Monday-to-Friday tiles' text bigger to fill the empty space.
+
+**Change:** on Week the tiles have no dots, and the room they left (5dp above them and their 6dp) was split above
+and below the text. Now the text grows into it instead: the day's name at 12sp (10.5 on Day) and the date as
+large as fits what's left of Day's tile height, about 29.5sp (22 on Day). The sizes are found by measuring real
+text at the phone's font size (`weekTileText`), so the tiles are full and the strip stays exactly as tall as
+on Day at any font size; what rounding leaves over is split above and below. Going between Day and Week the
+name and date grow or shrink from the size they were, on the same spring as the tiles' glide.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). From the fonts' line heights (Instrument Sans 700:
+1.22em, Big Shoulders 800: 1.197em): Day's name, date and dots take about 52dp; the 12sp name leaves about 35.5dp
+for the date, about 29.7sp. Still to look at on the phone: the tiles on Week (a wide date like "28" in each),
+the strip's height going Day to Week, and the text growing as the tiles glide.
+
+## 30 October 2026 (Week's title: the week as words, without a tile)
+
+**Asked for:** on Week's title, don't show "W5 of 14" as a tile: the words alone are enough.
+
+**Change:** the week on the title line is the Week chip's words with no tile behind them: "W5" over "OF 14" (or
+Break, Revision, Exams) in the chip's faces and sizes, 12dp after the dates, in the middle of the dates' line
+and no taller (so the top bar is still as tall as on Day). The dates are unchanged, at Day's title size. The
+rocket still hits the words' middle, and they pop in there. Going back to a day, the words turn into the rocket
+as the chip does going up, but having no tile of their own, the rocket's body fades in as they reshape
+(`FlightLayer.Tile.solid`).
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). Still to look at on the phone: the words beside the
+dates (a long range, a break week), the rocket's hit on them, and the rocket leaving them going back to a day.
+
+## 30 October 2026 (The rocket is the week's tile itself, reshaped)
+
+**Asked for:** the rocket should be transformed from the Week tile (it popped out of the tile's middle as the
+tile shrank away).
+
+**Change:** the tile itself becomes the rocket. Read off the real view (`FlightLayer.tile`: its place, the
+tile colour and 12dp corners, and each line's text, paint and baseline on screen), it crouches as before, then
+tips from upright towards where it's going and narrows into the rocket's body, all in one shape
+(`FlightLayer.body`: a rounded rectangle whose corners become a capsule's, then a pointed nose and a tight
+tail). Its "W5" turns from level to run along the body and shrinks to the body's label; "OF 14" fades. Last,
+the nose sharpens and takes its gold cap, the fins grow out of the sides and the flame lights. The rocket keeps
+the tile's colours (the tile colour with "W5" in the text colour; it was a dark body), with a soft shadow down
+the screen. Going back, the tile on Week's title does the same. 280ms from tap to lift-off (200 before), then
+the same arc and hit. Prototyped in a canvas first and rendered frame by frame at 3px a dp, light and dark.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). The prototype's frames: no grey in-between (the body
+stays the tile colour) and the label turns once. Read in the code, not drawn: the morph's last frame draws the
+same body and label as the flight's first. Still to look at on the phone: the first frame matching the chip (no jump), the white rocket on the
+light page, and the tile going back from the title.
+
+## 30 October 2026 (Week's title: the dates at Day's size, the week as a tile; double tap for this week)
+
+**Asked for:** make Week's dates ("2–6 Nov") as big as Day's title, and keep "W5 of 14" as a tile the size of a
+day's tile beside them; a double tap on the big title brings back the current week. (The user's answer to: the
+dates and "W5 of 14" can't share one line at Day's size; even "26–30 Oct W5 of 14" is 3% wider than
+"Wednesday 30 Sep".)
+
+**Change:** Week's title line (`WeekTitleLine`) measures the dates first with the whole width, so they're the size
+of Day's title, as before. Beside them, 12dp on, the week is a tile like the Week chip: the tile colour, 12dp
+corners, "W5" over "OF 14" (or Break, Revision, Exams) in the chip's faces and sizes. It's as wide as a day's
+tile in the strip below (the line's width less the grid's axis, in five with the columns' gaps: about 69dp on a
+412dp-wide screen) and as tall as the dates' line (about 64dp at 53sp; a day tile is about 69dp), so the top
+bar is as tall on Week as on Day. The rocket still hits its middle, and it pops in there. A double tap anywhere on
+Week's title (not only on the week, as before) brings this week back when another is shown; only Week's title
+takes taps, so other titles don't sink when touched. A long press still opens Settings.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). Widths from Big Shoulders 800: beside "28 Sep – 2
+Oct" at Day's size there's about 96dp on a 412dp-wide screen (83dp at 360dp) for the 12dp gap and the tile (69dp;
+58dp at 360dp). Still to look at on the phone: the dates against Day's title, the tile's width against Friday's
+tile below, the bar's height going Day to Week, and a double tap on the title after swiping two weeks on.
+
+## 30 October 2026 (Week's strip: each day's name and date in the middle of its tile)
+
+**Asked for:** on Week, the Monday-to-Friday tiles' words and dates aligned to the centre.
+
+**Change:** on Week the tiles have no dots (they're in the grid), but their row stayed, empty, under the date,
+so the name and date sat high in the tile. The row goes on Week and its room (5dp above it, 6dp of dots) is
+split between the tile's top and bottom padding: the name and date are in the middle, and the strip is exactly
+as tall as on Day (the halves add up to the same pixels).
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). Still to look at on the phone: the tiles on Week, and
+the strip not changing height between Day and Week.
+
+## 30 October 2026 (Flights: nothing left hidden when one is cut short)
+
+**Asked for:** nothing new: found reading over the day's changes before pushing them.
+
+**Change:** if the flight layer comes off the window mid-flight (the window's content replaced, as a new theme
+does), every rocket lands at once without its hit, so the title's week or the Week chip it was bringing isn't
+left hidden; before, it would have stayed invisible until the app was opened again. The grid's backstop after
+1.8s fills only the classes still waiting for their dot, not those already filling in (it jumped them to full
+and their fill pulled them back). Toggling Day and Week mid-glide, the days glide on from where they're drawn.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78).
+
+## 30 October 2026 (Swiping into Week, the strip's dots fly into their classes)
+
+**Asked for:** when the user swipes up, or swipes from Monday or Friday into Week, the coloured dots on the
+Monday-to-Friday chips fly out and fill in the week grid's coloured blocks.
+
+**Change:** a swipe that lands on Week from Day (up, right from Monday, left from Friday; not a tap, which
+has the rocket alone) takes each dot's place before the strip changes. On the flight layer each dot pops 10dp
+up out of its chip, swelling by half, then arcs over a little hump and down into the middle of its class's
+block on the new grid (looked up each frame, so it follows the page sliding or rising in), a day 30ms after
+the one before and each dot of a day 25ms after the last. The grid starts with its classes not there
+(`WeekGrid.incoming`) and each fills in as its dot lands, a circle spreading out from the dot to the block's
+corners (`land`, about 250ms). Should a dot never land (the flight cut short), every class is filled after 1.8s.
+A minute's redraw mid-flight draws a full grid, which the dots land on. With Remove animations on, nothing flies.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). A canvas prototype of the dots' path and the
+fill-in, rendered at 3px a dp, was looked at frame by frame (all landed by about 0.8s). Still to try on the
+phone: a swipe up, a swipe right on Monday and left on Friday (the page sliding while the dots fly), a day
+without classes, a holiday week (faded classes), and smoothness with the rocket flying at the same time
+(`--ei bench` covers neither).
+
+## 30 October 2026 (The Week chip flies to Week's title as a rocket, and back)
+
+**Asked for:** when the Week chip is pressed from a day, it turns into a rocket missile, flies and hits the big
+title, which then shows "W5 of 14"; the same idea going from Week back to a day. The user chose: every way
+into Week (the chip, the Day tab, a swipe) and every way back to Day (a day chip, a swipe, the tab, Back).
+
+**Change:** a layer over the whole window (`FlightLayer`, new `Flights.kt`, no touches) draws the flight. A
+picture of the Week chip on its slot crouches (a squash), then shrinks away as a rocket pops out of its middle,
+pointing where it goes: a dark body (the theme's text colour) with "W5" along its side, never upside down, a
+gold nose and fins and a flickering flame. It flies in an arc, over the top and in from above, accelerating
+like a missile, leaving puffs of smoke, and its nose hits the middle of the title's "W5 OF 14". The hit is a
+gold flash, a ring and eight sparks; the week pops out there, the title takes a 3dp knock and springs back,
+with a light tap (`Haptics.threshold(…, false)`). Going back, the rocket comes out of the title's week and
+dives into the strip after Friday, where the Week chip and its slot pop back in. What the rocket brings stays
+hidden until it hits, through the minute's redraw too; another move while one is flying lands it at once,
+without its hit. About 0.6 s from tap to hit, 0.95 s until the smoke is gone. With Remove animations on,
+nothing flies. Prototyped as a canvas drawing first and rendered frame by frame at 3px a dp in Chromium,
+light and dark, then ported shape for shape.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). The prototype's frames (the squash, the pop, the
+arc, the hit) were looked at at the phone's scale. Still to try on the phone: a tap on the Week chip, the Day
+tab, a swipe past Friday and up, back by a day chip, Back and a swipe down; the arc on a narrow phone (does it
+stay on screen?), the knock on the title, the tap's strength, dark mode, and two moves in quick succession.
+
+## 30 October 2026 (Swipe up on Day for Week, down on Week for Day)
+
+**Asked for:** on Day, swipe up to open Week, with the same vibration as swiping between days. Week opens as
+the finger crosses the line, without letting go (the user's choice), and a swipe down on Week goes back to Day.
+
+**Change:** `SwipeScrollView` takes a swipe up (`onFlipUp`, from the page's end, so a long Day scrolls first)
+and a swipe down (`onFlipDown`, from the top). The page follows the finger at 0.9 of its speed, fading a
+little, as it does across; at 60dp, the same line as between days, it gives the same click
+(`Haptics.threshold`) and the other page opens there and then, the rest of the touch moving nothing. Let go
+short of the line, it springs back, unless it was a flick that way (900dp/s, as across), which opens it with
+that click. Day goes to Week, and Week back to the day it came from. The new page rises from below (or drops
+from above) already moving at the finger's speed (`Motion.riseIn`), and the title rises in, or drops in going
+down. CLAUDE.md's swipe model says so.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar. Still to try on the phone: a slow swipe up (the click and Week at the line), a
+flick up, one let go short, a long Day (with plans) scrolled to its end first, a swipe down on Week
+from the top (and not mid-grid with Week until midnight on), and that a long press on the grid and a swipe
+across it still work.
+
+## 30 October 2026 (Week: "W5 of 14" in the title, the days over their columns)
+
+**Asked for:** on Week, take "W5 of 14" out of the Monday-to-Friday row and write it on the big title's line,
+beside the dates. Line the Monday-to-Friday chips up with the week grid, so the grid doesn't need its own row
+of day names.
+
+**Change:** on Week the strip is the five days only. They start where Monday's column does and are as far apart
+as the columns (`WeekGrid.AXIS`, `GAP`, `BLEED`), each over its own column, and the grid's row of day names
+is gone (its 22dp too). Their dots are in the grid below; their row stays, empty, so the strip is as tall as
+on Day. No day is chosen on Week, so the selection pill fades away (`Glider.hide`); today's date is in the
+accent as before. Going between Day and Week, each day glides to its new place and its slot stretches with it
+(`Motion.reflow`), and the Week chip pops back in after Friday. Week's title is the dates and, on the same line,
+the week of the semester as the chip showed it: "W5" in the title's face over "OF 14", its last line on the
+dates' baseline. The dates stay the size of Day's title; the week shrinks if it must ("Revision" on a narrow
+phone). The double tap that brought this week back moved with it: double-tap "W5" in the title.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78). Widths from Big Shoulders 800's advance widths: at
+Day's title size the widest range, "28 Sep – 2 Oct", leaves about 87dp beside it on a 412dp-wide screen; "W14"
+needs 38dp and "Revision" 79dp. Still to look at on the phone: each day over its column (Monday's left edge on
+Monday's), the glide between Day and Week, the title with "W5 OF 14" (and a break week), the double tap on it
+after swiping to another week, and the strip's height staying put.
+
+## 30 October 2026 (Week's grid without the card behind it)
+
+**Asked for:** remove the padded panel behind the whole week grid, so the times sit further left and every
+box in the grid is a little wider.
+
+**Change:** the grid, its key and the plans line no longer sit in a card (the surface fill, its outline and
+its 2dp/6dp padding are gone). The grid reaches 12dp out into the page's left margin (`WeekGrid.BLEED`), its
+hour axis with it, so the hours end about in line under the title's left edge and the now line's time pill
+starts 4dp from the screen's edge. The columns gain that room and the card's: about 4dp each on a 412dp-wide
+screen (64 to 69dp). The key and the plans line start where Monday's column does. The axis (`AXIS`, 28dp)
+keeps its width: the now line's "12:34" needs it. The debug renderer no longer cuts off what reaches into the
+margins, as the app's page holder doesn't.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar. Still to look at on the phone: the hours against the screen's edge, the now
+pill, the week swipe's carousel (clipped to the grid's box, now wider), and a tap or long press on Monday.
+
+## 30 October 2026 (A plan can be put in Week until midnight's evening slots)
+
+**Asked for:** make sure a plan can be added in the new extra time slots (Week until midnight's 19:00 to 00:00).
+
+**Change:** dragging the selection box stopped at 18:30 whatever the grid's end: `draggedStart` kept a plan's
+start between 08:00 and 18:30, so a long press at 21:00 brought the box up there and the first move of the
+finger sent it back to 18:30. It now stops at the grid's last half hour (`endMin - 30`): 18:30 to 19:00, 23:30
+with Week until midnight. A double tap and the plan card already went to the end of the day.
+
+**Checked:** no Android SDK in this session (Google's download host is blocked), so no Gradle build and no
+phone. Type-checked with kotlinc 2.4.20 against Robolectric's Android 17 jar, and the JVM tests pass (78), with
+`PlansTest.dragHoldsWhereTaken` now also covering a plan dragged at 21:00 and 23:30, and held by its bottom.
+Still to try on the phone: Week until midnight on, long press at 21:00 and drag down to 23:30.
+
 ## 29 October 2026 (1.8.0-beta.1: the "Things to fix" branch built and published)
 
 **Asked for:** after merging pull request #1 (`fix/things-to-fix`) on GitHub, bring it into the local repo

@@ -105,7 +105,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
                 val page = intent.getStringExtra("page") ?: "Courses"
                 addView(when (page) {
                     "day" -> dayTitle(host.ui, "Wednesday", "30 Sep", true, dayGlance(Timetable.load(context).day(2)))
-                    "week" -> weekTitle(host.ui, "28 Sep – 2 Oct", "3 deadlines this week")
+                    "week" -> weekTitle(host.ui, "28 Sep – 2 Oct", "W5", "of 14", "3 deadlines this week")
                     else -> pageTitle(host.ui, page, SpectrumScreens.summary(host, mapOf("Courses" to "files").getOrElse(page) { page.lowercase() }))
                 }, host.ui.grow())
             }
@@ -136,6 +136,8 @@ class DebugRenderReceiver : BroadcastReceiver() {
             setBackgroundColor(host.ui.p.ground)
             // A sheet runs edge to edge, from the bottom of the screen.
             if (view != "sheet" && view != "signin" && view != "webbar") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
+            // As the app's page holder: what reaches into the margins (Week's grid) isn't cut off there.
+            clipToPadding = false
             addView(page)
         }
         frame.measure(
