@@ -18,6 +18,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -259,6 +260,7 @@ class MainActivity : Activity(), SpectrumHost {
         stripGlider = Motion.Glider(stripFrame, strip, ui.dp(12f).toFloat(), 1)
         stripIndex = -1
         stripWeek = null
+        weekTileText = null
         val top = ui.column().apply {
             addView(titleRow)
             // 16dp under the title, as the Spectrum tabs' pages start 10dp + 6dp under theirs.
@@ -544,13 +546,27 @@ class MainActivity : Activity(), SpectrumHost {
             val today = days == 0
             val name = ui.text(DAY_SHORT[d], 10.5f, fg(today, selected), ui.f.bodyBold, caps = true, spacing = 0.1f)
             val date = ui.text(dateIn(days).get(Calendar.DAY_OF_MONTH).toString(), 22f, fg(today, selected), ui.f.sign)
+            // On Week, larger: into the room the dots leave.
+            if (onWeek) weekTileText().let { w ->
+                name.setTextSize(TypedValue.COMPLEX_UNIT_PX, w.name)
+                date.setTextSize(TypedValue.COMPLEX_UNIT_PX, w.date)
+            }
             for (t in listOf(name, date)) {
                 if (moved && selected) Motion.tint(t, fg(today, false), fg(today, true))
                 if (moved && stripIndex == d - 1) Motion.tint(t, fg(today, true), fg(today, false), 90)
             }
-            // A dot for each class in its course's colour. On Week they're in the grid below: their row goes, and its
-            // room (5dp above it, 6dp of dots) is split above and below, so the name and date sit in the middle of
-            // the tile and the strip is as tall as on Day.
+            // Between Day and Week they grow or shrink from the size they were, as the tiles glide.
+            if (from != null && Motion.enabled) {
+                val w = weekTileText()
+                val was = if (onWeek) listOf(name to w.dayName, date to w.dayDate) else listOf(name to w.name, date to w.date)
+                for ((t, size) in was) {
+                    t.scaleX = size / t.textSize
+                    t.scaleY = t.scaleX
+                    t.animate().scaleX(1f).scaleY(1f).spring(Motion.SETTLE).start()
+                }
+            }
+            // A dot for each class in its course's colour. On Week they're in the grid below: their row goes, and
+            // the name and date grow into its room ([weekTileText]).
             val dots = ui.row(gap = 3f).apply {
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ui.dp(6))
                 if (onWeek) visibility = View.GONE
@@ -558,10 +574,7 @@ class MainActivity : Activity(), SpectrumHost {
             }
             val dayChip = chip(dayWords(d, days), name, date, dots).apply {
                 setOnClickListener { pickedDay = true; goDay(d) }
-                if (onWeek) {
-                    val room = ui.dp(5) + ui.dp(6)
-                    setPadding(paddingLeft, ui.dp(8) + room / 2, paddingRight, ui.dp(8) + room - room / 2)
-                }
+                if (onWeek) weekTileText().let { w -> setPadding(paddingLeft, w.top, paddingRight, w.bottom) }
             }
             strip.addView(dayChip, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { if (d > 1) marginStart = gap })
             stripDays += Triple(dayChip, name, date)
@@ -594,6 +607,31 @@ class MainActivity : Activity(), SpectrumHost {
         stripGlider.moveTo(index, if (daysTo(sel) == 0) p.accent else p.text)
         stripIndex = index
         launch?.invoke()
+    }
+
+    /** Week's strip tiles' text: the name's and the date's sizes (px), Day's sizes they grow from, and the tiles' top and bottom padding. */
+    private class WeekTileText(val name: Float, val date: Float, val dayName: Float, val dayDate: Float, val top: Int, val bottom: Int)
+    private var weekTileText: WeekTileText? = null
+
+    /**
+     * On Week the tiles' dots are in the grid, so the name (12sp, from 10.5) and the date grow into their room
+     * (the 5dp above the dots and the dots' 6dp), the date as large as fits: the tiles are full and the strip is as
+     * tall as on Day. Measured from real text at the phone's font size; what's left over is split above and below.
+     */
+    private fun weekTileText(): WeekTileText = weekTileText ?: run {
+        fun height(t: TextView) = t.apply { measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED) }.measuredHeight
+        fun name(sp: Float) = ui.text("Wed", sp, face = ui.f.bodyBold, caps = true, spacing = 0.1f)
+        fun date(px: Float) = ui.text("30", 22f, face = ui.f.sign).apply { setTextSize(TypedValue.COMPLEX_UNIT_PX, px) }
+        val dayName = name(10.5f)
+        val dayDate = date(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 22f, resources.displayMetrics))
+        val room = height(dayName) + ui.dp(2) + height(dayDate) + ui.dp(5) + ui.dp(6)
+        val bigName = name(12f)
+        val left = room - height(bigName) - ui.dp(2)
+        // Text's height grows with its size: from Day's date to the size that fills what's left, then down a pixel at a time should rounding overfill it.
+        var size = dayDate.textSize * left / height(dayDate)
+        while (size > dayDate.textSize && height(date(size)) > left) size -= 1f
+        val extra = (left - height(date(size))).coerceAtLeast(0)
+        WeekTileText(bigName.textSize, size, dayName.textSize, dayDate.textSize, ui.dp(8) + extra / 2, ui.dp(8) + extra - extra / 2).also { weekTileText = it }
     }
 
     /**
