@@ -18,6 +18,23 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 30 October 2026 (Week's grid without the card behind it)
+
+**Asked for:** remove the padded panel behind the whole week grid, so the times sit further left and every
+box in the grid is a little wider.
+
+**Change:** the grid, its key and the plans line no longer sit in a card (the surface fill, its outline and
+its 2dp/6dp padding are gone). The grid reaches 12dp out into the page's left margin (`WeekGrid.BLEED`), its
+hour axis with it, so the hours end about in line under the title's left edge and the now line's time pill
+starts 4dp from the screen's edge. The columns gain that room and the card's: about 4dp each on a 412dp-wide
+screen (64 to 69dp). The key and the plans line start where Monday's column does. The axis (`AXIS`, 28dp)
+keeps its width: the now line's "12:34" needs it. The debug renderer no longer cuts off what reaches into the
+margins, as the app's page holder doesn't.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar. Still to look at on the phone: the hours against the screen's edge, the now
+pill, the week swipe's carousel (clipped to the grid's box, now wider), and a tap or long press on Monday.
+
 ## 30 October 2026 (A plan can be put in Week until midnight's evening slots)
 
 **Asked for:** make sure a plan can be added in the new extra time slots (Week until midnight's 19:00 to 00:00).
