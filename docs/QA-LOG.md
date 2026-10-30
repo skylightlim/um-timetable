@@ -18,6 +18,19 @@ adb shell run-as com.skylightlim.umtimetable cat cache/render/files.png > files.
 (minutes after midnight) pretend it's another time, e.g. during a class. Screenshots of the real screen can catch a
 video call's picture-in-picture window; use the renderer, or `uiautomator dump` for text and bounds.
 
+## 30 October 2026 (Flights: nothing left hidden when one is cut short)
+
+**Asked for:** nothing new: found reading over the day's changes before pushing them.
+
+**Change:** if the flight layer comes off the window mid-flight (the window's content replaced, as a new theme
+does), every rocket lands at once without its hit, so the title's week or the Week chip it was bringing isn't
+left hidden; before, it would have stayed invisible until the app was opened again. The grid's backstop after
+1.8s fills only the classes still waiting for their dot, not those already filling in (it jumped them to full
+and their fill pulled them back). Toggling Day and Week mid-glide, the days glide on from where they're drawn.
+
+**Checked:** no Android SDK in this session, so no Gradle build and no phone. Type-checked against
+Robolectric's Android 17 jar, and the JVM tests pass (78).
+
 ## 30 October 2026 (Swiping into Week, the strip's dots fly into their classes)
 
 **Asked for:** when the user swipes up, or swipes from Monday or Friday into Week, the coloured dots on the
