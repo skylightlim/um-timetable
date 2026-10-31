@@ -94,8 +94,8 @@ object SpectrumScreens {
      */
     fun summary(h: SpectrumHost, view: String): String {
         val c = h.ui.context
-        // Settings: who's signed in, and the app's version.
-        if (view == "settings") return listOf(if (SpectrumStore.signedIn(c)) accountName(c).ifBlank { "Signed in" } else "Not signed in", "version ${Updater.installed(c).second}").joinToString(" · ")
+        // Settings: the app's version (who's signed in is on the page).
+        if (view == "settings") return "Version ${Updater.installed(c).second}"
         if (!SpectrumStore.signedIn(c)) return "Not signed in"
         if (SpectrumStore.lastSync(c) == 0L) return "Not synced yet"
         val parts = when (view) {

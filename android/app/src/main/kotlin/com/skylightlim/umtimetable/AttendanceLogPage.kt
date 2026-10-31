@@ -28,13 +28,24 @@ object AttendanceLogPage {
         return entries.filter { it.problem && it.time.isAfter(since) }
     }
 
-    /** What Settings' row and the page's top line say: "2 problems this week", "No problems this week", "Nothing logged yet". */
+    /** What the page's top line says: "2 problems this week", "No problems this week", "Nothing logged yet". */
     fun summary(c: android.content.Context, entries: List<AttendanceLog.Entry> = AttendanceLog.read(c)): String = when {
         entries.isEmpty() -> "Nothing logged yet"
         else -> when (val n = recentProblems(entries).size) {
             0 -> "No problems in the past week"
             1 -> "1 problem in the past week"
             else -> "$n problems in the past week"
+        }
+    }
+
+    /** What Settings' row says at its end: "No problems", "2 problems", or "Empty". */
+    fun short(c: android.content.Context): String {
+        val entries = AttendanceLog.read(c)
+        if (entries.isEmpty()) return "Empty"
+        return when (val n = recentProblems(entries).size) {
+            0 -> "No problems"
+            1 -> "1 problem"
+            else -> "$n problems"
         }
     }
 

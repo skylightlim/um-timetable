@@ -152,13 +152,12 @@ class DebugRenderReceiver : BroadcastReceiver() {
             fun grid(v: View): WeekGrid? = v as? WeekGrid ?: (v as? android.view.ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { grid(g.getChildAt(it)) } }
             grid(frame)?.previewBox(samplePlans(host)[1], intent.getIntExtra("boxDay", 2), intent.getIntExtra("boxAt", 15 * 60))
         }
-        // Settings with --ef hopAt 0.36: the chosen theme's dots posed that far into their hop.
+        // Settings with --ef hopAt 0.36: the chosen theme's dot posed that far into its hop.
         if (intent.hasExtra("hopAt")) {
             fun find(v: View): android.view.ViewGroup? =
                 if (v is android.view.ViewGroup && v.contentDescription?.endsWith("theme, chosen") == true) v
                 else (v as? android.view.ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { find(g.getChildAt(it)) } }
-            val dots = find(frame)?.getChildAt(0) as? android.view.ViewGroup
-            for (i in 0 until (dots?.childCount ?: 0)) Motion.hopAnimator(dots!!.getChildAt(i), host.ui.dp(if (i == 0) 9f else 8f).toFloat()).setCurrentFraction(intent.getFloatExtra("hopAt", 0.36f))
+            find(frame)?.getChildAt(0)?.let { Motion.hopAnimator(it, host.ui.dp(9f).toFloat()).setCurrentFraction(intent.getFloatExtra("hopAt", 0.36f)) }
         }
         val bitmap = Bitmap.createBitmap(frame.measuredWidth, frame.measuredHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         frame.draw(Canvas(bitmap))
