@@ -9,8 +9,7 @@ it a piece at a time.
 - Code: `android/app/src/main/kotlin/com/skylightlim/umtimetable/`, plain Android views in Kotlin (no
   Compose, no androidx), minSdk 31. JVM tests in `android/app/src/test/`.
 - Read first: `README.md` (what it is), `docs/FINDINGS.md` (UM's data sources: Spectrum, MAYA, TimeEdit;
-  where lecturer names come from), `docs/QA-LOG.md` (every change: asked for / change / checked).
-  `docs/SPECTRUM-COURSES.md`: how Spectrum's course pages differ (formats, subsections, one section per
+  where lecturer names come from). `docs/SPECTRUM-COURSES.md`: how Spectrum's course pages differ (formats, subsections, one section per
   page) and how the app arranges them like a browser.
 - Icons: `android/icon/crest.py` draws the launcher, themed and status-bar icons (see its docstring).
   Don't hand-edit `ic_fg.xml`, `ic_mono.xml` or `ic_notify.xml`.
@@ -23,15 +22,15 @@ the end), then read only the files and lines it points to.
 
 ## Each change
 
+The user also makes their own changes and commits with `git add .`, so `.gitignore` keeps out everything
+private or local (their `thingstodo.md`, `backups/`, the old `docs/QA-LOG.md`, `graphify-out/`, `.idea/`).
+
 1. Make the change the user asked for, and nothing beyond it. Suggest anything extra in one line instead.
 2. `cd android && ./gradlew testDebugUnitTest` must pass.
-3. Add an entry at the top of `docs/QA-LOG.md`: **Asked for** / **Change** / **Checked**, with what
-   you really checked.
-4. Commit that change alone. Never commit the user's own unstaged edits (IDE Gradle edits in
-   `android/*.gradle.kts`, `.idea/`), `thingstodo.md` (their todo list), Claude Design handoff zips,
-   or `graphify-out/`.
-5. Check it on the user's phone, never in an emulator: install the **release** build there (below).
-   Emulators are only for when the user asks, e.g. testing other Android versions.
+3. Commit that change alone. Say in the message what changed and what you really checked.
+4. Check it on the user's phone, never in an emulator: install the **release** build there (below).
+   Emulators are only for when the user asks, e.g. testing other Android versions, or for public
+   screenshots, which must show the made-up student and never their real data.
 
 ## The user's phone
 
@@ -73,22 +72,17 @@ They often have the app open, or are on a video call shown in picture-in-picture
 
 ## Publishing (public repo: github.com/skylightlim/um-timetable)
 
-The local branches `main` and `private-history` contain the user's real timetable (occurrences,
-lecturer names, class times). **Never push them**, and never push with `--all` or `--mirror`. Publish a
-snapshot of `main`'s tree instead:
+`main` is public and is the only branch: `git add . && git commit && git push`.
 
-1. Bump `versionCode` (+1) and `versionName` in `android/app/build.gradle.kts`, and commit only those
-   two lines: the user's IDE edits sit in the same file (`git diff` it, keep the version hunk, `git apply
-   --cached`). The user leaves the name to you: a minor version (1.4.0-beta.1) for new features, a patch
-   for fixes only.
-2. Check the tree for real data: grep it for the course codes with occurrences and the lecturer names
-   (full names and surnames) in `backups/*/timetable.json` (gitignored). Docs, tests and examples use a
-   made-up student. Read the QA log's new entries too: they leak the user's schedule (which course falls
-   on which day, the week's hours, counts of their Spectrum items) unless written in general terms.
-3. Run `git commit-tree "main^{tree}" -p origin/main -m "UM Timetable <versionName>"`, then
-   `git branch -f public <sha>`, then `git push origin public:main` (a fast-forward).
-4. Build the APK from a clean worktree of that commit (`git worktree add`), with `assembleRelease`.
-5. `gh release create v<versionCode> --prerelease --title <versionName> --target <sha>
+**Everything committed is public, forever.** Docs, tests, examples, screenshots and commit messages use a
+made-up student, never the user's real occurrences, class times, lecturer names or marks.
+
+To release a new version of the app, once the user asks:
+
+1. Bump `versionCode` (+1) and `versionName` in `android/app/build.gradle.kts`, then commit and push. The
+   user leaves the name to you: a minor version (1.4.0-beta.1) for new features, a patch for fixes only.
+2. `cd android && ./gradlew assembleRelease`, and copy the APK to `UM-Timetable-<versionName>.apk`.
+3. `gh release create v<versionCode> --prerelease --title <versionName> --target main
    UM-Timetable-<versionName>.apk`. The in-app updater reads the tag as the versionCode and shows the
    title and the notes in its update card. Write the notes for students: at most ten short, plain lines
    (the card shows ten, and 1.2.0-beta.1 shows Markdown marks as typed).
@@ -135,7 +129,7 @@ snapshot of `main`'s tree instead:
   off (`WeekGrid.holding`).
 - For frequent moves, change only what changes: a full `render()` of Week cost about 17 ms, so a week
   swipe uses `WeekScreen.shift` (a new grid in a carousel, the strip's text rolled in place), and
-  `WeekGrid` keeps class-name layouts across grids. `Timetable.load` and `SpectrumStore.array` are cached
+  `WeekGrid` keeps class-name layouts across grids. `Timetable.load`, `SpectrumStore.array` and `AttendanceLog.read` are cached
   already: jank lies elsewhere. `FitText` fits to 98% of the room: at the exact width the last letter
   wrapped.
 - Baselines in a row: `baselineAlignedChildIndex` must be set after the children are added (before, it

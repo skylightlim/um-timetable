@@ -13,3 +13,16 @@ backups/
 .idea/
 graphify-out/
 .claude/
+
+# Private notes, kept on this machine only: main is public
+thingstodo.md
+docs/QA-LOG.md
+docs/P2P-INVITES.md
+
+# Tool output and things that should never be committed
+.impeccable/
+android/icon/preview-*.svg
+*.zip
+*.jks
+*.keystore
+.DS_Store
