@@ -114,6 +114,15 @@ abstract class WebScreen : Activity() {
         bar.enter()
     }
 
+    // A WebView holds its page and renderer until it's destroyed, long after its screen has closed.
+    override fun onDestroy() {
+        if (::web.isInitialized) {
+            (web.parent as? ViewGroup)?.removeView(web)
+            web.destroy()
+        }
+        super.onDestroy()
+    }
+
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         presser?.onTouch(ev)
         return super.dispatchTouchEvent(ev)

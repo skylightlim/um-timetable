@@ -374,7 +374,14 @@ object AttendanceLog {
     }
 
     /** The log as it is now, oldest first; empty before anything is logged. */
-    fun read(c: Context): List<Entry> = runCatching { file(c)?.takeIf { it.exists() }?.readText()?.let(::parse) }.getOrNull().orEmpty()
+    fun read(c: Context): List<Entry> = runCatching {
+        val f = file(c)?.takeIf { it.exists() } ?: return emptyList()
+        val stamp = f.lastModified() to f.length()
+        parsed?.takeIf { it.first == stamp }?.second ?: parse(f.readText()).also { parsed = stamp to it }
+    }.getOrNull().orEmpty()
+
+    /** The file as last parsed, until it changes: Settings reads it on every redraw, and a full log takes about 20 ms to parse. */
+    @Volatile private var parsed: Pair<Pair<Long, Long>, List<Entry>>? = null
 
     /** The file's text as entries: a line that doesn't start with a time carries on the one before it. */
     fun parse(text: String): List<Entry> {

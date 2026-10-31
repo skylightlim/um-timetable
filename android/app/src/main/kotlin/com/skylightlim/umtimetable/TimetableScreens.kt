@@ -521,6 +521,9 @@ object DayEnd {
     fun minutes(c: android.content.Context) = if (late(c)) 24 * 60 else 19 * 60
 }
 
+/** The week grid's axis: "00" to "23", made once rather than on each draw. */
+private val HOUR_LABELS = Array(24) { "%02d".format(it) }
+
 object WeekScreen {
     /** The parts of a Week page that change with the week, so going to another week changes only them ([shift]). */
     class Parts(val offSlot: FrameLayout, val gridBox: FrameLayout)
@@ -690,7 +693,7 @@ class WeekGrid(
             val y = top + (h - startMin / 60) * hour
             if (nowY != null && kotlin.math.abs(y - nowY) < pillH) continue // the time pill is there
             // Midnight at the bottom is 00.
-            canvas.drawText("%02d".format(h % 24), axis - ui.dp(3f), y + axisPaint.textSize * 0.35f, axisPaint)
+            canvas.drawText(HOUR_LABELS[h % 24], axis - ui.dp(3f), y + axisPaint.textSize * 0.35f, axisPaint)
         }
         for (d in 1..5) {
             val left = axis + gapX + (d - 1) * (colW + gapX)
