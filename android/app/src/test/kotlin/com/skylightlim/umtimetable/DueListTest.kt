@@ -43,6 +43,26 @@ class DueListTest {
         assertEquals(listOf(10, 12, 13), ids(DueList.distinct(listOf(a, b, otherCourse, otherTime), now)))
     }
 
+    @Test fun groupsCopiesOfATaskAreOneRowTheEarliest() {
+        val late = event(30, "Assessement 1 - Group Video", now + 12 * day / 24, instance = 31)
+        val early = event(31, "Assessment 1 - Group Video", now, instance = 32)
+        assertEquals(listOf(31), ids(DueList.distinct(listOf(late, early), now - day)))
+        // Spelled alike, at another time that day.
+        assertEquals(listOf(33), ids(DueList.distinct(listOf(event(32, "Essay", now + 3_600_000, instance = 33), event(33, "Essay", now, instance = 34)), now - day)))
+    }
+
+    @Test fun lookalikeTasksStay() {
+        fun pair(a: String, b: String) = ids(DueList.distinct(listOf(event(40, a, now, instance = 41), event(41, b, now + 3_600_000, instance = 42)), now - day))
+        assertEquals(listOf(40, 41), pair("Quiz 1", "Quiz 2"))
+        assertEquals(listOf(40, 41), pair("Tutorial 3", "Tutorial 13"))
+        assertEquals(listOf(40, 41), pair("Lab Part A", "Lab Part B"))
+        assertEquals(listOf(40, 41), pair("Project proposal", "Project presentation"))
+        assertEquals(listOf(40, 41), pair("Report", "Report draft"))
+        // A day or more apart, or in another course, they're tasks of their own.
+        assertEquals(listOf(50, 51), ids(DueList.distinct(listOf(event(50, "Essay", now, instance = 51), event(51, "Essay", now + day, instance = 52)), now - day)))
+        assertEquals(listOf(60, 61), ids(DueList.distinct(listOf(event(60, "Essay", now, instance = 61), event(61, "Essay", now, instance = 62, course = 8)), now - day)))
+    }
+
     @Test fun differentActivitiesStay() {
         val items = listOf(event(20, "Tutorial 1", now + day), event(21, "Tutorial 2", now + day), event(22, "Forum post", now + day, module = "forum"))
         assertEquals(listOf(20, 21, 22), ids(DueList.distinct(items, now)))
