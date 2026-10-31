@@ -1,71 +1,116 @@
-# UM Timetable
+<p align="center">
+  <img src="docs/media/hero.png" alt="马大牛逼: your whole UM semester in one app" width="100%">
+</p>
 
-**An unofficial timetable and Spectrum companion for Universiti Malaya students.**
+<p align="center">
+  <a href="https://github.com/skylightlim/um-timetable/releases"><img alt="Latest version" src="https://img.shields.io/github/v/release/skylightlim/um-timetable?include_prereleases&label=latest&color=132B7C"></a>
+  <img alt="Android 12 or newer" src="https://img.shields.io/badge/Android-12%2B-34A853">
+  <img alt="Free, no ads, no tracking" src="https://img.shields.io/badge/free-no%20ads%20%C2%B7%20no%20tracking-EFB810">
+</p>
 
-UM Timetable is a free Android app that keeps your day in one place: your class schedule, Spectrum deadlines and course news, your grades, and reminders for attendance — plus a home-screen widget so you can see what's next without opening anything.
+# 马大牛逼 (UM Timetable)
 
-> This app is **not** made by or affiliated with Universiti Malaya. It's an independent project.
+**A free, unofficial Android app for Universiti Malaya students.** Sign in once with your SiswaMail, and your timetable, Spectrum deadlines, course news and marks are all in one place.
 
----
+Aplikasi jadual waktu tidak rasmi untuk pelajar UM · 马来亚大学学生的非官方课表应用
 
-## What you can do
+### [⬇️ Download the app](https://github.com/skylightlim/um-timetable/releases)
 
-- **See your weekly timetable**, taken from UM's TimeEdit system.
-- **Keep up with Spectrum** (UM's Moodle): your **Due** list, and each **course's news and grades**.
-- **Get notifications** for the things that matter, including attendance sessions.
-- **Add a home-screen widget** that shows your current or next class.
-- **Update inside the app** — new versions are offered automatically.
+<p align="center">
+  <img src="docs/media/tour.gif" alt="A short tour of the app: Day, Week, Due, Courses and Settings" width="320">
+</p>
 
-Everything runs on **one sign-in** with your SiswaMail account.
+## What you get
 
----
+| | |
+|---|---|
+| **Know what's next** | Your class right now, how long is left, and where to go after it. |
+| **See your whole week** | A clean week grid with UM's semester weeks and Kuala Lumpur's public holidays. Add your own plans to free slots. |
+| **Never miss a deadline** | Every Spectrum deadline in one list, counting down. |
+| **Keep up with each course** | News, marks, files and links, without digging through Spectrum. |
+| **Get reminded** | Notifications for deadlines, marks, news and your classes. |
+| **Check it at a glance** | A home-screen widget with your next class and your week. |
+| **Make it yours** | Gold, Blue or Red themes, light and dark. |
 
-## Security and privacy
+## See it
 
-Your account and your data stay on your phone.
+<table>
+  <tr>
+    <td align="center"><img src="docs/media/day.png" width="240" alt="Day page"><br><b>Day</b></td>
+    <td align="center"><img src="docs/media/week.png" width="240" alt="Week grid"><br><b>Week</b></td>
+    <td align="center"><img src="docs/media/due.png" width="240" alt="Due list"><br><b>Due</b></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/media/courses.png" width="240" alt="Courses with news and marks"><br><b>Courses</b></td>
+    <td align="center"><img src="docs/media/course.png" width="240" alt="A course page"><br><b>A course page</b></td>
+    <td align="center"><img src="docs/media/settings.png" width="240" alt="Settings"><br><b>Settings</b></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/media/dark-day.png" width="240" alt="Day page in dark mode, Blue theme"><br><b>Dark, in Blue</b></td>
+    <td align="center"><img src="docs/media/widget.png" width="240" alt="Home-screen widget"><br><b>Widget</b></td>
+    <td align="center"><img src="docs/media/signin.png" width="240" alt="Sign-in screen"><br><b>One sign-in</b></td>
+  </tr>
+</table>
 
-- **The app never sees your password.** Sign-in happens on Microsoft's own page, and the app only receives a secure token — never your actual password.
-- **Your data is stored only on your phone.** Timetable, course news, grades and the sign-in token live in the app's private storage. There is **no server** run by this project collecting anything.
-- **No ads, no tracking, no analytics.** Nothing about you is sold or shared.
-- **The app only talks to the services it needs:** Microsoft (for sign-in), UM's own systems (TimeEdit and Spectrum, to fetch your information), and GitHub (to check for app updates). The update check asks GitHub for a list of releases; it doesn't send your name, account, or any personal detail.
-- **Signing out removes your data** — the token and everything cached — from your phone.
-
-In short: **your credentials and your academic data never leave your device.**
-
----
+<sub>Every name, class and mark above is made up: no real student's data is shown.</sub>
 
 ## Install it
 
-You need an Android phone running **Android 12 or newer**.
+You need an Android phone on **Android 12 or newer**. There's no iPhone version.
 
-1. Open the **[Releases page](https://github.com/skylightlim/um-timetable/releases)**.
-2. Download the latest **APK** file to your phone.
-3. Open the downloaded file. Android will ask once to allow installs from your browser or file manager — allow it, and the install continues.
-4. Open the app and sign in with your **SiswaMail** account. Your timetable and Spectrum data will load automatically.
+1. Open the [Releases page](https://github.com/skylightlim/um-timetable/releases) on your phone.
+2. Under the newest version, tap **Assets**, then the file ending in **.apk**.
+3. Open the download. If Android asks, allow installs from your browser.
+4. If Play Protect says **App scan recommended**, tap **More details**, then **Install without scanning**. It shows this for apps from outside the Play Store.
+5. Open the app and sign in with your **SiswaMail**. Your timetable loads by itself.
 
-The app is currently published as a **beta**, so expect regular small updates.
+New versions show up as an update card inside the app, so you only do this once. The app is in beta, so expect small updates often.
 
----
+## Your privacy
 
-## Updating
+There's **no server** behind this app: nothing about you is sent to the project, and there are no ads or analytics.
 
-You don't need to reinstall by hand. When a new version is out, the app shows an update card with the version notes and a download button. You can also check for updates yourself in the app's settings, or come back to the Releases page at any time.
+- **Your password:** you type it on Microsoft's own sign-in page, and the app doesn't read or save it. It keeps only a sign-in token, encrypted on your phone.
+- **Your data:** your timetable, marks and news are stored on your phone only.
+- **Who the app talks to:** Microsoft to sign in; UM's Spectrum and TimeEdit for your information (and MAYA, only if you choose to import from it); GitHub to check for updates.
+- **Signing out** deletes everything the app saved.
 
----
+The code is all here, so anyone can check.
 
-## A few things to know
+## Share it with your coursemates
 
-- **The name under the icon is 马大牛逼.** That's just the label the app uses on your home screen; the project itself is called UM Timetable.
-- **One sign-in covers the main features.** A few UM services don't support single sign-on, and for those the app asks you to sign in on the page itself, then reads what it needs.
-- **The app is still growing.** It's built and used daily, and pieces are added over time.
+<img src="docs/media/qr.png" alt="QR code to the download page" width="140" align="right">
 
----
+Scan the code, or copy this into your group chat:
 
-## Questions or problems?
+```text
+马大牛逼: a free UM timetable app. Your classes, Spectrum deadlines,
+news and marks in one place, with one SiswaMail sign-in.
+No ads, no server. Android 12+.
+https://github.com/skylightlim/um-timetable
+```
 
-If something doesn't work or you'd like to suggest a feature, open an issue on the [GitHub repository](https://github.com/skylightlim/um-timetable/issues). The source code is public there too.
+<br clear="right">
 
----
+## Questions
 
-**Ready to try it?**
-Download the latest APK from the [Releases page](https://github.com/skylightlim/um-timetable/releases).
+**Is this an official UM app?** No. It's an independent student project, not made by or connected to Universiti Malaya.
+
+**What does the name mean?** 马大 is the Chinese short name for UM, and 牛逼 is slang for "awesome". You'll see it under the app's icon.
+
+**Can other universities use it?** No. It's built around UM's systems and calendar.
+
+**My timetable looks wrong. What now?** Go to Settings › Timetable and get it again. You can also change a course's occurrence under Settings › Occurrences.
+
+**Something's broken, or you have an idea?** [Open an issue](https://github.com/skylightlim/um-timetable/issues).
+
+## For developers
+
+Plain Android views in Kotlin, with no runtime dependencies. Open `android/` in Android Studio, or:
+
+```sh
+cd android
+./gradlew testDebugUnitTest assembleDebug
+```
+
+[`docs/FINDINGS.md`](docs/FINDINGS.md) explains where UM's data comes from, and [`docs/SPECTRUM-COURSES.md`](docs/SPECTRUM-COURSES.md) how Spectrum's course pages are laid out. Fonts are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
