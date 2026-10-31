@@ -206,7 +206,6 @@ class MayaActivity : WebScreen() {
     companion object {
         const val SITE = "https://maya.um.edu.my/"
         private const val LOGIN_PATH = "sitsvision/wrd/siw_lgn"
-        const val LOGIN = SITE + LOGIN_PATH
         const val EXTRA_SITE = "mayaSite"
         private const val TAG = "UMTimetable"
         private const val MAX_HOPS = 3
