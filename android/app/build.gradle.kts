@@ -76,6 +76,7 @@ android {
             // Built-in Kotlin only compiles kotlin source dirs; a java.srcDirs entry is ignored here.
             kotlin.srcDirs("src/debug/kotlin")
             manifest.srcFile("src/debug/AndroidManifest.xml")
+            res.srcDirs("src/debug/res")
         }
     }
 }
