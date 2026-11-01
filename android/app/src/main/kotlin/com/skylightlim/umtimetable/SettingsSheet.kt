@@ -123,7 +123,7 @@ object SettingsSheet {
         group("Classes", listOfNotNull(
             timetable(h, tt),
             if (signedIn) occurrences(h, context) else null,
-            wheelRow(ui, "Class reminders", "A notification before each of your classes, with its time and room. None on holidays or in the break.",
+            wheelRow(ui, "Class reminders", "A notification before class",
                 reminders.map { it.second }, reminders.indexOfFirst { it.first == ClassReminders.before(context) }.coerceAtLeast(0), { reminders[it].first != null },
                 choose = { i -> ClassReminders.setBefore(context, reminders[i].first) },
                 // Asked once the card is back: choosing a time with notifications off asks for them.

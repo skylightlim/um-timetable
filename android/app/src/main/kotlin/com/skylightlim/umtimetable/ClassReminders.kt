@@ -10,10 +10,9 @@ import java.time.LocalDate
  * Off until chosen. One exact alarm at a time, as for plans ([PlanReminders]).
  */
 object ClassReminders {
-    /** The choices, in minutes before a class; null is off. */
+    /** The choices, in minutes before a class; null is off. Their card says "before class" once, above them. */
     val CHOICES = listOf<Pair<Int?, String>>(
-        null to "Off", 0 to "At start", 5 to "5 min before", 10 to "10 min before", 15 to "15 min before",
-        30 to "30 min before", 60 to "1 h before",
+        null to "Off", 0 to "At start", 5 to "5 min", 10 to "10 min", 15 to "15 min", 30 to "30 min", 60 to "1 h",
     )
     private const val KEY = "classReminder"
     private const val FIRED = "classReminded"
