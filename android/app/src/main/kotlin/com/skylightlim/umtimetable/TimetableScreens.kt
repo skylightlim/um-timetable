@@ -350,13 +350,15 @@ object DayScreen {
         val ui = h.ui
         val p = ui.p
         val over = plan.endsAt <= System.currentTimeMillis()
-        // The ink a fill of its colour takes: the accent's own on the accent, else the course colours'.
-        val fg = if (plan.color == p.accent) p.accentInk else p.ink
-        val fgMuted = if (plan.color == p.accent) Palette.mix(p.accentInk, p.accent, 0.7f) else p.inkMuted
-        val card = agendaCard(ui, ui.shape(plan.color, 16f)).apply {
-            contentDescription = "Plan, ${clockText(plan.start)} to ${clockText(plan.end)}: ${plan.title}"
+        val fill = if (over) p.pastFill(plan.color) else plan.color
+        // The ink a fill of its colour takes: the accent's own on the accent (no softer: Red's light accent
+        // only just passes at full strength), else the course colours'. Once it's over, the faded fill's.
+        val fg = if (over) p.pastText(fill) else if (plan.color == p.accent) p.accentInk else p.ink
+        val fgMuted = if (over || plan.color == p.accent) fg else p.inkMuted
+        val card = agendaCard(ui, ui.shape(fill, 16f)).apply {
+            contentDescription = "Plan, ${if (over) "done, " else ""}${clockText(plan.start)} to ${clockText(plan.end)}: ${plan.title}"
         }
-        card.addView(times(ui, plan.start, plan.end, fg))
+        card.addView(times(ui, plan.start, plan.end, fg, fgMuted))
         val remind = plan.remind?.let { r -> Plan.REMINDERS.firstOrNull { it.first == r }?.second }
         val meta = SpannableStringBuilder(if (over) "Plan · done" else "Plan").apply {
             setSpan(TypefaceSpan(ui.f.bodySemi), 0, 4, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -374,7 +376,6 @@ object DayScreen {
             val from = RectF(at[0].toFloat(), at[1].toFloat(), (at[0] + card.width).toFloat(), (at[1] + card.height).toFloat())
             h.openPlan(from, plan, false, maxEnd, card.height / ((plan.end - plan.start) / 60f))
         }
-        if (over) card.alpha = 0.42f
         // Just saved from this card: it pops back into place.
         if (WeekGrid.landing == plan.id) {
             WeekGrid.landing = null
@@ -454,12 +455,16 @@ object DayScreen {
         val ui = h.ui
         val p = ui.p
         val c = s.course.color
-        val card = classRow(ui, s, big = false)
-        card.background = ui.pressable(if (s.isTutorial) ui.shape(p.courseTint(c), 16f, c, 1.5f) else ui.shape(c, 16f), 16f)
+        val card = classRow(ui, s, big = false, past = past)
+        card.background = ui.pressable(when {
+            past && s.isTutorial -> ui.shape(p.pastTint(c), 16f, p.pastEdge(c), 1.5f)
+            past -> ui.shape(p.pastFill(c), 16f)
+            s.isTutorial -> ui.shape(p.courseTint(c), 16f, c, 1.5f)
+            else -> ui.shape(c, 16f)
+        }, 16f)
         card.setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(15))
         card.setOnClickListener { h.openSheet(s.course, s) }
         card.contentDescription = "${if (past) "Finished. " else ""}${describe(s)}"
-        if (past) card.alpha = 0.42f
         return card
     }
 
@@ -467,15 +472,17 @@ object DayScreen {
         "${if (s.room == "Online") "online" else "room ${s.room}"}${s.lecturer?.let { ", $it" }.orEmpty()}, ${s.course.code} occurrence ${s.course.occ}"
 
     /** What a class's card says, in its columns, with no fill or padding of its own. [big]: the lifted card's larger name and whole lecturer. */
-    private fun classRow(ui: Ui, s: Session, big: Boolean): LinearLayout {
+    private fun classRow(ui: Ui, s: Session, big: Boolean, past: Boolean = false): LinearLayout {
         val p = ui.p
         val c = s.course.color
         val tut = s.isTutorial
-        val fg = if (tut) p.text else p.ink
-        val fgMuted = if (tut) p.muted else p.inkMuted
+        val pastText = p.pastText(if (tut) p.pastTint(c) else p.pastFill(c))
+        val fg = if (past) pastText else if (tut) p.text else p.ink
+        // On a tutorial's tint the page's muted grey falls just short (4.3:1), so the text softened instead.
+        val fgMuted = if (past) pastText else if (tut) Palette.mix(p.text, p.courseTint(c), 0.72f) else p.inkMuted
 
         val card = columns(ui)
-        card.addView(times(ui, s.start, s.end, fg))
+        card.addView(times(ui, s.start, s.end, fg, fgMuted))
         val meta = SpannableStringBuilder(s.type).apply {
             setSpan(TypefaceSpan(ui.f.bodySemi), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             append(" · ")
@@ -488,7 +495,8 @@ object DayScreen {
             addView(name)
             // One line: a long name runs out of room (it's whole on the class sheet) rather than making the card taller.
             addView(ui.text(meta, 13.5f, fgMuted, lines = if (big) 2 else 1), ui.wide(top = 4f))
-            addView(ui.text("${s.course.code} · Occ ${s.course.occ}", 11f, if (tut) p.courseText(c) else fgMuted, ui.f.mono, caps = true), ui.wide(top = 6f))
+            // On a tutorial, in its colour, drawn toward the page's text so the palest colours stay readable.
+            addView(ui.text("${s.course.code} · Occ ${s.course.occ}", 11f, if (tut && !past) Palette.mix(p.courseText(c), p.text, 0.6f) else fgMuted, ui.f.mono, caps = true), ui.wide(top = 6f))
             baselineAlignedChildIndex = 0
         }, ui.grow())
         card.addView(room(ui, s.room, fg, name))
@@ -530,13 +538,13 @@ object DayScreen {
         }
     }
 
-    /** The start time, firm, over the end time, faint; as wide as "00:00" so names line up card to card. */
-    private fun times(ui: Ui, start: Int, end: Int, color: Int): View {
+    /** The start time, firm in [color], over the end time, smaller in [soft]; as wide as "00:00" so names line up card to card. */
+    private fun times(ui: Ui, start: Int, end: Int, color: Int, soft: Int): View {
         val first = ui.text(clockText(start), 16f, color, ui.f.bodySemi).apply { fontFeatureSettings = "tnum" }
         val wide = kotlin.math.ceil(first.paint.measureText("00:00")).toInt()
         return ui.column().apply {
             addView(first)
-            addView(ui.text(clockText(end), 13f, color).apply { fontFeatureSettings = "tnum"; alpha = 0.6f }, ui.wide(top = 3f))
+            addView(ui.text(clockText(end), 13f, soft).apply { fontFeatureSettings = "tnum" }, ui.wide(top = 3f))
             baselineAlignedChildIndex = 0 // after the children: it must name one that's there
             layoutParams = LinearLayout.LayoutParams(wide, ViewGroup.LayoutParams.WRAP_CONTENT)
         }

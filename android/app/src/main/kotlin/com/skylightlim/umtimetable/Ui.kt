@@ -30,7 +30,7 @@ data class Palette(
     val accent: Int,
     val accentText: Int,
     val accentInk: Int,
-    /** Text on a solid course colour (lecture cards). */
+    /** Text on a solid course colour (lecture cards); [inkMuted] for smaller text on it, ≥ 4.5:1 on every one. */
     val ink: Int,
     val inkMuted: Int,
     /** How much of a course colour survives when it's used as text (light theme darkens it to stay readable). */
@@ -41,20 +41,31 @@ data class Palette(
     fun courseText(color: Int) = mix(color, Color.BLACK, courseTextMix)
     fun courseTint(color: Int) = mix(color, surface, tint)
 
+    /** A finished class's or plan's fill: its colour faded into the page, so it still looks like itself. */
+    fun pastFill(color: Int) = mix(color, ground, 0.25f)
+    /** A finished tutorial's, paler still, as a tutorial is paler than a lecture; the edge is [pastEdge]. */
+    fun pastTint(color: Int) = mix(color, ground, 0.12f)
+    fun pastEdge(color: Int) = mix(color, ground, 0.35f)
+    /**
+     * Text on those: the page's, softened. Fading the whole card instead left dark ink on a dark fill, under
+     * 3:1. This is ≥ 5.5:1 on every course colour and accent, in each theme, light and dark.
+     */
+    fun pastText(fill: Int) = mix(text, fill, 0.75f)
+
     companion object {
         val DARK = Palette(
             dark = true,
             ground = 0xFF11151B.toInt(), surface = 0xFF192029.toInt(), surface2 = 0xFF222A35.toInt(), line = 0xFF2B3440.toInt(),
             text = 0xFFE8ECF1.toInt(), muted = 0xFF8F9AA9.toInt(), faint = 0xFF5F6B7A.toInt(),
             accent = 0xFFF5C947.toInt(), accentText = 0xFFF5C947.toInt(), accentInk = 0xFF1B1606.toInt(),
-            ink = 0xFF10141A.toInt(), inkMuted = 0xB810141A.toInt(), courseTextMix = 1f, tint = 0.14f,
+            ink = 0xFF10141A.toInt(), inkMuted = 0xE610141A.toInt(), courseTextMix = 1f, tint = 0.14f,
         )
         val LIGHT = Palette(
             dark = false,
             ground = 0xFFEEF1F4.toInt(), surface = 0xFFFFFFFF.toInt(), surface2 = 0xFFE8ECF0.toInt(), line = 0xFFD6DCE3.toInt(),
             text = 0xFF141A22.toInt(), muted = 0xFF5A6573.toInt(), faint = 0xFF8B95A2.toInt(),
             accent = 0xFFEFB810.toInt(), accentText = 0xFF875A00.toInt(), accentInk = 0xFF1B1606.toInt(),
-            ink = 0xFF10141A.toInt(), inkMuted = 0xB810141A.toInt(), courseTextMix = 0.58f, tint = 0.16f,
+            ink = 0xFF10141A.toInt(), inkMuted = 0xE610141A.toInt(), courseTextMix = 0.58f, tint = 0.16f,
         )
 
         /** [a] weighted by [t], the rest [b]. */
