@@ -33,4 +33,14 @@ class ShortFormsTest {
         assertEquals("FOP", named.registered.single().course.form)
         assertNull(named.courses.first { it.code == "WIA1001" }.form)
     }
+
+    @Test fun finishedThingsAreOnlyToday() {
+        val items = listOf(Triple<Int, Int, Any>(480, 600, "a"), Triple<Int, Int, Any>(720, 840, "b"), Triple<Int, Int, Any>(1020, 1140, "c"))
+        val (finished, ahead) = splitDay(items, isToday = true, now = 790f)
+        assertEquals(listOf("a"), finished.map { it.third })
+        assertEquals(listOf("b", "c"), ahead.map { it.third })
+        assertEquals(emptyList<Any>(), splitDay(items, isToday = false, now = 790f).first)
+        // The minute it ends, it's finished.
+        assertEquals(listOf("a"), splitDay(items, isToday = true, now = 600f).first.map { it.third })
+    }
 }

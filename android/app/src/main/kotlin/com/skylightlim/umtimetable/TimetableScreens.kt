@@ -242,6 +242,13 @@ internal fun heldAt(at: Int, start: Int, end: Int) = (at - start).coerceIn(0, ma
  */
 internal fun draggedStart(at: Int, grab: Int, last: Int = 18 * 60 + 30) = (at - grab).coerceIn(8 * 60, last)
 
+/**
+ * A day's classes and plans (start, end, what) as (finished, still to come), each in time order. Only
+ * [isToday] has anything finished: another day's are all to come, or a day off's all stay in order.
+ */
+internal fun splitDay(items: List<Triple<Int, Int, Any>>, isToday: Boolean, now: Float) =
+    items.partition { isToday && now >= it.second }
+
 /** Day at a glance: "3 classes · 08:00–19:00", or "No classes". */
 fun dayGlance(list: List<Session>): String =
     if (list.isEmpty()) "No classes" else "${list.size} ${if (list.size == 1) "class" else "classes"} · ${clockText(list.first().start)}–${clockText(list.last().end)}"
@@ -261,32 +268,76 @@ object DayScreen {
         // The day's name and date are in the top bar.
         val page = ui.column().apply { setPadding(0, ui.dp(2), 0, 0) }
         if (off) page.addView(offCard(ui, holiday, week), ui.wide(bottom = 14f))
-        // The Now block is for the week the strip starts on, not another one swiped to, nor a day off.
-        if (!off && h.weekShift == 0 && day == homeDay(h.timetable, now)) page.addView(status(h, now), ui.wide(bottom = 18f))
+        // The class in progress or the next one is for the week the strip starts on, not another one swiped to, nor a day off.
+        val home = !off && h.weekShift == 0 && day == homeDay(h.timetable, now)
+        val status = if (home) h.timetable.status(now) else null
+        if (home && status == null) page.addView(noTimetable(ui), ui.wide(bottom = 18f))
         if (list.isEmpty()) page.addView(ui.text("No classes", 15f, p.muted), ui.wide(top = 12f))
 
-        // The day's classes and the user's plans for that date, in time order, with the free time between.
+        // The day's classes and the user's plans for that date, with the free time between: what's still to
+        // come in time order, the class in progress or the next one lifted, and what's finished under it all.
         val date = h.dateOf(day)
         val plans = Plans.on(sample ?: Plans.all(ui.context), date)
         val items = (list.map { Triple(it.start, it.end, it as Any) } + plans.map { Triple(it.start, it.end, it as Any) }).sortedBy { it.first }
-        val agenda = ui.column(gap = 8f)
-        var until: Int? = null
-        for ((start, end, item) in items) {
+        val (finished, ahead) = splitDay(items, isToday && !off, now.min)
+        val lifted = status?.session?.takeIf { it in list }
+        val agenda = ui.column(gap = 8f).apply { clipChildren = false }
+        var hero: View? = null
+        // The next class says how long until it itself, so no free time leads up to it.
+        var until: Int? = if (ahead.firstOrNull()?.third == lifted) null else finished.maxOfOrNull { it.second }
+        for ((start, end, item) in ahead) {
             until?.let { if (start > it) agenda.addView(gap(ui, it, start, isToday, now)) }
             until = maxOf(until ?: end, end)
             when (item) {
-                is Session -> agenda.addView(slot(h, item, when {
-                    off -> "past"
-                    !isToday -> ""
-                    now.min >= item.end -> "past"
-                    now.min >= item.start -> "live"
-                    else -> ""
-                }))
+                is Session -> if (item == lifted && status != null) agenda.addView(liftedSlot(h, item, status).also { hero = it })
+                    else agenda.addView(slot(h, item, past = off))
                 is Plan -> agenda.addView(planSlot(h, item, items, live = isToday && now.min >= item.start && now.min < item.end))
             }
         }
         page.addView(agenda)
+        val earlier = if (finished.isEmpty()) null else ui.column(gap = 8f).apply {
+            if (ahead.isNotEmpty()) addView(ui.label("Earlier", p.muted, 10.5f).apply { setPadding(ui.dp(16), 0, ui.dp(16), 0) })
+            for ((_, _, item) in finished) when (item) {
+                is Session -> addView(slot(h, item, past = true))
+                is Plan -> addView(planSlot(h, item, items, live = false))
+            }
+            page.addView(this, ui.wide(top = if (ahead.isNotEmpty()) 22f else 0f))
+        }
+        hero?.let { moveUp(page, agenda, earlier, it, lifted!!, date) }
         return page
+    }
+
+    /** The class last seen moved up, so it moves up when a new one takes the place, not at each redraw. */
+    private var movedUp: String? = null
+
+    /**
+     * Shows the lifted card arriving: what's to come glides up from under what's finished, as finished
+     * things pass it going down, the way the page was before they swapped places. With nothing finished,
+     * the card lifts off the page. Only the first time this class has the place; a finger can use the page
+     * throughout, as nothing waits for it.
+     */
+    private fun moveUp(page: View, agenda: View, earlier: View?, hero: View, s: Session, date: java.time.LocalDate) {
+        val key = "$date ${s.start} ${s.course.code}"
+        if (key == movedUp || !Motion.enabled) return
+        page.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (page.viewTreeObserver.isAlive) page.viewTreeObserver.removeOnPreDrawListener(this)
+                movedUp = key
+                if (earlier == null) {
+                    hero.scaleX = 0.97f
+                    hero.scaleY = 0.97f
+                    hero.animate().scaleX(1f).scaleY(1f).setStartDelay(120).spring(Motion.BOUNCY).start()
+                    return true
+                }
+                val swapped = earlier.top - agenda.top
+                agenda.translationZ = 1f // over what it passes
+                agenda.translationY = (earlier.bottom - agenda.bottom).toFloat()
+                earlier.translationY = -swapped.toFloat()
+                agenda.animate().translationY(0f).setStartDelay(120).spring(Motion.SMOOTH).start()
+                earlier.animate().translationY(0f).setStartDelay(120).spring(Motion.SMOOTH).start()
+                return true
+            }
+        })
     }
 
     /**
@@ -337,48 +388,46 @@ object DayScreen {
         }
     }
 
-    /** The class in progress, or the next one, as a big yellow block with its course name. */
-    private fun status(h: Host, now: Now): View {
+    /** Before the first timetable: where to get one. */
+    private fun noTimetable(ui: Ui) = ui.column().apply {
+        val ink = ui.p.accentInk
+        background = ui.shape(ui.p.accent, 18f)
+        setPadding(ui.dp(16), ui.dp(16), ui.dp(16), ui.dp(18))
+        addView(ui.label("No timetable yet", ink, 11f))
+        addView(ui.text("Open the Courses tab and sign in to Spectrum with your SiswaMail: the app then gets your timetable from TimeEdit.", 17f, ink, ui.f.bodySemi), ui.wide(top = 8f))
+    }
+
+    /**
+     * The class in progress or the next one: its own card from the list, not a second one about it, lifted
+     * off the page. It says when over the card's usual lines, with a larger name and the lecturer whole, and
+     * in progress how far through.
+     */
+    private fun liftedSlot(h: Host, s: Session, st: Status): View {
         val ui = h.ui
         val p = ui.p
-        val ink = p.accentInk
-        val block = ui.column().apply {
-            background = ui.pressable(ui.shape(p.accent, 18f), 18f)
-            setPadding(ui.dp(16), ui.dp(16), ui.dp(16), ui.dp(18))
+        val tut = s.isTutorial
+        val fg = if (tut) p.text else p.ink
+        val fill = if (tut) ui.shape(p.courseTint(s.course.color), 20f, s.course.color, 1.5f) else ui.shape(s.course.color, 20f)
+        val (now, left) = when (st.phase) {
+            Phase.IN_CLASS -> "Now" to "${durationText(st.minutesAway)} left"
+            Phase.NEXT_TODAY -> "Next" to "in ${durationText(st.minutesAway)}"
+            Phase.NEXT_LATER -> "Next class" to "in ${durationText(st.minutesAway)}"
         }
-        fun labels(left: String, right: String?) = block.addView(ui.row().apply {
-            addView(ui.label(left, ink, 11f), ui.grow())
-            right?.let { addView(ui.label(it, ink, 11f)) }
-        })
-        val st = h.timetable.status(now)
-        if (st == null) {
-            labels("No timetable yet", null)
-            block.addView(ui.text("Open the Courses tab and sign in to Spectrum with your SiswaMail: the app then gets your timetable from TimeEdit.", 17f, ink, ui.f.bodySemi), ui.wide(top = 8f))
-            return block
+        return ui.column().apply {
+            background = ui.pressable(fill, 20f)
+            elevation = ui.dp(8f).toFloat()
+            setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(16))
+            contentDescription = "$now, $left. ${describe(s)}"
+            setOnClickListener { h.openSheet(s.course, s) }
+            addView(ui.row().apply {
+                addView(ui.label(now, fg, 11f), ui.grow())
+                addView(ui.label(left, fg, 11f))
+            })
+            addView(classRow(ui, s, big = true).apply {
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            }, ui.wide(top = 12f))
+            if (st.phase == Phase.IN_CLASS) addView(ui.bar(st.progress, fg, (fg and 0xFFFFFF) or 0x2E000000), ui.wide(top = 14f).apply { height = ui.dp(4) })
         }
-        val s = st.session
-        when (st.phase) {
-            Phase.IN_CLASS -> labels("Now", "${durationText(st.minutesAway)} left")
-            Phase.NEXT_TODAY -> labels("Next", "in ${durationText(st.minutesAway)}")
-            Phase.NEXT_LATER -> labels("Next class", "in ${durationText(st.minutesAway)}")
-        }
-        block.addView(ui.fitText(s.course.name, 40f, ink, ui.f.sign, words = true, lines = 3).apply { setLineSpacing(0f, 0.95f) }, ui.wide(top = 10f))
-        // Bottoms lined up, not baselines: when the class line wraps (a large system font size), its first
-        // line's baseline pushed the room up out of the row, cut in half.
-        val info = ui.row(gap = 12f).apply { gravity = Gravity.BOTTOM; isBaselineAligned = false }
-        info.addView(ui.text("${s.course.code} · ${s.type} · ${clockText(s.start)}–${clockText(s.end)}", 12f, ink, ui.f.monoBold, caps = true), ui.grow())
-        info.addView(ui.text(s.room, 30f, ink, ui.f.sign).apply { contentDescription = "${if (s.room == "Online") "Where" else "Room"}: ${s.room}" })
-        block.addView(info, ui.wide(top = 8f))
-        if (st.phase == Phase.IN_CLASS) {
-            block.addView(ui.bar(st.progress, ink, (ink and 0xFFFFFF) or 0x2E000000), ui.wide(top = 14f).apply { height = ui.dp(4) })
-            h.timetable.day(now.dow).firstOrNull { it.start > now.min }?.let { next ->
-                // In the block's own ink: the course cards' dark ink was unreadable on Blue's and Red's fills
-                // (and softened, Red's light fill fell to 3.5:1).
-                block.addView(ui.text("Then ${next.course.code} ${next.type.lowercase()} at ${clockText(next.start)} · ${next.room}", 13f, ink), ui.wide(top = 12f))
-            }
-        }
-        block.setOnClickListener { h.openSheet(s.course, s) }
-        return block
     }
 
     /** Free time between two classes, as in redesign 1a: a quiet line between its length and its times. */
@@ -401,18 +450,31 @@ object DayScreen {
      * lines for the rest: the type and lecturer, and smallest the code and occurrence. One text face
      * for the words and times (tabular figures), the display face for the room only.
      */
-    private fun slot(h: Host, s: Session, state: String): View {
+    private fun slot(h: Host, s: Session, past: Boolean): View {
         val ui = h.ui
+        val p = ui.p
+        val c = s.course.color
+        val card = classRow(ui, s, big = false)
+        card.background = ui.pressable(if (s.isTutorial) ui.shape(p.courseTint(c), 16f, c, 1.5f) else ui.shape(c, 16f), 16f)
+        card.setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(15))
+        card.setOnClickListener { h.openSheet(s.course, s) }
+        card.contentDescription = "${if (past) "Finished. " else ""}${describe(s)}"
+        if (past) card.alpha = 0.42f
+        return card
+    }
+
+    private fun describe(s: Session) = "${clockText(s.start)} to ${clockText(s.end)}, ${s.course.name}, ${s.type}, " +
+        "${if (s.room == "Online") "online" else "room ${s.room}"}${s.lecturer?.let { ", $it" }.orEmpty()}, ${s.course.code} occurrence ${s.course.occ}"
+
+    /** What a class's card says, in its columns, with no fill or padding of its own. [big]: the lifted card's larger name and whole lecturer. */
+    private fun classRow(ui: Ui, s: Session, big: Boolean): LinearLayout {
         val p = ui.p
         val c = s.course.color
         val tut = s.isTutorial
         val fg = if (tut) p.text else p.ink
         val fgMuted = if (tut) p.muted else p.inkMuted
 
-        val card = agendaCard(ui, if (tut) ui.shape(p.courseTint(c), 16f, c, 1.5f) else ui.shape(c, 16f))
-        card.setOnClickListener { h.openSheet(s.course, s) }
-        card.contentDescription = "${clockText(s.start)} to ${clockText(s.end)}, ${s.course.name}, ${s.type}, " +
-            "${if (s.room == "Online") "online" else "room ${s.room}"}${s.lecturer?.let { ", $it" }.orEmpty()}, ${s.course.code} occurrence ${s.course.occ}"
+        val card = columns(ui)
         card.addView(times(ui, s.start, s.end, fg))
         val meta = SpannableStringBuilder(s.type).apply {
             setSpan(TypefaceSpan(ui.f.bodySemi), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -421,33 +483,28 @@ object DayScreen {
             append(s.lecturer ?: "Lecturer not listed")
             if (s.lecturer == null) setSpan(StyleSpan(Typeface.ITALIC), at, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        val name = title(ui, s.course.name, fg)
+        val name = title(ui, s.course.name, fg, if (big) 22f else 18f)
         card.addView(ui.column().apply {
             addView(name)
             // One line: a long name runs out of room (it's whole on the class sheet) rather than making the card taller.
-            addView(ui.text(meta, 13.5f, fgMuted, lines = 1), ui.wide(top = 4f))
+            addView(ui.text(meta, 13.5f, fgMuted, lines = if (big) 2 else 1), ui.wide(top = 4f))
             addView(ui.text("${s.course.code} · Occ ${s.course.occ}", 11f, if (tut) p.courseText(c) else fgMuted, ui.f.mono, caps = true), ui.wide(top = 6f))
             baselineAlignedChildIndex = 0
         }, ui.grow())
         card.addView(room(ui, s.room, fg, name))
-
-        if (state == "past") card.alpha = 0.42f
-        if (state != "live") return card
-        // The class in progress gets an accent ring a little outside the card.
-        return FrameLayout(ui.context).apply {
-            background = ui.shape(Color.TRANSPARENT, 19f, p.accent, 2f)
-            setPadding(ui.dp(3), ui.dp(3), ui.dp(3), ui.dp(3))
-            addView(card)
-        }
+        return card
     }
 
     /** A class's or plan's card on Day: a row whose columns share their first line's baseline. */
-    private fun agendaCard(ui: Ui, fill: android.graphics.drawable.Drawable) = BaselineRow(ui.context).apply {
+    private fun agendaCard(ui: Ui, fill: android.graphics.drawable.Drawable) = columns(ui).apply {
+        background = ui.pressable(fill, 16f)
+        setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(15))
+    }
+
+    private fun columns(ui: Ui) = BaselineRow(ui.context).apply {
         orientation = LinearLayout.HORIZONTAL
         showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
         dividerDrawable = GradientDrawable().apply { setSize(ui.dp(12f), 1) }
-        background = ui.pressable(fill, 16f)
-        setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(15))
         gravity = Gravity.TOP // baselines line up only with top gravity
         isBaselineAligned = true
     }
@@ -505,8 +562,8 @@ object DayScreen {
     }
 
     /** A card's title: bold, a touch tight, as large text wants. */
-    private fun title(ui: Ui, text: String, color: Int) =
-        ui.text(text, 18f, color, ui.f.bodyBold, spacing = -0.01f).apply { setLineSpacing(0f, 1.1f) }
+    private fun title(ui: Ui, text: String, color: Int, size: Float = 18f) =
+        ui.text(text, size, color, ui.f.bodyBold, spacing = -0.01f).apply { setLineSpacing(0f, 1.1f) }
 }
 
 /**
