@@ -85,7 +85,8 @@ To release a new version of the app, once the user asks:
 3. `gh release create v<versionCode> --prerelease --title <versionName> --target main
    UM-Timetable-<versionName>.apk`. The in-app updater reads the tag as the versionCode and shows the
    title and the notes in its update card. Write the notes for students: at most ten short, plain lines
-   (the card shows ten, and 1.2.0-beta.1 shows Markdown marks as typed).
+   (the card shows ten, and 1.2.0-beta.1 shows Markdown marks as typed). When the user asks for a stable
+   release (1.10.0 was the first), leave out `--prerelease` and `-beta` from the name.
 
 ## Things learned the hard way
 

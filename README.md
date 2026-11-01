@@ -64,7 +64,7 @@ You need an Android phone on **Android 12 or newer**. There's no iPhone version.
 4. If Play Protect says **App scan recommended**, tap **More details**, then **Install without scanning**. It shows this for apps from outside the Play Store.
 5. Open the app and sign in with your **SiswaMail**. Your timetable loads by itself.
 
-New versions show up as an update card inside the app, so you only do this once. The app is in beta, so expect small updates often.
+New versions show up as an update card inside the app, so you only do this once. Expect small updates often.
 
 ## Your privacy
 
