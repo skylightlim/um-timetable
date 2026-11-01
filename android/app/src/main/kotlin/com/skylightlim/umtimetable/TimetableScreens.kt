@@ -281,7 +281,7 @@ object DayScreen {
         val items = (list.map { Triple(it.start, it.end, it as Any) } + plans.map { Triple(it.start, it.end, it as Any) }).sortedBy { it.first }
         val (finished, ahead) = splitDay(items, isToday && !off, now.min)
         val lifted = status?.session?.takeIf { it in list }
-        val agenda = ui.column(gap = 8f).apply { clipChildren = false }
+        val agenda = ui.column(gap = 8f)
         var hero: View? = null
         // The next class says how long until it itself, so no free time leads up to it.
         var until: Int? = if (ahead.firstOrNull()?.third == lifted) null else finished.maxOfOrNull { it.second }
@@ -313,7 +313,7 @@ object DayScreen {
     /**
      * Shows the lifted card arriving: what's to come glides up from under what's finished, as finished
      * things pass it going down, the way the page was before they swapped places. With nothing finished,
-     * the card lifts off the page. Only the first time this class has the place; a finger can use the page
+     * the card pops into place. Only the first time this class has the place; a finger can use the page
      * throughout, as nothing waits for it.
      */
     private fun moveUp(page: View, agenda: View, earlier: View?, hero: View, s: Session, date: java.time.LocalDate) {
@@ -399,9 +399,9 @@ object DayScreen {
     }
 
     /**
-     * The class in progress or the next one: its own card from the list, not a second one about it, lifted
-     * off the page. It says when over the card's usual lines, with a larger name and the lecturer whole, and
-     * in progress how far through.
+     * The class in progress or the next one: its own card from the list, not a second one about it. It says
+     * when over the card's usual lines, with a larger name and the lecturer whole, and in progress how far
+     * through. No shadow: on a course colour it looked dirty; its place and size set it apart.
      */
     private fun liftedSlot(h: Host, s: Session, st: Status): View {
         val ui = h.ui
@@ -416,7 +416,6 @@ object DayScreen {
         }
         return ui.column().apply {
             background = ui.pressable(fill, 20f)
-            elevation = ui.dp(8f).toFloat()
             setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(16))
             contentDescription = "$now, $left. ${describe(s)}"
             setOnClickListener { h.openSheet(s.course, s) }
