@@ -574,6 +574,56 @@ object SpectrumScreens {
         // An opened post shows all of its text: tapping the row was the "show more".
         into.addView(RichText.view(h, a.optString("html"), "n${a.getInt("id")}", code.ifEmpty { "Spectrum" }, 0, expanded = h.expanded), ui.wide(top = 8f))
         for (f in a.optJSONArray("attachments")?.objects().orEmpty()) into.addView(fileButton(h, f, code), ui.wide(top = 8f))
+        a.optInt("replies").takeIf { it > 0 }?.let { into.addView(newsReplies(h, a, it), ui.wide(top = 8f)) }
+    }
+
+    /** "2 replies" under a post: opens them in place, read from Spectrum each time they're opened. */
+    private fun newsReplies(h: SpectrumHost, a: JSONObject, count: Int): View {
+        val ui = h.ui
+        val id = a.getInt("id")
+        val key = "news-replies-$id"
+        val list = ui.column().apply { setPadding(ui.dp(14), 0, 0, 0) }
+        val chevron = Motion.chevron(ui, key in h.expanded)
+        fun show(got: Result<List<JSONObject>>) {
+            list.removeAllViews()
+            val replies = got.getOrNull()
+            if (replies == null) {
+                list.addView(ui.text("Couldn't read the replies. Check your connection, then open them again.", 14f, ui.p.muted), ui.wide(top = 8f))
+                return
+            }
+            if (replies.isEmpty()) list.addView(ui.text("The replies are no longer there.", 14f, ui.p.muted), ui.wide(top = 8f))
+            for ((n, r) in replies.withIndex()) {
+                if (n > 0) list.addView(rule(ui), ui.wide(top = 12f))
+                val code = a.optString("code").ifEmpty { "Spectrum" }
+                list.addView(ui.text("${r.optString("author").replace(TRAILING_DOT, "")} · ${dayLabel(r.getLong("time"))} ${hm(r.getLong("time"))}", 12.5f, ui.p.muted), ui.wide(top = 12f))
+                list.addView(RichText.view(h, r.optString("html"), "r${r.getInt("id")}", code, 0, 15f, expanded = h.expanded), ui.wide(top = 4f))
+                for (f in r.optJSONArray("attachments")?.objects().orEmpty()) list.addView(fileButton(h, f, code), ui.wide(top = 8f))
+            }
+        }
+        fun load() {
+            list.removeAllViews()
+            list.addView(ui.text("Reading the replies…", 14f, ui.p.muted), ui.wide(top = 8f))
+            val c = ui.context.applicationContext
+            kotlin.concurrent.thread {
+                val got = runCatching { SpectrumSync.replies(c, id) }
+                list.post { show(got) }
+            }
+        }
+        lateinit var button: LinearLayout
+        button = moduleButton(ui, R.drawable.ic_module, if (count == 1) "1 reply" else "$count replies", "") {
+            Motion.resize(button)
+            val open = h.expanded.add(key) || !h.expanded.remove(key)
+            list.visibility = if (open) View.VISIBLE else View.GONE
+            Motion.turn(chevron, open)
+            if (open) load()
+        }
+        button.addView(chevron, LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)))
+        list.visibility = if (key in h.expanded) View.VISIBLE else View.GONE
+        if (key in h.expanded) load()
+        return ui.column().apply {
+            addView(button)
+            addView(list)
+        }
     }
 
     /** A post as a ruled row: when, subject and author; tapping it opens its text and files in place. */

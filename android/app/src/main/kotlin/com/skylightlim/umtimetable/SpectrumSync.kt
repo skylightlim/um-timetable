@@ -306,6 +306,7 @@ object SpectrumSync {
                     // Posted in a forum other than the course's Announcements (an occurrence's own): its name.
                     .put("forum", if (f.optString("type") == "news") "" else plain(f.optString("name")))
                     .put("time", created * 1000)
+                    .put("replies", d.optInt("numreplies"))
                     .put("attachments", JSONArray((d.optJSONArray("attachments") ?: JSONArray()).objects().map { file(it.optString("filename"), it) }))
                     // Posted to the user's group, or in a course where they have none, or to everyone (group -1)
                     // unless it's addressed to other occurrences only ("… for OCC7, OCC8 and OCC9").
@@ -341,6 +342,23 @@ object SpectrumSync {
     private fun discussionsPage(api: Api, forumId: Int, page: Int): JSONArray =
         (api.call("mod_forum_get_forum_discussions", mapOf("forumid" to forumId, "sortorder" to -1, "page" to page, "perpage" to NEWS_PAGE)) as JSONObject)
             .getJSONArray("discussions")
+
+    /**
+     * The replies under announcement [discussionId], oldest first, read when the user asks for them. Throws
+     * as [Spectrum.call] does. Moodle's list starts with the announcement itself, which has no parent.
+     */
+    fun replies(c: Context, discussionId: Int): List<JSONObject> {
+        val token = SpectrumStore.token(c) ?: throw Spectrum.Error("invalidtoken", "Not signed in")
+        val posts = (Spectrum.call(token, "mod_forum_get_discussion_posts", mapOf("discussionid" to discussionId, "sortby" to "created", "sortdirection" to "ASC")) as JSONObject)
+            .getJSONArray("posts").objects()
+        return posts.filter { !it.isNull("parentid") && !it.optBoolean("isdeleted") }.map { p ->
+            JSONObject().put("id", p.getInt("id"))
+                .put("author", p.optJSONObject("author")?.optString("fullname").orEmpty())
+                .put("time", p.optLong("timecreated") * 1000)
+                .put("html", p.optString("message"))
+                .put("attachments", JSONArray((p.optJSONArray("attachments") ?: JSONArray()).objects().map { file(it.optString("filename"), it) }))
+        }
+    }
 
     // --- what's new on the course pages ([CourseUpdates]) ---------------------------------------
 
