@@ -11,8 +11,39 @@ val DAY_NAMES = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "
 val DAY_SHORT = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 val MONTHS = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
-/** [registered]: Spectrum's occurrence, when the user chose another ([occ]) in Settings; else 0. */
-data class Course(val code: String, val name: String, val short: String, val occ: Int, val color: Int, val registered: Int = 0)
+/**
+ * [registered]: Spectrum's occurrence, when the user chose another ([occ]) in Settings; else 0.
+ * [form]: the short name the user gave it ([ShortForms]), which Week shows instead of [name]; [short] is the data's own.
+ */
+data class Course(val code: String, val name: String, val short: String, val occ: Int, val color: Int, val registered: Int = 0, val form: String? = null)
+
+/**
+ * The short names the user gave their courses, by code ("FOP"). Kept apart from the timetable, so getting
+ * it again from TimeEdit doesn't lose them.
+ */
+object ShortForms {
+    /** About what fits a block's width on Week, with the system's usual font size, in two lines. */
+    const val MAX = 12
+    private const val KEY = "shortForms"
+
+    fun all(c: Context): JSONObject = runCatching { JSONObject(uiPrefs(c).getString(KEY, "{}") ?: "{}") }.getOrDefault(JSONObject())
+
+    /** Gives [code] the short name [typed]; blank takes it away. */
+    fun set(c: Context, code: String, typed: String) {
+        val forms = all(c)
+        val form = clean(typed)
+        if (form.isEmpty()) forms.remove(code) else forms.put(code, form)
+        uiPrefs(c).edit().putString(KEY, forms.toString()).apply()
+        Timetable.forget()
+    }
+
+    /** What's typed, as it's kept: one line, single spaces, no longer than [MAX]. */
+    fun clean(typed: String): String = typed.trim().replace(Regex("""\s+"""), " ").take(MAX).trim()
+
+    /** A name's initials, to suggest: "Fundamentals of Programming" → "FOP", "Computing Mathematics I" → "CMI". */
+    fun suggest(name: String): String =
+        name.split(Regex("""[\s/&-]+""")).filter { it.isNotEmpty() }.joinToString("") { it.take(1).uppercase() }.take(MAX)
+}
 
 /** One weekly class. [day] is 1 = Monday … 5 = Friday; [start] and [end] are minutes after midnight. */
 data class Session(
@@ -87,6 +118,14 @@ class Timetable(
 
     fun attendanceDay(d: Int): List<Session> = attendance.filter { it.day == d }.sortedBy { it.start }
 
+    /** This timetable with each course in [forms] (code to short name) carrying its short name. */
+    fun withForms(forms: Map<String, String>): Timetable {
+        if (forms.isEmpty()) return this
+        fun named(c: Course) = forms[c.code]?.let { c.copy(form = it) } ?: c
+        fun named(s: Session) = s.copy(course = named(s.course))
+        return Timetable(sessions.map(::named), courses.map(::named), term, registered.map(::named))
+    }
+
     /**
      * This timetable with each course in [scheme]'s colour for its slot: the place of its colour in the
      * import palette, or else its place in the list. Gold keeps the colours as imported.
@@ -152,8 +191,12 @@ class Timetable(
         fun load(context: Context): Timetable {
             val scheme = Scheme.load(context)
             cached?.takeIf { it.first == scheme }?.let { return it.second }
-            return runCatching { parse(json(context)) }.getOrElse { Timetable(emptyList()) }.recolored(scheme).also { cached = scheme to it }
+            val forms = ShortForms.all(context).let { f -> f.keys().asSequence().associateWith { f.getString(it) } }
+            return runCatching { parse(json(context)) }.getOrElse { Timetable(emptyList()) }.withForms(forms).recolored(scheme).also { cached = scheme to it }
         }
+
+        /** What [load] gives changed without the file changing: the next load reads it afresh. */
+        fun forget() { cached = null }
 
         /**
          * `{term, courses: {code: {name, short, occ, color, registered?}}, sessions: [{day, start, end, code, type,

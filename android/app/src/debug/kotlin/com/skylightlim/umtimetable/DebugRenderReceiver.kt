@@ -40,7 +40,7 @@ import java.io.File
  * --ei maxEnd 1140: room until 19:00, so How long's wheel runs on; --ei cap 260: its middle at most 260dp, scrolling, as
  * when the keyboard leaves too little room).
  * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200).
- * view occcard draws Settings' card for choosing an occurrence (--es code CODE).
+ * view occcard draws Settings' card for choosing an occurrence (--es code CODE); view shortcard its card for a short name.
  * view pinmenu draws the card a long press on a course page's section name brings up (--ez pinned true: Unpin).
  * view signout draws the Sign out question's card. view settings draws the Settings tab's page (--ez signedIn true|false
  * for either Account row); view signin the first-run sign-in poster, at screen height (or --ei height px).
@@ -49,6 +49,12 @@ import java.io.File
  */
 class DebugRenderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        // --es shortName WIA1000=FOP: draws with that short name, then puts back what was there.
+        intent.getStringExtra("shortName")?.split("=", limit = 2)?.takeIf { it.size == 2 }?.let { (code, form) ->
+            val before = ShortForms.all(context).optString(code)
+            ShortForms.set(context, code, form)
+            android.os.Handler(android.os.Looper.getMainLooper()).post { ShortForms.set(context, code, before) }
+        }
         if (intent.hasExtra("bench")) return bench(context, intent.getIntExtra("bench", 20))
         if (intent.getStringExtra("view") == "icon") return icon(context)
         if (intent.getStringExtra("view") == "tabicons") return tabIcons(context)
@@ -87,6 +93,11 @@ class DebugRenderReceiver : BroadcastReceiver() {
                 setPadding(host.ui.dp(4), host.ui.dp(16), host.ui.dp(4), host.ui.dp(24))
                 val course = host.timetable.courses.firstOrNull { it.code == intent.getStringExtra("code") } ?: host.timetable.courses.first()
                 addView(SettingsSheet.occurrenceCard(host.ui, course.code, course.short, course.color, (1..20).toList(), course.occ, course.occ) {})
+            }
+            "shortcard" -> FrameLayout(c).apply {
+                setPadding(host.ui.dp(4), host.ui.dp(16), host.ui.dp(4), host.ui.dp(24))
+                val course = host.timetable.courses.firstOrNull { it.code == intent.getStringExtra("code") } ?: host.timetable.courses.first()
+                addView(SettingsSheet.shortFormCard(host.ui, course) {})
             }
             // The card a long press on a course page's section name brings up (--ez pinned true: "Unpin").
             "pinmenu" -> FrameLayout(c).apply {

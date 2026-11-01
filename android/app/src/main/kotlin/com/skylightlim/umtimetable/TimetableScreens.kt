@@ -828,13 +828,13 @@ class WeekGrid(
         canvas.clipRect(r)
         codePaint.color = textColor; codePaint.alpha = alpha
         canvas.drawText(TextUtils.ellipsize(s.course.code, codePaint, w.toFloat(), TextUtils.TruncateAt.END).toString(), r.left + pad, r.top + pad + codePaint.textSize, codePaint)
-        // The name gets the lines that fit between the code and the room: the whole name where there's
-        // room, else the short name, cut short only when even that doesn't fit.
+        // The name gets the lines that fit between the code and the room: the short name the user gave it,
+        // or the whole name where there's room, else the data's short name, cut short only when even that doesn't fit.
         val nameTop = r.top + pad + codePaint.textSize + ui.dp(3f)
         val lines = ((r.bottom - pad - roomPaint.textSize - ui.dp(2f) - nameTop) / namePaint.fontSpacing).toInt()
         if (lines >= 1) {
-            val full = layout(s.course.name, w, lines, true)
-            val name = if (full.getEllipsisCount(full.lineCount - 1) > 0 && s.course.short != s.course.name) layout(s.course.short, w, lines, true) else full
+            val full = layout(s.course.form ?: s.course.name, w, lines, true)
+            val name = if (s.course.form == null && full.getEllipsisCount(full.lineCount - 1) > 0 && s.course.short != s.course.name) layout(s.course.short, w, lines, true) else full
             name.paint.color = textColor; name.paint.alpha = alpha
             canvas.save()
             canvas.translate(r.left + pad, nameTop)

@@ -123,6 +123,7 @@ object SettingsSheet {
         group("Classes", listOfNotNull(
             timetable(h, tt),
             if (signedIn) occurrences(h, context) else null,
+            if (tt.courses.isEmpty()) null else shortForms(h, context),
             wheelRow(ui, "Class reminders", "A notification before class",
                 reminders.map { it.second }, reminders.indexOfFirst { it.first == ClassReminders.before(context) }.coerceAtLeast(0), { reminders[it].first != null },
                 choose = { i -> ClassReminders.setBefore(context, reminders[i].first) },
@@ -363,6 +364,111 @@ object SettingsSheet {
             if (occurrencesOpen && fold.childCount == 0) fill()
             fold.visibility = if (occurrencesOpen) View.VISIBLE else View.GONE
             Motion.turn(chevron, occurrencesOpen)
+        }
+        return ui.column().apply {
+            addView(head)
+            addView(fold)
+        }
+    }
+
+    /** Whether the Short names fold is open: it stays so when the page is redrawn. */
+    private var shortFormsOpen = false
+
+    /**
+     * The card for giving [course] a short name: its code large in its colour and its full name, the field
+     * (the keyboard up, its initials suggested), then Cancel and Save. [done] gets what's typed, or null for Cancel.
+     */
+    fun shortFormCard(ui: Ui, course: Course, done: (String?) -> Unit): View {
+        val p = ui.p
+        val field = android.widget.EditText(ui.context).apply {
+            setText(course.form.orEmpty())
+            hint = ShortForms.suggest(course.name)
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
+            setTextColor(p.text)
+            setHintTextColor(p.faint)
+            typeface = ui.f.bodySemi
+            background = ui.shape(p.surface2, 12f)
+            setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
+            minHeight = ui.dp(52)
+            isSingleLine = true
+            filters = arrayOf(android.text.InputFilter.LengthFilter(ShortForms.MAX))
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+            textCursorDrawable = ui.shape(p.accentText, 1f).apply { setSize(ui.dp(2), 0) }
+            contentDescription = "Short name for ${course.code}"
+            setSelection(text.length)
+            setOnEditorActionListener { _, _, _ -> done(text.toString()); true }
+        }
+        return ConfirmDialog.frame(ui).apply {
+            addView(ui.text(course.code, 30f, p.courseText(course.color), ui.f.sign))
+            addView(ui.text(course.name, 15f, p.muted), ui.wide(top = 2f))
+            addView(field, ui.wide(top = 18f))
+            addView(ui.text("Shown on Week instead of the full name", 13f, p.muted), ui.wide(top = 8f))
+            addView(ui.row(gap = 8f).apply {
+                addView(ConfirmDialog.button(ui, "Cancel", p.surface2, p.text) { done(null) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(ConfirmDialog.button(ui, "Save", p.accent, p.accentInk) { done(field.text.toString()) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            }, ui.wide(top = 20f))
+            field.requestFocus()
+        }
+    }
+
+    /**
+     * Short names, a fold in Classes: each course with its short name, or Add; a tap flies a card out of it
+     * ([shortFormCard]). Week then shows the short name in that course's blocks ([ShortForms]).
+     */
+    private fun shortForms(h: SpectrumHost, context: Context): View {
+        val ui = h.ui
+        val p = ui.p
+        fun summary() = ShortForms.all(context).length().let { n -> if (n == 0) "None" else "$n set" }
+        val chevron = Motion.chevron(ui, shortFormsOpen, p.faint).apply { layoutParams = LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)) }
+        val shown = value(ui, summary())
+        val head = row(ui, "Short names", end = chosen(ui, shown, chevron))
+        val fold = ui.column().apply { setPadding(ui.dp(14), ui.dp(2), ui.dp(14), ui.dp(12)) }
+
+        fun fill() {
+            for ((n, listed) in h.timetable.courses.withIndex()) {
+                val code = listed.code
+                val value = ui.text(listed.form ?: "Add", 14f, if (listed.form == null) p.accentText else p.text, ui.f.bodySemi)
+                if (n > 0) fold.addView(View(context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
+                fold.addView(ui.row(gap = 12f).apply {
+                    minimumHeight = ui.dp(56)
+                    setPadding(0, ui.dp(10), 0, ui.dp(10))
+                    background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
+                    contentDescription = "$code, ${listed.name}. ${listed.form?.let { "Short name $it" } ?: "No short name"}."
+                    addView(ui.column().apply {
+                        addView(ui.text(code, 13f, p.courseText(listed.color), ui.f.monoBold))
+                        addView(ui.text(listed.name, 14f, p.text, ui.f.bodySemi).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }, ui.wide(top = 2f))
+                    }, ui.grow())
+                    addView(value)
+                    addView(chevron(ui))
+                    setOnClickListener { row ->
+                        val course = h.timetable.courses.first { it.code == code }
+                        lateinit var close: (then: (() -> Unit)?) -> Unit
+                        val card = shortFormCard(ui, course) { typed ->
+                            if (typed == null) return@shortFormCard close(null)
+                            ShortForms.set(context, code, typed)
+                            val form = ShortForms.all(context).optString(code).ifEmpty { null }
+                            value.text = form ?: "Add"
+                            value.setTextColor(if (form == null) p.accentText else p.text)
+                            contentDescription = "$code, ${course.name}. ${form?.let { "Short name $it" } ?: "No short name"}."
+                            shown.text = summary()
+                            close { Motion.pop(value, 0.6f) }
+                        }
+                        close = ConfirmDialog.present(ui, card, from = Motion.onScreen(row), backAlways = true, keyboard = true)
+                    }
+                })
+            }
+        }
+
+        fold.visibility = if (shortFormsOpen) View.VISIBLE else View.GONE
+        if (shortFormsOpen) fill()
+        head.background = ui.pressable(ui.shape(Color.TRANSPARENT, 0f), 0f)
+        head.setOnClickListener {
+            Motion.resize(head)
+            shortFormsOpen = !shortFormsOpen
+            if (shortFormsOpen && fold.childCount == 0) fill()
+            fold.visibility = if (shortFormsOpen) View.VISIBLE else View.GONE
+            Motion.turn(chevron, shortFormsOpen)
         }
         return ui.column().apply {
             addView(head)

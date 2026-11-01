@@ -79,9 +79,10 @@ object ConfirmDialog {
      *
      * With [from] (where it was opened, on screen), the card flies out of it as the plan card flies out of
      * the week grid ([Motion.flyOut]), and goes back into it when closed without its action (outside, Back,
-     * Cancel), or always with [backAlways]; done with its action, it just fades.
+     * Cancel), or always with [backAlways]; done with its action, it just fades. With [keyboard], for a card
+     * with a text field: the keyboard comes up, and the card sits high enough to stay above it.
      */
-    fun present(ui: Ui, card: View, from: android.graphics.RectF? = null, backAlways: Boolean = false, onClosed: (() -> Unit)? = null): (then: (() -> Unit)?) -> Unit {
+    fun present(ui: Ui, card: View, from: android.graphics.RectF? = null, backAlways: Boolean = false, keyboard: Boolean = false, onClosed: (() -> Unit)? = null): (then: (() -> Unit)?) -> Unit {
         val dialog = Dialog(ui.context, android.R.style.Theme_Translucent_NoTitleBar)
         // The screen behind blurs where the phone can (not in battery saver, say), with a lighter dim over it;
         // where it can't, the dim alone is darker.
@@ -116,9 +117,10 @@ object ConfirmDialog {
         }
         val frame = FrameLayout(ui.context).apply {
             addView(scrim, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            addView(card, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER).apply {
+            addView(card, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, if (keyboard) Gravity.TOP else Gravity.CENTER).apply {
                 leftMargin = ui.dp(20)
                 rightMargin = ui.dp(20)
+                if (keyboard) topMargin = ui.dp(96)
             })
             scrim.setOnClickListener { close(null) }
         }
@@ -127,6 +129,7 @@ object ConfirmDialog {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             setWindowAnimations(0)
+            if (keyboard) setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
         }
         if (Build.VERSION.SDK_INT >= 33) {
             dialog.onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT) { close(null) }
