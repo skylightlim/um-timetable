@@ -28,7 +28,7 @@ Aplikasi jadual waktu tidak rasmi untuk pelajar UM · 马来亚大学学生的�
 | **See your whole week** | A clean week grid with UM's semester weeks and Kuala Lumpur's public holidays. Add your own plans to free slots. |
 | **Never miss a deadline** | Every Spectrum deadline in one list, counting down. |
 | **Keep up with each course** | News, marks, files and links, without digging through Spectrum. |
-| **Get reminded** | Notifications for deadlines, marks, news and your classes. |
+| **Get reminded** | Notifications for deadlines, marks, news, new slides and notes, and your classes. |
 | **Check it at a glance** | A home-screen widget with your next class and your week. |
 | **Make it yours** | Gold, Blue or Red themes, light and dark. |
 

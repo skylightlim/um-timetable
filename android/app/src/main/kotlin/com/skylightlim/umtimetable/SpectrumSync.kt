@@ -77,6 +77,7 @@ object SpectrumSync {
             MayaImport.fillNames(c, courses)
             val news = if (attendanceOnly) null else syncPool.submit(Callable { fetchNews(c, api, courses) })
             val due = if (attendanceOnly) null else syncPool.submit(Callable { fetchDue(c, api, courses) })
+            val updates = if (attendanceOnly) null else syncPool.submit(Callable { fetchCourseUpdates(c, api, courses) })
             if (!attendanceOnly) syncGrades(c, api, courses)
             val attendance = syncPool.submit(Callable { fetchAttendance(c, api, courses, fresh = !attendanceOnly) })
             // Notifying and saving stay on this thread, in the same order as before.
@@ -90,6 +91,7 @@ object SpectrumSync {
                 // The first sync after signing in only records what exists; later ones notify.
                 SpectrumStore.setFlag(c, "primed", true)
             }
+            updates?.await()?.let { notifyCourseUpdates(c, it) }
             val a = attendance.await()
             SpectrumStore.write(c, "attendance", a.toString())
             notifyAttendance(c, a)
@@ -339,6 +341,75 @@ object SpectrumSync {
     private fun discussionsPage(api: Api, forumId: Int, page: Int): JSONArray =
         (api.call("mod_forum_get_forum_discussions", mapOf("forumid" to forumId, "sortorder" to -1, "page" to page, "perpage" to NEWS_PAGE)) as JSONObject)
             .getJSONArray("discussions")
+
+    // --- what's new on the course pages ([CourseUpdates]) ---------------------------------------
+
+    /** Reports overlap by this much, so what's uploaded as one sync starts isn't missed; [CourseUpdates] knows it's been told. */
+    private const val UPDATES_OVERLAP = 600L
+    private const val UPDATES_SEEN = 300
+
+    /** What each course has that's new, for [notifyCourseUpdates]. A course that fails keeps its place for the next sync. */
+    private fun fetchCourseUpdates(c: Context, api: Api, courses: JSONArray): Map<JSONObject, List<JSONObject>> {
+        val state = runCatching { JSONObject(SpectrumStore.read(c, "course-updates") ?: "{}") }.getOrDefault(JSONObject())
+        val occurrences = SpectrumStore.occurrences(c)
+        val requests = courses.objects().map { course ->
+            val id = course.getInt("id")
+            val saved = state.optJSONObject("$id")
+            course to requestPool.submit(Callable {
+                runCatching { courseUpdates(api, id, saved, occurrences.optInt(course.optString("code"))) }
+                    .onFailure { Log.w(TAG, "course updates of $id: ${it.message}") }.getOrNull()
+            })
+        }
+        val found = LinkedHashMap<JSONObject, List<JSONObject>>()
+        for ((course, request) in requests) {
+            val (saved, items) = request.await() ?: continue
+            state.put("${course.getInt("id")}", saved)
+            if (items.isNotEmpty()) found[course] = items
+        }
+        SpectrumStore.write(c, "course-updates", state.toString())
+        Log.i(TAG, "course updates: ${found.values.sumOf { it.size }} to tell, in ${found.size} of ${courses.length()} courses")
+        return found
+    }
+
+    /**
+     * One course's report since its last, with what to tell of it and what to remember. The first time
+     * only records what's there, so nothing already on the page is called new.
+     */
+    private fun courseUpdates(api: Api, id: Int, saved: JSONObject?, occ: Int): Pair<JSONObject, List<JSONObject>> {
+        val now = System.currentTimeMillis() / 1000
+        if (saved == null) {
+            return JSONObject().put("since", now).put("known", JSONArray(courseModules(api, id).keys)).put("seen", JSONArray()) to emptyList()
+        }
+        val known = CourseUpdates.ints(saved.optJSONArray("known"))
+        val seen = CourseUpdates.strings(saved.optJSONArray("seen"))
+        val report = api.call("core_course_get_updates_since", mapOf("courseid" to id, "since" to saved.getLong("since") - UPDATES_OVERLAP, "filter" to listOf("configuration", "fileareas"))) as JSONObject
+        val changes = CourseUpdates.changes(report.optJSONArray("instances")?.objects().orEmpty(), known)
+        // Named only when there's something to tell, as this is the whole course's list.
+        val modules = if (changes.isEmpty()) emptyMap() else courseModules(api, id)
+        val items = CourseUpdates.items(changes, modules, seen.toSet(), occ)
+        return JSONObject().put("since", now).put("known", JSONArray(known + modules.keys))
+            .put("seen", JSONArray((seen + changes.flatMap { it.keys }).distinct().takeLast(UPDATES_SEEN))) to items
+    }
+
+    /** A course's activities by id, without their files. */
+    private fun courseModules(api: Api, id: Int): Map<Int, JSONObject> =
+        (api.call("core_course_get_contents", mapOf("courseid" to id, "options" to listOf(mapOf("name" to "excludecontents", "value" to true)))) as JSONArray)
+            .objects().flatMap { (it.optJSONArray("modules") ?: JSONArray()).objects() }
+            .onEach { it.put("name", plain(it.optString("name"))) }.associateBy { it.getInt("id") }
+
+    /** One notification a course, which a later one replaces. */
+    private fun notifyCourseUpdates(c: Context, found: Map<JSONObject, List<JSONObject>>) {
+        for ((course, items) in found) {
+            val id = course.getInt("id")
+            CourseUpdates.markNew(c, id, items.map { it.getInt("cmid") })
+            Notify.post(
+                c, Notify.FILES, "files-$id",
+                "${course.optString("code").ifEmpty { course.optString("name") }} · New on the course page",
+                CourseUpdates.text(items),
+                Notify.openCourse(c, id),
+            )
+        }
+    }
 
     private val gradesRunning = AtomicBoolean(false)
 
@@ -784,6 +855,7 @@ object Notify {
     const val NEWS = "announcements"
     const val DUE = "deadlines"
     const val GRADES = "grades"
+    const val FILES = "coursefiles"
     const val PLANS = "plans"
     const val MARKING = "marking"
     const val CLASSES = "classes"
@@ -805,6 +877,8 @@ object Notify {
                 .apply { description = "New assignments and reminders before they're due" },
             NotificationChannel(GRADES, "Marks", NotificationManager.IMPORTANCE_DEFAULT)
                 .apply { description = "When a lecturer releases a mark on Spectrum" },
+            NotificationChannel(FILES, "Course pages", NotificationManager.IMPORTANCE_DEFAULT)
+                .apply { description = "When a lecturer adds slides, notes or links to a course page" },
             NotificationChannel(PLANS, "Plans", NotificationManager.IMPORTANCE_HIGH)
                 .apply { description = "Reminders you set for your plans on the Week page" },
             NotificationChannel(CLASSES, "Classes", NotificationManager.IMPORTANCE_HIGH)
@@ -839,6 +913,13 @@ object Notify {
     fun openFold(c: Context, courseId: Int): PendingIntent = PendingIntent.getActivity(
         c, "fold-$courseId".hashCode(),
         Intent(c, MainActivity::class.java).putExtra(MainActivity.EXTRA_FOLD, courseId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
+    /** Course [courseId]'s page (something new on it). */
+    fun openCourse(c: Context, courseId: Int): PendingIntent = PendingIntent.getActivity(
+        c, "course-$courseId".hashCode(),
+        Intent(c, MainActivity::class.java).putExtra(MainActivity.EXTRA_COURSE, courseId).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 

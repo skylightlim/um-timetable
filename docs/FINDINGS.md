@@ -40,6 +40,21 @@ teaches *your* class; TimeEdit can, and students can sign in to it with SiswaMai
 `core_course_get_course_module_by_instance`.
 **No `mod_attendance_*` functions are exposed**, so attendance sessions come from calendar events.
 
+**What else the mobile service offers, weighed in November 2026** (one student's seven courses, read in a
+browser; Moodle 5.0's source for what each does):
+
+- `core_course_get_updates_since`: used for what's new on course pages. `filter` takes `configuration`
+  and `fileareas`. Most reports are `configuration` alone, which says nothing about what changed, so only
+  `contentfiles` and activities not seen before count. It gives file ids, not times, for file areas.
+- The `*_view_*` functions, which would record a visit: not used. They'd matter if something were locked
+  behind viewing an activity, and of 168 restrictions none is on completion (they're on groups, one on an
+  ID number, one on a grade), and no activity has a completion state.
+- `message_popup_get_popup_notifications`: not used, the feed is empty.
+- `mod_assign_get_submission_status`: not used. Due's action events already drop what's submitted, by the
+  user or their group (unless every member must submit), so it would only add "draft saved".
+- `tool_mobile_get_autologin_key` would sign a web page in without Microsoft, but Moodle refuses any
+  caller but its own apps, on purpose, so the app doesn't use it.
+
 **Attendance: one activity per occurrence or class, told apart only by name** (13 Oct). The calendar
 lists another group's session when its activity isn't restricted to a group (WIX1002: another
 group's "Tutorial T4 By … - Attendance", at the same hour as the user's own tutorial), and leaves

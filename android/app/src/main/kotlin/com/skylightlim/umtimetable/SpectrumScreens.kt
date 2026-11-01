@@ -552,10 +552,12 @@ object SpectrumScreens {
     /** The announcements for the user (not those for other occurrences only), newest first. */
     private fun myNews(c: android.content.Context) = SpectrumStore.array(c, "news").objects().filter { it.optBoolean("forMe", true) }.sortedByDescending { it.getLong("time") }
 
+    private fun newChip(ui: Ui) = ui.chip("New", ui.p.accent, ui.p.accentInk).apply { setPadding(ui.dp(6), ui.dp(1), ui.dp(6), ui.dp(1)) }
+
     /** "NEW ··· Today 09:12": a post's first line, in its course's fold; [extra] goes at the end (a row's chevron). */
     private fun newsTop(h: SpectrumHost, a: JSONObject, size: Float, extra: View? = null) = h.ui.row(gap = 8f).apply {
         val ui = h.ui
-        if (a.getInt("id").toString() !in h.seenNews) addView(ui.chip("New", ui.p.accent, ui.p.accentInk).apply { setPadding(ui.dp(6), ui.dp(1), ui.dp(6), ui.dp(1)) })
+        if (a.getInt("id").toString() !in h.seenNews) addView(newChip(ui))
         addView(ui.space(), ui.spacer())
         addView(ui.text("${dayLabel(a.getLong("time"))} ${hm(a.getLong("time"))}", size, ui.p.muted, ui.f.mono))
         extra?.let { addView(it) }
@@ -632,6 +634,7 @@ object SpectrumScreens {
         if (courses.isEmpty()) page.addView(emptyOrLoading(ui, "No current courses found on Spectrum."))
         val occurrences = SpectrumStore.occurrences(ui.context)
         val news = myNews(ui.context).groupBy { it.getInt("courseId") }
+        val marks = CourseUpdates.marksNow(ui.context)
         // Attendance is in Due; unmarked items named for other occurrences are other groups' submissions.
         val grades = gradeItems.filter { g ->
             !SpectrumSync.isAttendance(g) && !(g.isNull("raw") && AttendanceMatch.othersOnly(g.optString("name"), myOcc(h, occurrences, g.optString("code"))))
@@ -641,7 +644,7 @@ object SpectrumScreens {
             if (n > 0) page.addView(rule(ui))
             val id = c.getInt("id")
             val code = c.optString("code")
-            page.addView(courseEntry(h, c, code, myOcc(h, occurrences, code).takeIf { it > 0 }, news[id].orEmpty(), grades[id].orEmpty()))
+            page.addView(courseEntry(h, c, code, myOcc(h, occurrences, code).takeIf { it > 0 }, news[id].orEmpty(), grades[id].orEmpty(), CourseUpdates.unopened(marks, id)))
         }
         return page
     }
@@ -649,9 +652,10 @@ object SpectrumScreens {
     /**
      * A course on the Courses list. Its row opens the course page; the end of it, past a short line (a
      * count of what's new over a chevron), opens the course's announcements and then its marks in place
-     * under it, built the first time it's opened. Opening it marks what's new there as seen.
+     * under it, built the first time it's opened. Opening it marks what's new there as seen. [newOnPage]:
+     * a New on the row, for what's new on the course page ([CourseUpdates]).
      */
-    private fun courseEntry(h: SpectrumHost, c: JSONObject, code: String, occ: Int?, news: List<JSONObject>, grades: List<JSONObject>): View {
+    private fun courseEntry(h: SpectrumHost, c: JSONObject, code: String, occ: Int?, news: List<JSONObject>, grades: List<JSONObject>, newOnPage: Boolean): View {
         val ui = h.ui
         val p = ui.p
         val id = c.getInt("id")
@@ -660,9 +664,9 @@ object SpectrumScreens {
         val freshNews = news.map { it.getInt("id").toString() }.filter { it !in h.seenNews }
         val freshMarks = grades.filter { !it.isNull("raw") }.map(SpectrumSync::gradeKey).filter { it !in h.seenGrades }
         val fresh = freshNews.size + freshMarks.size
-        val body = courseRow(h, code, name, occ, null).apply {
+        val body = courseRow(h, code, name, occ, if (newOnPage) newChip(ui) else null).apply {
             background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
-            contentDescription = "$code, $name. Opens the course page."
+            contentDescription = "$code, $name.${if (newOnPage) " Something new on its page." else ""} Opens the course page."
             setOnClickListener { Haptics.tick(this); h.openCourse = id; h.render() }
         }
         val chevron = Motion.chevron(ui, key in h.expanded, p.faint)
@@ -752,6 +756,7 @@ object SpectrumScreens {
         val color = colorOf(h, code)
         val page = ui.column()
         val course = h.courseContents(id)
+        CourseUpdates.openPage(ui.context, id, course)
         val top = course?.let(CourseOutline::build).orEmpty()
         val folder = code.ifEmpty { "Spectrum" }
         h.openSection?.let { CourseOutline.find(top, it) }?.let { node ->
@@ -996,12 +1001,18 @@ object SpectrumScreens {
             return when {
                 restricted -> if (hasContent(availability)) RichText.view(h, availability, "$key-a", folder, 2, 13.5f, p.muted, h.expanded, selectable = true) else null
                 SpectrumHtml.isRule(html) -> rule(ui)
-                hasContent(html) -> textBlock(ui, RichText.view(h, html, key, folder, 0, 16f, expanded = h.expanded, selectable = true))
+                hasContent(html) -> textBlock(ui, RichText.view(h, html, key, folder, 0, 16f, expanded = h.expanded, selectable = true)).let { block ->
+                    if (!m.optBoolean("fresh")) block else ui.column().apply {
+                        addView(newChip(ui), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = ui.dp(4) })
+                        addView(block)
+                    }
+                }
                 else -> null
             }
         }
         val item = ui.column()
         val files = m.optJSONArray("files")?.objects().orEmpty()
+        if (m.optBoolean("fresh") && !restricted) item.addView(newChip(ui), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = ui.dp(4) })
         when {
             restricted -> item.addView(ui.row(gap = 10f).apply {
                 background = ui.shape(Color.TRANSPARENT, 12f, p.line)
