@@ -1,7 +1,8 @@
 """Draws the launcher icon: a cow (牛) and a horse (马) rearing up on either side of an empty shield in
-UM's shape, holding it up the way the two tigers hold up the arms of Malaysia, a front hoof on each of
-its top corners, standing on their hind legs. Realistic silhouettes, all in the gold of UM's shield rim
-on its blue (the adaptive icon's background, @color/ic_bg).
+UM's shape, holding it up the way the two tigers hold up the arms of Malaysia, in the same proportions:
+upright and slim, their heads well above the shield, a front hoof on each of its top corners, standing on
+their hind legs; the shield about two fifths of the width. Realistic silhouettes, all in the gold of UM's
+shield rim on its blue (the adaptive icon's background, @color/ic_bg).
 
     uv run --with skia-pathops python crest.py ../app/src/main/res/drawable [key=value ...]
 
@@ -9,9 +10,10 @@ Writes ic_fg.xml, ic_mono.xml and the status-bar icon ic_notify.xml (the shield 
 preview-circle.svg / preview-squircle.svg here (with no directory, only the previews).
 
 Each animal is one outline (COW, HORSE: points round it, smoothed into curves, a corner where marked),
-drawn rearing in a 120 x 160 box facing right, hind hooves on its bottom; the horse is turned to face
-the cow. Placed by its hind hooves, leaned upright, then slid sideways until its near front hoof rests on
-the shield's corner. Where an animal covers the shield, a blue gap of one line width parts them. Path
+drawn rearing upright in a 100 x 170 box facing right, hind hooves on its bottom; the horse is turned to
+face the cow. Placed by its hind hooves, then slid sideways until its near front hoof rests on the shield's
+corner. The cow is told from a goat by a cow's head: big and boxy, a tall square muzzle and a deep jaw, a
+short horn reaching forward, an ear out sideways; and a dewlap, an udder, a tufted tail. Where an animal covers the shield, a blue gap of one line width parts them. Path
 booleans resolve it into one gold shape, so the blue is a hole rather than paint, and the themed icon
 (ic_mono) is that same shape. They're not DuelView's pair (the duel has its own line drawings).
 """
@@ -24,11 +26,13 @@ from pathops import LineCap, LineJoin, Path, PathOp, decompose_quadratic_segment
 P = dict(
     blue="#223E99", gold="#BB9632",  # UM crest colours: the shield and its rim
     line=1.0,       # the gap between an animal and the shield, in icon units (dp in the 108-unit icon)
-    scale=0.26,     # the animals: icon units per unit of their 120 x 160 box
-    rim=2.4,        # the shield's gold rim
-    shield_w=21.0, shield_h=25.0,  # its top is where the hooves rest
-    cow_x=35.0, horse_x=73.0, feet_y=70.0,  # where each one's hind hooves stand, before sliding to the shield
-    lean=-18.0,     # degrees each is turned upright about its hind hooves (from the drawing's rear)
+    scale=0.235,    # the animals: icon units per unit of their 100 x 170 box
+    rim=2.6,        # the shield's gold rim
+    # As on Malaysia's arms: the shield about two fifths of the width, about four fifths of a supporter's height,
+    # its top where their front hooves rest and their heads well above it.
+    shield_w=28.0, shield_h=30.3,
+    cow_x=33.0, horse_x=75.0, feet_y=70.0,  # where each one's hind hooves stand, before sliding to the shield
+    lean=0.0,       # degrees each is turned about its hind hooves (they're drawn upright)
 )
 res = sys.argv[1] if len(sys.argv) > 1 and "=" not in sys.argv[1] else None
 for kv in sys.argv[1 if res is None else 2:]:
@@ -79,57 +83,59 @@ class Painter:
 
 
 # --- the cow and the horse: rearing silhouettes ----------------------------------------------------
-# In a 120 x 160 box, facing right, hind hooves on y = 156. A point (x, y, "c") is a corner (a hoof, a
-# horn's tip); the rest are smoothed through. Their front legs are bent, a hoof forward; the near one's
-# hoof is the frontmost point, the one that rests on the shield.
+# In a 100 x 170 box, rearing upright, facing right, hind hooves on y = 166. A point (x, y, "c") is a
+# corner (a hoof, a horn's tip); the rest are smoothed through. Their front legs reach forward, the near
+# one's hoof the frontmost point, the one that rests on the shield.
 
 HORSE = [
-    (75, 3, "c"), (79, 13), (86, 17), (95, 23), (103, 31), (108, 37), (108.5, 42, "c"), (103, 45), (96, 44),
-    (90, 44), (86, 41), (83, 43), (80, 50), (79, 59), (80, 67), (83, 73),
-    # near foreleg, raised and bent at the knee
-    (91, 72), (97, 73), (100, 77, "c"), (101, 86), (103, 92), (106, 97, "c"), (100, 100, "c"), (98, 94), (95, 86), (93, 81), (86, 82), (78, 86),
+    # ears and the long head, turned toward the shield, nose a little down; the jaw's round cheek
+    (58, 4, "c"), (62, 12), (68, 14), (77, 18), (85, 25), (90, 31), (91, 36, "c"), (86, 39), (79, 38), (74, 38), (69, 37), (66, 40),
+    # the throat, down the neck's front to a deep chest
+    (65, 47), (65, 55), (67, 63),
+    # near foreleg, reaching forward: forearm, knee, cannon, hoof
+    (73, 63), (80, 60), (86, 58, "c"), (91, 63), (95, 66, "c"), (92, 71, "c"), (88, 69), (84, 66), (77, 70), (70, 74),
     # far foreleg, lower
-    (84, 90), (89, 92), (90.5, 95, "c"), (91, 103), (93, 109, "c"), (87, 110, "c"), (86, 104), (85, 98), (78, 98), (71, 97),
-    # belly to the flank
-    (64, 104), (57, 112), (51, 119),
-    # near hind leg: stifle, hock, cannon, hoof
-    (53, 127), (51, 135), (51, 142), (53, 148), (55, 152), (60, 156, "c"), (51, 157, "c"), (49, 152), (46, 146), (42, 140), (39, 133), (37, 129),
+    (76, 78), (82, 78, "c"), (86, 84), (89, 88, "c"), (85, 91, "c"), (81, 87), (76, 85), (67, 86),
+    # belly, down to the flank
+    (63, 96), (60, 106), (58, 115),
+    # near hind leg, standing: stifle, the hock behind, cannon, hoof
+    (59, 124), (57, 134), (53, 143), (54, 152), (57, 160), (61, 166, "c"), (51, 167, "c"), (47, 160), (45, 152), (44, 146), (40, 140),
     # far hind leg
-    (36, 135), (37, 143), (39, 149), (41, 152), (45, 156, "c"), (35, 157, "c"), (33, 151), (29, 144), (25, 138),
-    # buttock and the tail, flowing
-    (21, 128), (17, 117), (16, 107), (11, 106), (6, 113), (4, 124), (5, 136), (9, 146, "c"), (11, 136), (13, 126), (16, 117), (20, 108),
-    # topline: croup, back, withers, the neck's crest with its mane in tufts, the poll
-    (22, 97), (26, 88), (33, 78), (40, 68), (46, 59), (50, 52),
-    (47, 48), (52, 45), (53, 40), (58, 37), (59, 31), (64, 28), (65, 22), (69, 18), (72, 12),
+    (38, 147), (38, 155), (40, 160), (43, 166, "c"), (33, 167, "c"), (30, 160), (29, 151), (27, 142),
+    # buttock and the tail, falling in waves
+    (24, 132), (22, 121), (22, 110), (17, 111), (11, 119), (8, 131), (9, 145), (13, 157, "c"), (15, 146), (16, 134), (19, 123), (23, 115),
+    # the back up to the withers, the mane in tufts up the arched neck, the poll
+    (26, 99), (31, 84), (37, 71), (42, 60), (45, 53),
+    (42, 48), (47, 44), (46, 38), (51, 34), (50, 27), (55, 23), (54, 16), (57, 11),
 ]
 
 COW = [
-    # two horns from the poll, curving up and forward
-    (73, 37), (74, 30), (78, 22, "c"), (78.5, 30), (77, 36), (79, 33), (84, 26, "c"), (83, 34), (81, 38),
-    # forehead, the face and the broad muzzle, the deep jaw
-    (87, 41), (93, 47), (98, 54), (101, 60), (101.5, 66, "c"), (97, 69), (90, 69), (84, 66),
-    # throat and the dewlap hanging under the neck, to the chest
-    (80, 68), (80, 75), (82, 82), (86, 86),
-    # near foreleg, raised: short and thick
-    (94, 85), (99, 88, "c"), (100, 96), (102, 102, "c"), (95, 104, "c"), (93, 98), (91, 94), (85, 95), (79, 99),
+    # the poll; a short thick horn reaching forward from it, curling up at the tip
+    (56, 21), (60, 17), (66, 14), (71, 10), (74, 4, "c"), (73, 12), (69, 18), (66, 22),
+    # the broad forehead, the long straight face, steep, down to a tall square muzzle
+    (69, 24), (75, 30), (80, 37), (84, 44), (87, 49), (89, 53), (89.5, 59, "c"), (84, 61.5), (78, 61.5),
+    # the deep flat jaw, back to a round cheek; the throat and a dewlap down the neck, the chest
+    (71, 61), (65, 59.5), (61, 61), (60, 67), (61, 72), (64, 76), (67, 78),
+    # near foreleg, reaching forward
+    (74, 74), (81, 68), (86, 64, "c"), (90, 68), (93, 71, "c"), (89, 75, "c"), (86, 73), (82, 72), (75, 78), (69, 83),
     # far foreleg
-    (84, 102), (89, 105, "c"), (90, 112), (92, 118, "c"), (85, 119, "c"), (83, 113), (81, 109), (73, 110),
-    # the big round belly and the udder
-    (66, 119), (60, 126), (56, 131), (53, 136, "c"), (49, 134),
-    # near hind leg, planted: thick thigh, hock, hoof
-    (49, 141), (49, 148), (52, 156, "c"), (43, 157, "c"), (42, 150), (40, 144), (37, 138),
+    (75, 87), (81, 85, "c"), (85, 90), (88, 93, "c"), (84, 96, "c"), (80, 93), (75, 93), (67, 95),
+    # a deeper belly, the udder
+    (63, 106), (61, 114), (60, 120), (61, 124), (59, 128, "c"), (55, 127),
+    # near hind leg, standing: thicker than the horse's, the hock behind
+    (56, 134), (55, 142), (52, 149), (53, 157), (56, 166, "c"), (46, 167, "c"), (44, 159), (42, 151), (40, 144), (38, 140),
     # far hind leg
-    (35, 143), (36, 150), (38, 156, "c"), (29, 157, "c"), (28, 150), (24, 142), (20, 133),
-    # thigh, buttock, the tail hanging close from its head, ending in a tuft
-    (16, 120), (14, 106), (14, 95), (11, 102), (10, 114), (10, 126), (10, 136), (8, 143), (10, 150, "c"), (16, 149), (16, 142, "c"),
-    (14, 134), (15, 122), (15, 110), (16, 100),
-    # tailhead, the straight back, withers, the short thick neck to the poll
-    (17, 89, "c"), (24, 85), (32, 79), (42, 72), (52, 64), (60, 56), (65, 50),
-    # the ear, out sideways under the horns
-    (63, 47), (55, 46, "c"), (61, 41), (68, 40),
+    (37, 148), (37, 157), (40, 166, "c"), (30, 167, "c"), (28, 158), (27, 148), (25, 140),
+    # buttock, the tail hanging close, ending in a tuft
+    (23, 130), (21, 118), (21, 108), (17, 113), (15, 125), (14, 138), (12, 150), (10, 157), (13, 163, "c"), (19, 162), (18, 155, "c"),
+    (18, 145), (19, 132), (20, 120),
+    # tailhead, the straight back, withers and the thick neck up to the poll
+    (22, 102, "c"), (27, 92), (33, 80), (39, 67), (45, 54), (49, 43), (51, 35),
+    # the ear: a broad leaf, straight out behind the horn
+    (49, 32), (43, 31), (37, 30, "c"), (42, 26), (48, 24), (52, 23),
 ]
 
-FEET = (44, 156)  # between the hind hooves, in the box
+FEET = (45, 167)  # between the hind hooves, in the box
 
 
 def outline(pts):
@@ -168,9 +174,9 @@ def slid(pts, to_x, front):
 
 g = Painter()
 w, h = P["shield_w"], P["shield_h"]
-cow, cow_hoof = slid(placed(COW, P["cow_x"], False), 54 - w / 2 + 1.2, max)
-horse, horse_hoof = slid(placed(HORSE, P["horse_x"], True), 54 + w / 2 - 1.2, min)
-top = (cow_hoof + horse_hoof) / 2 - 1.2  # the hooves just over the rim
+cow, cow_hoof = slid(placed(COW, P["cow_x"], False), 54 - w / 2 + 1.4, max)
+horse, horse_hoof = slid(placed(HORSE, P["horse_x"], True), 54 + w / 2 - 1.4, min)
+top = (cow_hoof + horse_hoof) / 2 - 1.0  # the hooves just over the rim
 sh = shield(54, top, w, h)
 g.inside(stroked(sh, 2 * P["rim"]), sh)
 for animal in (cow, horse):
