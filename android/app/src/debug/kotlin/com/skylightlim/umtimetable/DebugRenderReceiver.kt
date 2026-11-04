@@ -226,11 +226,11 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val codes = Timetable.load(context).courses.map { it.code }.ifEmpty { listOf("ABC1001") }
         val now = System.currentTimeMillis()
         fun code(i: Int) = codes[i % codes.size]
-        fun item(i: Int, name: String, inMin: Long, kind: String) = org.json.JSONObject().put("code", code(i)).put("course", "").put("name", name)
-            .put("due", now + inMin * 60_000L).put("overdue", inMin < 0).put("moduleLabel", kind).put("url", "")
+        fun item(i: Int, name: String, inMin: Long) = org.json.JSONObject().put("code", code(i)).put("course", "").put("name", name)
+            .put("due", now + inMin * 60_000L).put("overdue", inMin < 0).put("url", "")
         val due = listOf(
-            item(0, "Lab 2 report", -90, "Assignment"), item(1, "Quiz 3", 40, "Quiz"),
-            item(2, "Tutorial 4 submission", 12 * 60, "Assignment"), item(0, "Project proposal", 10 * 1440, "Assignment"),
+            item(0, "Lab 2 report", -90), item(1, "Quiz 3", 40),
+            item(2, "Tutorial 4 submission", 12 * 60), item(0, "Project proposal", 10 * 1440),
         )
         fun session(i: Int, startMin: Long, lengthMin: Long, listed: Boolean) = org.json.JSONObject().put("code", code(i)).put("name", "Attendance OCC 1")
             .put("start", now + startMin * 60_000L).put("end", now + (startMin + lengthMin) * 60_000L).put("listed", listed).put("url", "")

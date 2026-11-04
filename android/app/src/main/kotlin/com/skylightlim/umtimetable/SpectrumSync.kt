@@ -537,7 +537,6 @@ object SpectrumSync {
                     .put("course", plain(course?.optString("fullname") ?: ""))
                     .put("due", due * 1000)
                     .put("url", e.optString("url"))
-                    .put("moduleLabel", listOf(moduleLabel(e.optString("modulename")), e.optJSONObject("action")?.optString("name").orEmpty()).filter { it.isNotBlank() }.joinToString(" · "))
                     .put("overdue", e.optBoolean("overdue", false) || due < now)
         }
         // The user's occurrence in each course: from the last sync's groups (or their choice), else the timetable's.

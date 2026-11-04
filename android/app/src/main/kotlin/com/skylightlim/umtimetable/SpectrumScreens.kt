@@ -104,7 +104,6 @@ object SpectrumScreens {
                 val (late, coming) = SpectrumStore.due(c).partition { it.optBoolean("overdue") || it.getLong("due") <= now }
                 val next = coming.minOfOrNull { it.getLong("due") }
                 listOfNotNull(
-                    "Attendance open".takeIf { openAttendance(c) > 0 },
                     if (coming.isEmpty() && late.isEmpty()) "Nothing due" else coming.size.takeIf { it > 0 }?.let { "$it due" },
                     next?.let { "next in ${span(it).replace(" ", "")}" },
                     late.size.takeIf { it > 0 }?.let { "$it late" },
@@ -318,7 +317,7 @@ object SpectrumScreens {
         }
     }
 
-    /** One deadline's row: how long is left, large, and when; then its course, name and kind. [faded]: dismissed. */
+    /** One deadline's row: how long is left, large, and when; then its course code, its name and the course's name. [faded]: dismissed. */
     private fun dueRow(h: SpectrumHost, i: JSONObject, now: Long, faded: Boolean): LinearLayout {
         val ui = h.ui
         val p = ui.p
@@ -348,12 +347,12 @@ object SpectrumScreens {
         // Right: course, name, and what kind of activity it is.
         row.addView(ui.column().apply {
             setPadding(ui.dp(16), ui.dp(14), 0, ui.dp(14))
-            addView(ui.row(gap = 6f).apply {
-                addView(View(ui.context).apply { background = ui.shape(colorOf(h, code), 99f) }, LinearLayout.LayoutParams(ui.dp(8), ui.dp(8)))
-                addView(ui.text(code.ifEmpty { "Spectrum" }, 12f, p.courseText(colorOf(h, code)), ui.f.monoBold))
+            addView(ui.row(gap = 7f).apply {
+                addView(View(ui.context).apply { background = ui.shape(colorOf(h, code), 99f) }, LinearLayout.LayoutParams(ui.dp(10), ui.dp(10)))
+                addView(ui.text(code.ifEmpty { "Spectrum" }, 15f, p.courseText(colorOf(h, code)), ui.f.monoBold))
             })
             addView(ui.text(i.optString("name"), 16f, p.text, ui.f.bodySemi), ui.wide(top = 4f))
-            addView(ui.text(listOf(i.optString("moduleLabel"), courseName(h, i.optString("course"), code)).filter { it.isNotBlank() }.joinToString(" · "), 12.5f, p.muted), ui.wide(top = 2f))
+            courseName(h, i.optString("course"), code).takeIf { it.isNotBlank() }?.let { addView(ui.text(it, 12.5f, p.muted), ui.wide(top = 2f)) }
         }, ui.grow())
         return row
     }
