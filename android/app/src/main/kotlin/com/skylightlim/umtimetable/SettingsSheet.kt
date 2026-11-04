@@ -151,7 +151,33 @@ object SettingsSheet {
                 row(ui, "Not signed in", "For courses, deadlines, marks and news", button(ui, "Sign in") { h.signIn() })
             },
         ))
+
+        group("Widget", listOf(widget(h, context)))
         return page
+    }
+
+    /**
+     * The home-screen widget's row: whether it's on the home screen; a tap opens the launcher's own card for
+     * adding it (Android's requestPinAppWidget, as other apps' widget buttons do), with the widget on it as it
+     * is now: a touch and hold there moves it onto the home screen, or Add to home screen places it. An app can't put a
+     * widget there itself. Where the launcher can't do that, the row says how to add it from the home screen.
+     */
+    private fun widget(h: SpectrumHost, context: Context): View {
+        val ui = h.ui
+        val manager = android.appwidget.AppWidgetManager.getInstance(context)
+        val provider = android.content.ComponentName(context, TimetableWidget::class.java)
+        val placed = manager.getAppWidgetIds(provider).isNotEmpty()
+        if (!manager.isRequestPinAppWidgetSupported) {
+            return row(ui, "Home-screen widget", "Touch and hold an empty spot on your home screen, then Widgets", value(ui, if (placed) "Added" else "", placed))
+        }
+        return row(ui, "Home-screen widget", end = chosen(ui, value(ui, if (placed) "Added" else "Add", !placed))) {
+            // One drawing, at a 4×4's size: given several, a card that doesn't say its size shows the smallest
+            // (RemoteViews.getRemoteViewsToApply), which has no room for the week.
+            val preview = WidgetRenderer.build(context, h.timetable, h.now(), 388f, 520f)
+            manager.requestPinAppWidget(provider, android.os.Bundle().apply {
+                putParcelable(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_PREVIEW, preview)
+            }, null)
+        }
     }
 
     private fun button(ui: Ui, text: String, onClick: () -> Unit) = ui.text(text, 14f, ui.p.accentText, ui.f.bodySemi).apply {
