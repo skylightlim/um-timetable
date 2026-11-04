@@ -45,6 +45,8 @@ interface SpectrumHost : Host {
     fun openTimeEdit()
     fun enableNotifications()
     fun openAppSettings()
+    /** The app's own "Mobile data & Wi‑Fi" page in Android's settings, where Background data is turned on. */
+    fun openDataSettings()
     /** Settings' Check for updates: asks GitHub, and says how it went. */
     fun checkForUpdates()
     /** Light or dark, and the accent scheme, and choosing them (Settings). */
@@ -203,8 +205,8 @@ object SpectrumScreens {
         into.addView(card(ui).apply {
             background = ui.shape(ui.p.surface, 18f, ui.p.accent)
             addView(ui.text("Alerts only arrive while the app is open", 17f, ui.p.text, ui.f.bodyBold))
-            addView(ui.text("Your phone blocks ${ui.context.getString(R.string.app_name)} from using data in the background, so it can't check Spectrum for attendance, announcements or deadlines while it's closed. To fix it, open app settings, tap Mobile data & Wi‑Fi, and turn on Background data.", 14.5f, ui.p.muted), ui.wide(top = 6f, bottom = 16f))
-            addView(button(ui, "Open app settings") { h.openAppSettings() })
+            addView(ui.text("Your phone blocks ${ui.context.getString(R.string.app_name)} from using data in the background, so it can't check Spectrum for attendance, announcements or deadlines while it's closed. To fix it, turn on Background data on the page this opens.", 14.5f, ui.p.muted), ui.wide(top = 6f, bottom = 16f))
+            addView(button(ui, "Open data settings") { h.openDataSettings() })
         }, ui.wide(bottom = 14f))
     }
 

@@ -1273,6 +1273,16 @@ class MainActivity : Activity(), SpectrumHost {
 
     override fun openAppSettings() = startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
 
+    // On Pixels this is the app's "Mobile data & Wi‑Fi" page; a phone without it gets the app's settings.
+    override fun openDataSettings() {
+        // Started rather than looked up first: package visibility can hide Settings from a lookup.
+        try {
+            startActivity(Intent(Settings.ACTION_IGNORE_BACKGROUND_DATA_RESTRICTIONS_SETTINGS, Uri.parse("package:$packageName")))
+        } catch (_: android.content.ActivityNotFoundException) {
+            openAppSettings()
+        }
+    }
+
     @Deprecated("Activity result API from androidx is not used in this dependency-free app")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
