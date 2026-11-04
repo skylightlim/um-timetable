@@ -8,7 +8,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.view.View
 import android.view.animation.LinearInterpolator
-import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -64,6 +63,12 @@ class DuelView(
     private val solid = fill(ink)
     private val blank = fill(paper)
     private val faint = fill(ink).apply { alpha = 46 }
+    /** A rotor turning, as a blur: a disc of the ink, fainter the slower. */
+    private val blur = fill(ink)
+    private val beamWide = stroke(5f).apply { alpha = 26 }
+    private val beamGlow = stroke(3f).apply { alpha = 56 }
+    private val beamEdge = stroke(1.2f + 2.4f)
+    private val beamCore = stroke(1.2f).apply { if (lightPage) color = paper }
     private val shadow = fill(ink).apply { alpha = 31 }
 
     /** 0 → 0.5: drawing their sabers; 0.5: en garde, blades up and apart; 1: swung in, the blades crossed over the middle. */
@@ -80,9 +85,15 @@ class DuelView(
      * One fighter's pose, in the box's units: [x] across from its place (+ to the right), [y] down (a jump
      * is negative), [lean] in degrees toward the other from its feet, [swing] its saber arm (0 en garde, 1
      * swung in to the cross), [squash] its height (1 standing, below it crouching or landing), [draw] how
-     * far it has drawn its saber (0 not yet, 1 drawn and lit).
+     * far it has drawn its saber (0 not yet, 1 drawn and lit). Flying: [rotor] how fast its rotor turns (0
+     * still: the cow's teats and the horse's tail as they are; 1 a blur), at [spin] degrees round. The cow's
+     * [laser]: how far its teats' beams reach the horse (0 none, 1 there); the horse's [block]: its saber
+     * held up in front of it against them (0 en garde, 1 the guard).
      */
-    data class Pose(val x: Float = 0f, val y: Float = 0f, val lean: Float = 0f, val swing: Float = 0f, val squash: Float = 1f, val draw: Float = 1f)
+    data class Pose(
+        val x: Float = 0f, val y: Float = 0f, val lean: Float = 0f, val swing: Float = 0f, val squash: Float = 1f, val draw: Float = 1f,
+        val rotor: Float = 0f, val spin: Float = 0f, val laser: Float = 0f, val block: Float = 0f,
+    )
 
     /** The cow's and the horse's poses, set by a scene; null draws [progress]'s. */
     internal var poses: Pair<Pose, Pose>? = null
@@ -234,14 +245,15 @@ class DuelView(
         }
         fighter(canvas, cow, 28f, 1f) {
             if (cow.draw < COW_GRAB) canvas.drawPath(Cow.tail, tailLine) // on its rump, behind the body
-            cow(canvas)
+            cow(canvas, cow)
             cowSaber(canvas, cow.draw, cow.swing)
         }
         fighter(canvas, horse, 92f, -1f) {
-            horse(canvas)
+            horse(canvas, horse)
             canvas.scale(-1f, 1f, 60f, 0f) // its saber is drawn in the cow's frame, mirrored
-            horseSaber(canvas, horse.draw, horse.swing)
+            horseSaber(canvas, horse.draw, horse.swing, horse.block)
         }
+        if (cow.laser > 0f) beams(canvas, cow, horse)
         spark(canvas)
         canvas.restore()
     }
@@ -286,12 +298,15 @@ class DuelView(
 
     // --- the cow, at the left, facing right ----------------------------------------------------
 
-    private fun cow(c: Canvas) = with(Cow) {
+    private fun cow(c: Canvas, pose: Pose) = with(Cow) {
         piece(c, blank, legs, body)
         hooves(c, legs)
         inside(c, body, patches, solid)
         piece(c, blank, udder)
-        c.drawPath(teats, line)
+        // Flying, the teats turn under the udder as a rotor, flat (seen from the side); firing, they glow.
+        if (pose.rotor > 0f) rotor(c, UDDER_X, UDDER_Y, 10.5f, 0.3f, 3, pose, tailLine)
+        else c.drawPath(teats, line)
+        if (pose.laser > 0f) for (i in TEATS.indices step 2) c.drawCircle(TEATS[i], TEATS[i + 1], 1.3f * pose.laser.coerceAtMost(1f), solid)
         c.drawPath(horns, horn)
         piece(c, blank, ears, head)
         c.drawPath(earsInside, faint)
@@ -304,9 +319,13 @@ class DuelView(
 
     // --- the horse, at the right, facing left --------------------------------------------------
 
-    private fun horse(c: Canvas) = with(Horse) {
-        c.drawPath(tail, maneTail)
-        c.drawPath(tail2, maneTail2)
+    private fun horse(c: Canvas, pose: Pose) = with(Horse) {
+        // Flying, the tail turns as a tail rotor, upright; else it flows.
+        if (pose.rotor > 0f) rotor(c, TAIL_ROOT_X, TAIL_ROOT_Y, 11f, 1f, 2, pose, maneTail)
+        else {
+            c.drawPath(tail, maneTail)
+            c.drawPath(tail2, maneTail2)
+        }
         piece(c, blank, legs, body)
         hooves(c, legs)
         c.drawPath(mane, solid)
@@ -318,6 +337,38 @@ class DuelView(
         c.drawPath(eyes, solid)
         c.drawPath(brows, brow)
     }
+
+    /**
+     * A rotor round ([cx], [cy]), [r] across: [blades] blades at the pose's spin, [flat] squashing its circle
+     * into an ellipse (1 upright, seen face on), and a faint disc for the blur, the faster the darker.
+     */
+    private fun rotor(c: Canvas, cx: Float, cy: Float, r: Float, flat: Float, blades: Int, pose: Pose, paint: Paint) {
+        blur.alpha = (64 * pose.rotor).toInt()
+        c.drawOval(cx - r, cy - r * flat, cx + r, cy + r * flat, blur)
+        for (i in 0 until blades) {
+            val a = Math.toRadians((pose.spin + 360.0 * i / blades))
+            c.drawLine(cx, cy, cx + r * cos(a).toFloat(), cy + r * flat * sin(a).toFloat(), paint)
+        }
+    }
+
+    /** The cow's teats' beams to the horse's guard ([laserHit]), reaching [Pose.laser] of the way, lit like the blades. */
+    private fun beams(c: Canvas, cow: Pose, horse: Pose) {
+        val (tx, ty) = laserHit(horse)
+        val k = cow.laser.coerceIn(0f, 1f)
+        for (i in TEATS.indices step 2) {
+            val x = TEATS[i] + cow.x
+            val y = TEATS[i + 1] + cow.y
+            val ex = x + (tx - x) * k
+            val ey = y + (ty - y) * k
+            c.drawLine(x, y, ex, ey, beamWide)
+            c.drawLine(x, y, ex, ey, beamGlow)
+            if (lightPage) c.drawLine(x, y, ex, ey, beamEdge)
+            c.drawLine(x, y, ex, ey, beamCore)
+        }
+    }
+
+    /** Where the cow's beams meet the horse's guard (its saber held up, [Pose.block] 1), in the box's units. */
+    internal fun laserHit(horse: Pose): Pair<Float, Float> = 120f - (SH_X + ARM) + horse.x to 27f + horse.y
 
     // --- their sabers: in the cow's frame (the horse's mirrored), the shoulder at SH -------------
 
@@ -389,7 +440,7 @@ class DuelView(
      * stretching (0–HORSE_GRAB), draws it out, the member stretching with the hoof (to PULL), and it lights
      * at en garde; then its guard, held up steeper than the cow's chop.
      */
-    private fun horseSaber(c: Canvas, d: Float, e: Float) {
+    private fun horseSaber(c: Canvas, d: Float, e: Float, block: Float) {
         val reach = Math.toDegrees(atan2(MEMBER_Y - SH_Y, MEMBER_X - SH_X).toDouble()).toFloat()
         val far = hypot(MEMBER_X - SH_X, MEMBER_Y - SH_Y) - 1f
         when {
@@ -411,8 +462,9 @@ class DuelView(
             }
             else -> {
                 val t = smooth((d - PULL) / (1f - PULL))
-                val a = if (e == 0f) lerp(HORSE_ARM_0 + 30f, HORSE_ARM_0, t) else lerp(HORSE_ARM_0, HORSE_ARM_1, e)
-                val b = if (e == 0f) lerp(-150f, HORSE_BLADE_0, t) else lerp(HORSE_BLADE_0, HORSE_BLADE_1, e)
+                // The guard against the beams: the arm straight out in front, the blade upright.
+                val a = lerp(if (e == 0f) lerp(HORSE_ARM_0 + 30f, HORSE_ARM_0, t) else lerp(HORSE_ARM_0, HORSE_ARM_1, e), 0f, block)
+                val b = lerp(if (e == 0f) lerp(-150f, HORSE_BLADE_0, t) else lerp(HORSE_BLADE_0, HORSE_BLADE_1, e), -90f, block)
                 val (hx, hy) = hoof(a)
                 saber(c, hx, hy, b, if (e == 0f) ((d - 0.7f) / 0.3f).coerceIn(0f, 1f) else 1f) {
                     it.drawLine(-5f, 0f, FROM, 0f, memberEdge)
@@ -535,6 +587,12 @@ class DuelView(
         private const val TAIL_Y = 41f
         private const val MEMBER_X = 28f
         private const val MEMBER_Y = 50f
+        /** The cow's rotor under its udder, its teats' tips (where the beams start), the horse's tail's root. */
+        private const val UDDER_X = 37f
+        private const val UDDER_Y = 49.6f
+        private val TEATS = floatArrayOf(35f, 49.4f, 37f, 49.8f, 39f, 49.4f)
+        private const val TAIL_ROOT_X = 106f
+        private const val TAIL_ROOT_Y = 39f
         private val CW = Path.Direction.CW
 
         private fun el(cx: Float, cy: Float, rx: Float, ry: Float) = Path().apply { addOval(cx - rx, cy - ry, cx + rx, cy + ry, CW) }
@@ -560,18 +618,21 @@ class DuelView(
 }
 
 /**
- * The sign-in poster's fight, five seconds on a [DuelView] stage: the cow and the horse run in from the
- * sides, square up, clash, clash twice more in a flurry, leap and clash in the air, lock blades while the
- * cow pushes the horse back, spring apart and bow. Then they stand en garde, breathing, until the scene
- * is tapped and plays again. Each move is a track of keyframes over the time (ms) with its own easing;
- * the sparks fly where the blades meet.
+ * The sign-in poster's fight, about five and a half seconds on a [DuelView] stage: the cow and the horse fly
+ * in like helicopters from either side, the cow's teats turning under its udder as its rotor and the horse's
+ * tail as its tail rotor, and land. They draw their sabers (the cow's tail, the horse's member), clash, clash
+ * again, then the cow hops back and fires its teats' beams; the horse holds its saber up against them, sparks
+ * flying where they hit, pushed back a little; the beams stop, both settle en garde and bow. Then they stand
+ * en garde, breathing, until the scene is tapped and plays again. Each move is a track of keyframes over the
+ * time (ms) with its own easing; the sparks fly where the blades meet and where the beams hit.
  */
 class DuelScene(private val view: DuelView) {
     private var playing: ValueAnimator? = null
     private var idling: ValueAnimator? = null
 
     init {
-        view.poses = rest(0f)
+        // Off stage until it plays (as the poster comes in), en garde without animations.
+        view.poses = if (Motion.enabled) at(0f) else rest(0f)
     }
 
     /** Plays the fight from the start (after [delay] ms), then idles. With "Remove animations": stands en garde. */
@@ -579,6 +640,7 @@ class DuelScene(private val view: DuelView) {
         stop()
         if (!Motion.enabled) { view.poses = rest(0f); return }
         var sparked = 0
+        view.poses = at(0f)
         playing = ValueAnimator.ofFloat(0f, LENGTH).apply {
             duration = LENGTH.toLong()
             startDelay = delay
@@ -586,10 +648,10 @@ class DuelScene(private val view: DuelView) {
             addUpdateListener {
                 val t = it.animatedValue as Float
                 view.poses = at(t)
-                // Every clash passed since the last frame flies its spark (one per clash, however long a frame is).
-                while (sparked < CLASHES.size && CLASHES[sparked] <= t) {
-                    val c = CLASHES[sparked++]
-                    view.strike(60f + SHIFT.at(c), DuelView.CROSS_Y + Y.at(c))
+                // Every clash or hit passed since the last frame flies its spark (one each, however long a frame is).
+                while (sparked < SPARKS.size && SPARKS[sparked] <= t) {
+                    val (x, y) = sparkPlace(SPARKS[sparked++])
+                    view.strike(x, y)
                 }
             }
             addListener(object : android.animation.AnimatorListenerAdapter() {
@@ -625,24 +687,31 @@ class DuelScene(private val view: DuelView) {
         return DuelView.Pose(x = -REST_GAP, squash = 1f + 0.018f * sin(a)) to DuelView.Pose(x = REST_GAP, squash = 1f + 0.018f * sin(a + 2f))
     }
 
-    /** For still previews: the latest clash at or before [t] ms, as where its spark flies and how old it is (0–1); null when none is showing. */
+    /** Where the spark at [t] flies: over the crossed blades for a clash, on the horse's guard for a hit. */
+    private fun sparkPlace(t: Float): Pair<Float, Float> =
+        if (t in HITS) view.laserHit(at(t).second) else 60f + SHIFT.at(t) to DuelView.CROSS_Y + Y.at(t)
+
+    /** For still previews: the latest spark at or before [t] ms, as where it flies and how old it is (0–1); null when none is showing. */
     internal fun sparkAt(t: Float): Triple<Float, Float, Float>? {
-        val c = CLASHES.lastOrNull { it <= t } ?: return null
+        val c = SPARKS.lastOrNull { it <= t } ?: return null
         val age = (t - c) / 420f
-        return if (age > 1f) null else Triple(60f + SHIFT.at(c), DuelView.CROSS_Y + Y.at(c), age)
+        val (x, y) = sparkPlace(c)
+        return if (age > 1f) null else Triple(x, y, age)
     }
 
-    /** Both poses at [t] ms. The pair keeps [GAP] apart from where their blades cross, and moves [SHIFT] together. */
+    /** Both poses at [t] ms. The pair keeps [GAP] apart from the middle, and moves [SHIFT] together. */
     internal fun at(t: Float): Pair<DuelView.Pose, DuelView.Pose> {
         val gap = GAP.at(t)
-        // Blades locked (3150–3700 ms): the push judders.
-        val shift = SHIFT.at(t) + if (t in 3150f..3700f) 0.7f * sin(t / 22f) else 0f
-        // Running in: five little hops.
-        val run = if (t < 650f) abs(sin(t / 650f * 5f * Math.PI.toFloat())) else 0f
-        val y = Y.at(t) - 4f * run
-        val squash = SQUASH.at(t)
-        val swing = SWING.at(t)
-        return DuelView.Pose(shift - gap, y, COW_LEAN.at(t), swing, squash) to DuelView.Pose(shift + gap, y, HORSE_LEAN.at(t), swing, squash)
+        val shift = SHIFT.at(t)
+        // Hovering in: a bob, out of step, until they land.
+        val bob = if (t < LANDED) 1.6f * sin(t / 95f) * (1f - t / LANDED) else 0f
+        val y = Y.at(t)
+        val rotor = ROTOR.at(t)
+        // The rotors turn fast, then wind down after landing.
+        val spin = 1.7f * if (t < LANDED) t else LANDED + (minOf(t, LANDED + 400f) - LANDED) * 0.45f
+        val common = DuelView.Pose(swing = SWING.at(t), squash = SQUASH.at(t), draw = DRAW.at(t), rotor = rotor)
+        return common.copy(x = shift - gap, y = y + bob, lean = COW_LEAN.at(t), spin = spin, laser = LASER.at(t)) to
+            common.copy(x = shift + gap, y = y - bob, lean = HORSE_LEAN.at(t), spin = -spin * 1.3f, block = BLOCK.at(t))
     }
 
     /** A value over time: straight between keyframes, each stretch shaped by the easing of the keyframe it ends at. */
@@ -661,8 +730,10 @@ class DuelScene(private val view: DuelView) {
     }
 
     private companion object {
-        const val LENGTH = 5000f
-        /** How far apart they stand en garde, each from where the blades would cross. */
+        const val LENGTH = 5600f
+        /** When they touch down. */
+        const val LANDED = 1100f
+        /** How far apart they stand en garde, each from the middle. */
         const val REST_GAP = 11f
 
         /** Easing in (speeding up: into a strike), out (slowing: a landing, a stop) and both. */
@@ -671,40 +742,40 @@ class DuelScene(private val view: DuelView) {
         val smooth: (Float) -> Float = { it * it * (3 - 2 * it) }
         fun k(t: Int, v: Float, ease: (Float) -> Float = smooth) = Triple(t.toFloat(), v, ease)
 
-        /** Each one's distance from the clash: in from off stage, the strikes (0), recoils and the bow's stance. */
+        /** Down from above the stage, landing at LANDED; a hop back before the beams. */
+        val Y = Track(k(0, -64f), k(LANDED.toInt(), 0f, easeOut), k(3200, 0f), k(3290, -6f, easeOut), k(3400, 0f, easeIn), k(5600, 0f))
+        /** Each one's distance from the middle: in from the sides as they fly, the clashes (0), apart for the beams. */
         val GAP = Track(
-            k(0, 80f), k(650, 14f, easeOut), k(1000, 17f), k(1200, 0f, easeIn), k(1400, 0f),
-            k(1650, 10f, easeOut), k(1790, 1f, easeIn), k(1900, 6f, easeOut), k(2080, 1f, easeIn), k(2350, 12f, easeOut),
-            k(2500, 12f), k(2720, 0f, easeOut), k(2950, 9f), k(3150, 0f, easeIn), k(3700, 0f), k(4050, REST_GAP, easeOut), k(5000, REST_GAP),
+            k(0, 52f), k(LANDED.toInt(), 14f, easeOut), k(2250, 14f), k(2550, 0f, easeIn), k(2700, 0f), k(2850, 8f, easeOut), k(2980, 0f, easeIn),
+            k(3200, 8f, easeOut), k(3400, 16f, easeOut), k(4300, 16f), k(4700, REST_GAP, easeOut), k(5600, REST_GAP),
         )
-        /** The pair moving together: the cow pushes the horse back while the blades are locked, then both return. */
-        val SHIFT = Track(k(0, 0f), k(3150, 0f), k(3450, 9f), k(3700, 5f), k(4050, 0f), k(5000, 0f))
-        /** Up (negative) and down: a hop back after the first clash, the leap, a hop apart. */
-        val Y = Track(
-            k(0, 0f), k(1400, 0f), k(1520, -3f, easeOut), k(1650, 0f, easeIn), k(2500, 0f), k(2720, -18f, easeOut), k(2950, 0f, easeIn),
-            k(3700, 0f), k(3880, -6f, easeOut), k(4050, 0f, easeIn), k(5000, 0f),
-        )
-        /** Crouching before a dash or a leap, stretching off the ground, squashing on landing. */
+        /** The pair moving together: the beams push the horse (and so the middle) back, then both return. */
+        val SHIFT = Track(k(0, 0f), k(3500, 0f), k(4200, 5f), k(4600, 0f, easeOut), k(5600, 0f))
+        /** The rotors: turning as they fly, still after landing. */
+        val ROTOR = Track(k(0, 1f), k(LANDED.toInt(), 1f), k(1500, 0f, easeOut), k(5600, 0f))
+        /** Landing's squash, and the hop's. */
         val SQUASH = Track(
-            k(0, 1f), k(650, 1f), k(1000, 0.9f), k(1150, 1.04f, easeOut), k(1250, 1f), k(2350, 1f), k(2500, 0.84f), k(2560, 1.08f, easeOut),
-            k(2720, 1f), k(2950, 1f), k(3010, 0.84f, easeOut), k(3100, 1f), k(4050, 1f), k(4110, 0.9f, easeOut), k(4200, 1f), k(5000, 1f),
+            k(0, 1f), k(1050, 1f), k(1160, 0.84f, easeOut), k(1300, 1f), k(3200, 1f), k(3250, 0.88f, easeOut), k(3300, 1f),
+            k(3400, 1f), k(3450, 0.9f, easeOut), k(3520, 1f), k(5600, 1f),
         )
+        /** Drawing the sabers, once landed. */
+        val DRAW = Track(k(0, 0f), k(1450, 0f), k(2250, 1f), k(5600, 1f))
         /** Saber arms: en garde (0) to the cross (1), fastest into each strike. */
         val SWING = Track(
-            k(0, 0f), k(1000, 0.1f), k(1200, 1f, easeIn), k(1400, 1f), k(1650, 0.3f, easeOut), k(1790, 1f, easeIn), k(1900, 0.45f, easeOut),
-            k(2080, 1f, easeIn), k(2350, 0f), k(2500, 0f), k(2720, 1f, easeIn), k(2950, 0.4f), k(3150, 1f, easeIn), k(3700, 1f),
-            k(4050, 0f), k(5000, 0f),
+            k(0, 0f), k(2250, 0f), k(2550, 1f, easeIn), k(2700, 1f), k(2850, 0.3f, easeOut), k(2980, 1f, easeIn), k(3200, 0f, easeOut), k(5600, 0f),
         )
-        /** Leaning in running, rearing back before the dash, into each strike; then the bow (4550–4800). */
-        private val LEAN = listOf(
-            k(0, 10f), k(650, 10f), k(1000, -6f), k(1200, 6f, easeIn), k(1400, 6f), k(1650, 0f), k(1790, 5f, easeIn), k(1900, 1f),
-            k(2080, 5f, easeIn), k(2350, 0f), k(2500, -4f), k(2720, 4f, easeIn), k(2950, 0f),
-        )
-        private val AFTER = listOf(k(3700, 4f), k(4050, -4f, easeOut), k(4300, 0f), k(4550, 14f), k(4800, 14f), k(5000, 0f))
-        /** The cow leans into the push; the horse, pushed, leans back. */
-        val COW_LEAN = Track(*(LEAN + listOf(k(3150, 8f, easeIn)) + AFTER).toTypedArray())
-        val HORSE_LEAN = Track(*(LEAN + listOf(k(3150, -2f, easeIn)) + AFTER).toTypedArray())
-        /** When the blades meet: the first strike, the flurry's two, the leap, and three flickers in the lock. */
-        val CLASHES = listOf(1200f, 1790f, 2080f, 2720f, 3150f, 3420f, 3640f)
+        /** The cow's beams: out to the horse, held, off. */
+        val LASER = Track(k(0, 0f), k(3450, 0f), k(3560, 1f, easeOut), k(4250, 1f), k(4330, 0f), k(5600, 0f))
+        /** The horse's guard against them. */
+        val BLOCK = Track(k(0, 0f), k(3300, 0f), k(3480, 1f, easeOut), k(4300, 1f), k(4550, 0f), k(5600, 0f))
+        /** Leaning into each strike, the horse leaning into the beams; then the bow (5000–5300). */
+        private val LEAN = listOf(k(0, 0f), k(2250, 0f), k(2550, 5f, easeIn), k(2700, 5f), k(2850, 0f), k(2980, 5f, easeIn), k(3200, 0f))
+        private val BOW = listOf(k(4700, 0f), k(5000, 14f), k(5300, 14f), k(5600, 0f))
+        val COW_LEAN = Track(*(LEAN + listOf(k(3500, -3f), k(4300, -3f)) + BOW).toTypedArray())
+        val HORSE_LEAN = Track(*(LEAN + listOf(k(3500, 4f), k(4300, 4f)) + BOW).toTypedArray())
+        /** When the blades meet, and when the beams hit the horse's guard. */
+        val CLASHES = listOf(2550f, 2980f)
+        val HITS = listOf(3560f, 3720f, 3880f, 4040f, 4200f)
+        val SPARKS = (CLASHES + HITS).sorted()
     }
 }
