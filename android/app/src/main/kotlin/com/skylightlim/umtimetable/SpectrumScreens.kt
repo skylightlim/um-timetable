@@ -568,12 +568,15 @@ object SpectrumScreens {
     private fun author(a: JSONObject) = listOf(a.optString("author").replace(TRAILING_DOT, ""), a.optString("forum"), if (a.optString("code").isEmpty()) a.optString("course") else "")
         .filter { it.isNotBlank() }.joinToString(" · ")
 
-    /** A post's text and files. */
+    /**
+     * A post's text and files. The text is selectable, as course pages' is: a long press picks words, and
+     * Android's menu over them copies or shares them (Select all, for the whole post).
+     */
     private fun newsBody(h: SpectrumHost, a: JSONObject, into: LinearLayout) {
         val ui = h.ui
         val code = a.optString("code")
         // An opened post shows all of its text: tapping the row was the "show more".
-        into.addView(RichText.view(h, a.optString("html"), "n${a.getInt("id")}", code.ifEmpty { "Spectrum" }, 0, expanded = h.expanded), ui.wide(top = 8f))
+        into.addView(RichText.view(h, a.optString("html"), "n${a.getInt("id")}", code.ifEmpty { "Spectrum" }, 0, expanded = h.expanded, selectable = true), ui.wide(top = 8f))
         for (f in a.optJSONArray("attachments")?.objects().orEmpty()) into.addView(fileButton(h, f, code), ui.wide(top = 8f))
         a.optInt("replies").takeIf { it > 0 }?.let { into.addView(newsReplies(h, a, it), ui.wide(top = 8f)) }
     }
@@ -597,7 +600,7 @@ object SpectrumScreens {
                 if (n > 0) list.addView(rule(ui), ui.wide(top = 12f))
                 val code = a.optString("code").ifEmpty { "Spectrum" }
                 list.addView(ui.text("${r.optString("author").replace(TRAILING_DOT, "")} · ${dayLabel(r.getLong("time"))} ${hm(r.getLong("time"))}", 12.5f, ui.p.muted), ui.wide(top = 12f))
-                list.addView(RichText.view(h, r.optString("html"), "r${r.getInt("id")}", code, 0, 15f, expanded = h.expanded), ui.wide(top = 4f))
+                list.addView(RichText.view(h, r.optString("html"), "r${r.getInt("id")}", code, 0, 15f, expanded = h.expanded, selectable = true), ui.wide(top = 4f))
                 for (f in r.optJSONArray("attachments")?.objects().orEmpty()) list.addView(fileButton(h, f, code), ui.wide(top = 8f))
             }
         }
