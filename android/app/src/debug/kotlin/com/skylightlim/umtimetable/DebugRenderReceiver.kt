@@ -32,7 +32,7 @@ import java.io.File
  * (open, about to open, not in Spectrum's calendar).
  * --ef fontScale 1.3 draws at a larger system font size (this render only).
  * --ei weekShift N draws day and week N weeks on from the strip's own week (as swiping on Week does).
- * --es scheme gold|blue|red draws in that accent scheme instead of the chosen one.
+ * --es scheme gold|blue|red|pastel draws in that accent scheme instead of the chosen one.
  * --ez open true draws every fold and "Show more" opened.
  * view webbar draws the web screens' top bar (--es bar spectrum|maya|timeedit|login).
  * view week or day with --ez sample true draws made-up plans on it (--ei boxDay 2 --ei boxAt 900: with the selection box

@@ -85,17 +85,27 @@ data class Neutrals(val ground: Int, val surface: Int, val surface2: Int, val li
 }
 
 /**
- * The colour theme the user picks in Settings, from UM's crest: Gold (the default, the tigers' yellow),
- * Blue (the shield) and Red (the hibiscus). Each sets the accent fill, the accent as text and the ink on
- * the fill for the light and the dark palette (text on surfaces ≥ 6:1, ink on the fill ≥ 4.8:1), and the
- * courses' colours: [courses] replaces the import palette slot by slot (null keeps it). Gold is the
- * import's mixed set; Blue a cool one (mint to violet), Red a warm one (rose to gold). Built in OKLCH:
- * the course ink is ≥ 5:1 on every colour, and the first seven stay ≥ 0.085 apart in OKLab.
+ * The colour theme the user picks in Settings: Gold (the default, the tigers' yellow on UM's crest), Blue
+ * (the shield), Red (the hibiscus) and Pastel. Each sets the accent fill, the accent as text and the ink on
+ * the fill for the light and the dark palette (as text on surfaces ≥ 5:1, ink on the fill ≥ 4.8:1), and the
+ * courses' colours: [courses] replaces the import palette slot by slot (null keeps it, as Gold does).
  *
- * Blue and Red also tint the greys ([lightGreys], [darkGreys]) with their hue, so a theme changes the
- * whole page and not only its accents: Blue's dark is navy, Red's a deep maroon. Same lightness steps as
- * the plain greys (OKLCH, chroma 0.02–0.03): text 15.6:1 on the page, muted ≥ 5.4:1 on every surface,
- * the accent text ≥ 5.7:1. Gold keeps the plain cool greys, the app's look from the start.
+ * Made the way a timetable's colours should be (as calendars do: Google's and Notion's event colours,
+ * and the rule of thumb for colours meant to tell things apart): each theme's course colours go all the way
+ * round the colour wheel, at about the same lightness, a little lighter for the yellows (at middle
+ * lightness they turn olive and brown), so no two courses look alike; and they keep away from the theme's
+ * own accent, so Now, today's column and the time line stand out from the classes. Blue and Red used to
+ * take their courses from their half of the wheel (cool, warm) and tint the page strongly (navy, maroon):
+ * the courses looked alike and muddy. Built in OKLCH: the course ink is ≥ 5.9:1 on every colour, and the first
+ * seven stay ≥ 0.085 apart in OKLab (Pastel's ≥ 0.065: pale colours are close by nature, and tell apart by hue).
+ * Blue is clear (lightness 0.75), Red rich (0.70, stronger), Pastel pale (0.85–0.93) with dark ink and a
+ * periwinkle accent stronger than its courses.
+ *
+ * The greys stay out of the way: Gold and Blue keep the plain cool ones; Red and Pastel turn them, at the
+ * same lightness steps and about half their faint tint, warm and lilac ([lightGreys], [darkGreys]). Text
+ * 15.4:1 on the page, muted ≥ 5:1 on every surface. Pastel's course colours, as text in the light palette, keep
+ * less of themselves ([lightTextMix]: ≥ 6:1 on white), and its tutorials a little more ([lightTint]), so they
+ * show on the page.
  */
 enum class Scheme(
     val label: String,
@@ -104,19 +114,26 @@ enum class Scheme(
     val courses: List<Int>?,
     val lightGreys: Neutrals? = null,
     val darkGreys: Neutrals? = null,
+    val lightTextMix: Float? = null,
+    val lightTint: Float? = null,
 ) {
     GOLD("Gold", Triple(0xFFEFB810.toInt(), 0xFF875A00.toInt(), 0xFF1B1606.toInt()), Triple(0xFFF5C947.toInt(), 0xFFF5C947.toInt(), 0xFF1B1606.toInt()), null),
     BLUE(
         "Blue", Triple(0xFF3559C3.toInt(), 0xFF2848A9.toInt(), 0xFFF5F8FF.toInt()), Triple(0xFF96B6FE.toInt(), 0xFF96B6FE.toInt(), 0xFF09163F.toInt()),
-        listOf(0xFFB199F4, 0xFF449DF0, 0xFF54DDCE, 0xFF68CA80, 0xFFE38FDB, 0xFF2F9BB2, 0xFFCCE47F, 0xFF35B9C0, 0xFFB0C2F9).map { it.toInt() },
-        Neutrals.of(0xFFE8EFFF, 0xFFFBFDFF, 0xFFDEE7F7, 0xFFCDD6E7, 0xFF111723, 0xFF535C6F, 0xFF838C9E),
-        Neutrals.of(0xFF080E1A, 0xFF101724, 0xFF19202F, 0xFF242B3A, 0xFFE6EAF1, 0xFF979FAE, 0xFF656C7A),
+        listOf(0xFFF69088, 0xFF18C4D3, 0xFFE5CB65, 0xFFC099ED, 0xFF90C572, 0xFFFEAE6B, 0xFFE28EC7, 0xFF48C7A2, 0xFF47BCEE).map { it.toInt() },
     ),
     RED(
         "Red", Triple(0xFFD02C2E.toInt(), 0xFFB71920.toInt(), 0xFFFFF6F5.toInt()), Triple(0xFFF68482.toInt(), 0xFFF68482.toInt(), 0xFF34080B.toInt()),
-        listOf(0xFFD275D8, 0xFFEF546C, 0xFFFDB171, 0xFFA3C75D, 0xFFF6A9CD, 0xFFCA6B49, 0xFFFDCE4E, 0xFFFDB5AF, 0xFFB699EB).map { it.toInt() },
-        Neutrals.of(0xFFFBEBEA, 0xFFFFFCFC, 0xFFF3E1E0, 0xFFE3D1D0, 0xFF201313, 0xFF6B5655, 0xFF9A8786),
-        Neutrals.of(0xFF170A0A, 0xFF211312, 0xFF2B1C1B, 0xFF362726, 0xFFEFE7E7, 0xFFAB9A99, 0xFF776867),
+        listOf(0xFFF9A240, 0xFF26A9F1, 0xFFDE75B4, 0xFF0BBB88, 0xFF87B94B, 0xFF8494FA, 0xFFBB82E3, 0xFF09B4BB, 0xFFDDBD34).map { it.toInt() },
+        Neutrals.of(0xFFF2F0F0, 0xFFFFFFFF, 0xFFEEEBEA, 0xFFDFDAD9, 0xFF1D1818, 0xFF6B6160, 0xFF9A9291),
+        Neutrals.of(0xFF171413, 0xFF241E1D, 0xFF2E2827, 0xFF393130, 0xFFEEEBEA, 0xFFA09695, 0xFF716766),
+    ),
+    PASTEL(
+        "Pastel", Triple(0xFF9C96F8.toInt(), 0xFF5644B4.toInt(), 0xFF14122B.toInt()), Triple(0xFFB7B5FC.toInt(), 0xFFB7B5FC.toInt(), 0xFF14122B.toInt()),
+        listOf(0xFFFFBDC5, 0xFFA4F1D5, 0xFFFEE6A6, 0xFFBCE0FF, 0xFFEABFF4, 0xFFC2E0A5, 0xFF88DDEC, 0xFFFED4BD, 0xFFFFCEE4).map { it.toInt() },
+        Neutrals.of(0xFFF1F0F2, 0xFFFFFFFF, 0xFFECEBEE, 0xFFDCDADF, 0xFF1A181E, 0xFF65626C, 0xFF95929B),
+        Neutrals.of(0xFF151418, 0xFF201E24, 0xFF2A282F, 0xFF34323A, 0xFFECEBEE, 0xFF9A97A1, 0xFF6B6872),
+        lightTextMix = 0.42f, lightTint = 0.4f,
     );
 
     /** The course colours this theme shows, in import-slot order. */
@@ -125,7 +142,9 @@ enum class Scheme(
     /** [base] with this scheme's accent fill, accent text and ink, and its greys if it has its own. */
     fun applyTo(base: Palette): Palette {
         val (fill, text, ink) = if (base.dark) dark else light
-        val accented = base.copy(accent = fill, accentText = text, accentInk = ink)
+        val accented = base.copy(accent = fill, accentText = text, accentInk = ink).let {
+            if (base.dark) it else it.copy(courseTextMix = lightTextMix ?: it.courseTextMix, tint = lightTint ?: it.tint)
+        }
         val g = (if (base.dark) darkGreys else lightGreys) ?: return accented
         return accented.copy(ground = g.ground, surface = g.surface, surface2 = g.surface2, line = g.line, text = g.text, muted = g.muted, faint = g.faint)
     }
