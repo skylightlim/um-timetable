@@ -56,6 +56,8 @@ data class Session(
     val course: Course,
     /** MAYA's full room name ("Dewan Kuliah 5 H11") when it differs from [room]. */
     val roomName: String? = null,
+    /** The class as TimeEdit gave it, when the user changed it ([ClassEdits]); null when it's as given. */
+    val origin: Session? = null,
 ) {
     val isTutorial get() = type == "Tutorial"
 }
@@ -117,6 +119,43 @@ class Timetable(
     }
 
     fun attendanceDay(d: Int): List<Session> = attendance.filter { it.day == d }.sortedBy { it.start }
+
+    /**
+     * This timetable with the user's changes ([ClassEdits.all]): courses renamed and given another colour
+     * slot (in the import palette, which [recolored] then takes to the theme's), classes moved or retold.
+     * A changed class keeps what it was as its [Session.origin]. Spectrum's occurrence's classes
+     * ([registered]) take the course's changes only: they're for attendance, never shown.
+     */
+    fun withEdits(edits: JSONObject): Timetable {
+        val courseEdits = edits.optJSONObject("courses")
+        val classEdits = edits.optJSONObject("classes")
+        if ((courseEdits?.length() ?: 0) == 0 && (classEdits?.length() ?: 0) == 0) return this
+        // Parsed by hand rather than with Color.parseColor, so the JVM tests run it.
+        val palette = MayaImport.PALETTE.map { (0xFF000000 or it.removePrefix("#").toLong(16)).toInt() }
+        fun edited(c: Course): Course {
+            val e = courseEdits?.optJSONObject(c.code) ?: return c
+            val name = e.optString(ClassEdits.NAME).trim().takeIf { it.isNotEmpty() }
+            val color = e.optInt(ClassEdits.SLOT, -1).takeIf { it in palette.indices }?.let { palette[it] } ?: c.color
+            return c.copy(name = name ?: c.name, short = name ?: c.short, color = color)
+        }
+        fun edited(s: Session): Session {
+            val e = classEdits?.optJSONObject(ClassEdits.key(s)) ?: return s.copy(course = edited(s.course))
+            val start = e.optInt(ClassEdits.START, s.start)
+            return s.copy(
+                day = e.optInt(ClassEdits.DAY, s.day).coerceIn(1, 5),
+                start = start,
+                end = e.optInt(ClassEdits.END, s.end).coerceIn(start + 5, 24 * 60),
+                type = e.optString(ClassEdits.TYPE).trim().ifEmpty { s.type },
+                // A room typed in has no MAYA long name.
+                room = if (e.has(ClassEdits.ROOM)) e.getString(ClassEdits.ROOM).trim().ifEmpty { s.room } else s.room,
+                roomName = if (e.has(ClassEdits.ROOM)) null else s.roomName,
+                lecturer = if (e.has(ClassEdits.LECTURER)) e.getString(ClassEdits.LECTURER).trim().ifEmpty { null } else s.lecturer,
+                course = edited(s.course),
+                origin = s,
+            )
+        }
+        return Timetable(sessions.map(::edited), courses.map(::edited), term, registered.map { it.copy(course = edited(it.course)) })
+    }
 
     /** This timetable with each course in [forms] (code to short name) carrying its short name. */
     fun withForms(forms: Map<String, String>): Timetable {
@@ -192,7 +231,8 @@ class Timetable(
             val scheme = Scheme.load(context)
             cached?.takeIf { it.first == scheme }?.let { return it.second }
             val forms = ShortForms.all(context).let { f -> f.keys().asSequence().associateWith { f.getString(it) } }
-            return runCatching { parse(json(context)) }.getOrElse { Timetable(emptyList()) }.withForms(forms).recolored(scheme).also { cached = scheme to it }
+            return runCatching { parse(json(context)) }.getOrElse { Timetable(emptyList()) }
+                .withEdits(ClassEdits.all(context)).withForms(forms).recolored(scheme).also { cached = scheme to it }
         }
 
         /** What [load] gives changed without the file changing: the next load reads it afresh. */

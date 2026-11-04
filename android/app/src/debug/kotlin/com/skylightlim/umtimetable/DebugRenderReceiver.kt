@@ -46,7 +46,7 @@ import java.io.File
  * view signout draws the Sign out question's card. view settings draws the Settings tab's page (--ez signedIn true|false
  * for either Account row); view signin the first-run sign-in poster, at screen height (or --ei height px).
  * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
- * Nth class of the week (0 first).
+ * Nth class of the week (0 first); --ez edit true draws it in its edit mode (after a tap on its pen).
  */
 class DebugRenderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -55,6 +55,14 @@ class DebugRenderReceiver : BroadcastReceiver() {
             val before = ShortForms.all(context).optString(code)
             ShortForms.set(context, code, form)
             android.os.Handler(android.os.Looper.getMainLooper()).post { ShortForms.set(context, code, before) }
+        }
+        // --es classEdits '{"courses":{…},"classes":{…}}': draws with those class sheet changes, then puts back what was there.
+        intent.getStringExtra("classEdits")?.let { json ->
+            val prefs = uiPrefs(context)
+            val before = prefs.getString("classEdits", null)
+            prefs.edit().putString("classEdits", json).commit()
+            Timetable.forget()
+            android.os.Handler(android.os.Looper.getMainLooper()).post { prefs.edit().putString("classEdits", before ?: "{}").commit(); Timetable.forget() }
         }
         if (intent.hasExtra("bench")) return bench(context, intent.getIntExtra("bench", 20))
         if (intent.getStringExtra("view") == "icon") return icon(context)
@@ -143,7 +151,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
                 val course = tt.courses.first { it.code == intent.getStringExtra("code") }
                 val session = intent.getIntExtra("session", -1).takeIf { it >= 0 }
                     ?.let { i -> tt.sessions.filter { it.course == course }.sortedWith(compareBy({ it.day }, { it.start }))[i] }
-                ClassSheet.build(host, c, course, session) {}
+                ClassSheet.build(host, c, course, session, editing = intent.getBooleanExtra("edit", false)) {}
             }
             else -> DayScreen.build(host, intent.getIntExtra("day", homeDay(Timetable.load(context), now)), if (intent.getBooleanExtra("sample", false)) samplePlans(host) else null)
         }
