@@ -9,23 +9,29 @@ import android.graphics.Path
 import android.view.View
 import android.view.animation.LinearInterpolator
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.sin
 
 /**
  * 马大牛逼's loader and pull-to-sync mark: the cow (牛, left) and the horse (马, right) duelling with
- * lightsabers, drawn in a round, chunky cartoon style (after Duolingo's owl): big eyes under angry brows,
- * six-packs and a bicep on the saber arm, the cow shouting with its tongue out, the horse grinning with
- * buck teeth. One colour: [ink] for the outlines, spots, hooves, manes and the blades' glow, [paper]
- * inside, and a faint [ink] over the paper for the horse's coat and the cow's horns and muzzle. A blade
- * has a white core outlined on a light page and a bright one on a dark page, in its glow. [progress]
- * 0 → 1 swings the sabers in from en garde until the blades cross over the middle, where a spark flies:
- * the pull has gone far enough. [loop] keeps them clashing while something loads; [finish] lands one
+ * lightsabers, in thick round line art (after an icon of a cow on four legs, stood up): boxy bodies,
+ * front-facing heads with small muzzles, dot eyes under cross brows. The cow has horns, ears out to the
+ * side, patches and an udder; the horse pointed ears, a forelock, a mane and a flowing tail. One colour:
+ * [ink] for the outlines, patches, hooves, mane and the blades' glow, [paper] inside. A blade has a white
+ * core outlined on a light page and a bright one on a dark page, in its glow.
+ *
+ * Their sabers are their own: the cow reaches round, yanks its tail off (a pop where it was) and the tail
+ * is the hilt; the horse reaches down and draws its member out as the hilt. [progress] 0 → 0.5 draws them
+ * (reach, pull, the blade lights), 0.5 → 1 swings them in from en garde until the blades cross over the
+ * middle, where a spark flies: the pull has gone far enough. The cow chops; the horse holds its blade up,
+ * steeper, a guard. [loop] keeps them clashing while something loads, sabers drawn; [finish] lands one
  * last clash.
  *
- * Drawn in a 120 × 60 box (y down), scaled to the view. Each piece (a body with its legs, a head with
- * its horns or ears, an arm) is its shapes' union outlined like a sticker: a stroke twice the line
- * width under the fill, so one line width shows outside and the pieces behind are hidden.
+ * Drawn in a 120 × 60 box (y down), scaled to the view. Each piece (a body with its legs, a head with its
+ * ears) is its shapes outlined like a sticker: a stroke twice the line width under the fill, so one line
+ * width shows outside and what's behind is hidden.
  */
 @SuppressLint("ViewConstructor")
 class DuelView(
@@ -37,22 +43,30 @@ class DuelView(
 ) : View(ui.context) {
     private val outline = stroke(2 * LINE)
     private val line = stroke(LINE)
-    private val fine = stroke(LINE * 0.85f)
-    private val muscle = stroke(LINE * 0.75f)
-    private val brow = stroke(2.3f)
-    private val toothEdge = stroke(LINE * 1.6f)
+    private val fine = stroke(1.2f)
+    private val brow = stroke(1.6f)
+    private val tailLine = stroke(2.2f)
+    private val horn = stroke(2.4f)
+    private val hilt = stroke(2.6f)
+    private val maneTail = stroke(3f)
+    private val maneTail2 = stroke(2f)
+    /** The horse's member: an outlined tube, [memberEdge] round a [memberCore] of the paper. */
+    private val memberEdge = stroke(3.6f)
+    private val memberCore = stroke(1.4f).apply { color = paper }
+    private val armEdge = stroke(ARM_W + 2 * LINE)
+    private val armFill = stroke(ARM_W).apply { color = paper }
     /** On a light page a blade is a white core outlined; on a dark one the ink itself is the bright core. */
     private val lightPage = Color.luminance(paper) > Color.luminance(ink)
-    private val glowWide = stroke(2 * Saber.HALF + 6f).apply { alpha = 26 }
-    private val glow = stroke(2 * Saber.HALF + 3f).apply { alpha = 56 }
-    private val coreEdge = stroke(2 * Saber.HALF + 2 * LINE)
-    private val core = stroke(2 * Saber.HALF).apply { if (lightPage) color = paper }
+    private val glowWide = stroke(2 * HALF + 6f).apply { alpha = 26 }
+    private val glow = stroke(2 * HALF + 3f).apply { alpha = 56 }
+    private val coreEdge = stroke(2 * HALF + 2 * LINE)
+    private val core = stroke(2 * HALF).apply { if (lightPage) color = paper }
     private val solid = fill(ink)
     private val blank = fill(paper)
-    private val coat = fill(Palette.mix(ink, paper, 0.14f))
+    private val faint = fill(ink).apply { alpha = 46 }
     private val shadow = fill(ink).apply { alpha = 31 }
 
-    /** 0: en garde, blades up and apart; 1: swung in, the blades crossed over the middle. */
+    /** 0 → 0.5: drawing their sabers; 0.5: en garde, blades up and apart; 1: swung in, the blades crossed over the middle. */
     var progress = 0f
         set(value) {
             val v = value.coerceIn(0f, 1f)
@@ -65,9 +79,10 @@ class DuelView(
     /**
      * One fighter's pose, in the box's units: [x] across from its place (+ to the right), [y] down (a jump
      * is negative), [lean] in degrees toward the other from its feet, [swing] its saber arm (0 en garde, 1
-     * swung in to the cross), [squash] its height (1 standing, below it crouching or landing).
+     * swung in to the cross), [squash] its height (1 standing, below it crouching or landing), [draw] how
+     * far it has drawn its saber (0 not yet, 1 drawn and lit).
      */
-    data class Pose(val x: Float = 0f, val y: Float = 0f, val lean: Float = 0f, val swing: Float = 0f, val squash: Float = 1f)
+    data class Pose(val x: Float = 0f, val y: Float = 0f, val lean: Float = 0f, val swing: Float = 0f, val squash: Float = 1f, val draw: Float = 1f)
 
     /** The cow's and the horse's poses, set by a scene; null draws [progress]'s. */
     internal var poses: Pair<Pose, Pose>? = null
@@ -93,18 +108,31 @@ class DuelView(
         if (stage) setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.getSize(heightMeasureSpec))
         else setMeasuredDimension(ui.dp(112), ui.dp(56))
 
-    /** Keeps them fighting: swing in, clash with a spark, back to en garde, again, about every 0.9 s. */
+    /**
+     * Keeps them fighting, sabers drawn: swing in, clash with a spark, back to en garde, again, about every
+     * 0.9 s. Not drawn yet (a loader appearing), they draw them first.
+     */
     fun loop() {
         stop()
         if (!Motion.enabled) { progress = 1f; return }
+        val from = progress
+        val drawing = if (from < 0.5f) 500L else 0L
         looper = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 900
             repeatCount = ValueAnimator.INFINITE
             interpolator = LinearInterpolator()
+            var drawn = drawing == 0L
+            val started = android.os.SystemClock.uptimeMillis()
             addUpdateListener {
+                if (!drawn) {
+                    val t = (android.os.SystemClock.uptimeMillis() - started) / drawing.toFloat()
+                    if (t < 1f) { progress = from + (0.5f - from) * t; return@addUpdateListener }
+                    drawn = true
+                    currentPlayTime = 0
+                }
                 val t = it.animatedValue as Float
                 // Strike (0–0.4), hold the clash (0.4–0.55), back to en garde (0.55–1).
-                progress = when {
+                progress = 0.5f + 0.5f * when {
                     t < 0.4f -> t / 0.4f
                     t < 0.55f -> 1f
                     else -> 1f - ease((t - 0.55f) / 0.45f)
@@ -172,6 +200,8 @@ class DuelView(
     }
 
     private fun ease(x: Float) = 1 - (1 - x) * (1 - x)
+    private fun smooth(x: Float) = x.coerceIn(0f, 1f).let { it * it * (3 - 2 * it) }
+    private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
     private fun stroke(width: Float) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -195,20 +225,22 @@ class DuelView(
             canvas.scale(width / 120f, width / 120f)
         }
         val (cow, horse) = poses ?: run {
-            // Slow at first, fastest into the cross: the blades only meet near the end, at 0.8.
-            val e = progress * progress
+            // The first half draws the sabers; the second swings them in, slow at first, fastest into the cross.
+            val d = (progress / 0.5f).coerceIn(0f, 1f)
+            val e = ((progress - 0.5f) / 0.5f).coerceIn(0f, 1f).let { it * it }
             val step = 4f * (e - 1f) // each steps in 4
             val lean = 4f * e        // and leans in 4°, from the feet
-            Pose(x = step, lean = lean, swing = e) to Pose(x = -step, lean = lean, swing = e)
+            Pose(x = step, lean = lean, swing = e, draw = d) to Pose(x = -step, lean = lean, swing = e, draw = d)
         }
         fighter(canvas, cow, 28f, 1f) {
+            if (cow.draw < COW_GRAB) canvas.drawPath(Cow.tail, tailLine) // on its rump, behind the body
             cow(canvas)
-            saberArm(canvas, cow.swing, blank)
+            cowSaber(canvas, cow.draw, cow.swing)
         }
         fighter(canvas, horse, 92f, -1f) {
             horse(canvas)
-            canvas.scale(-1f, 1f, 60f, 0f) // its saber arm is the cow's, mirrored
-            saberArm(canvas, horse.swing, coat)
+            canvas.scale(-1f, 1f, 60f, 0f) // its saber is drawn in the cow's frame, mirrored
+            horseSaber(canvas, horse.draw, horse.swing)
         }
         spark(canvas)
         canvas.restore()
@@ -240,7 +272,7 @@ class DuelView(
     private fun hooves(c: Canvas, legs: Path) {
         c.save()
         c.clipPath(legs)
-        c.drawRect(0f, 54.6f, 120f, 60f, solid)
+        c.drawRect(0f, 54.5f, 120f, 60f, solid)
         c.restore()
     }
 
@@ -255,79 +287,157 @@ class DuelView(
     // --- the cow, at the left, facing right ----------------------------------------------------
 
     private fun cow(c: Canvas) = with(Cow) {
-        c.drawPath(tail, line)
-        c.drawPath(tuft, solid)
-        piece(c, blank, legs, body, muzzle)
+        piece(c, blank, legs, body)
         hooves(c, legs)
-        inside(c, body, spots, solid)
-        sixPack(c, pecs, pack, packLines)
-        c.drawPath(ears, solid)
-        piece(c, coat, horns)
-        c.drawPath(muzzle, coat)
-        eyes(c, eyes, pupils, brows)
+        inside(c, body, patches, solid)
+        piece(c, blank, udder)
+        c.drawPath(teats, line)
+        c.drawPath(horns, horn)
+        piece(c, blank, ears, head)
+        c.drawPath(earsInside, faint)
+        piece(c, blank, muzzle)
         c.drawPath(nostrils, solid)
-        c.drawPath(mouth, solid)
-        inside(c, mouth, tongue, coat)
+        c.drawPath(mouth, fine)
+        c.drawPath(eyes, solid)
+        c.drawPath(brows, brow)
     }
 
     // --- the horse, at the right, facing left --------------------------------------------------
 
     private fun horse(c: Canvas) = with(Horse) {
-        c.drawPath(tail, solid)
-        piece(c, coat, legs, body, neck)
+        c.drawPath(tail, maneTail)
+        c.drawPath(tail2, maneTail2)
+        piece(c, blank, legs, body)
         hooves(c, legs)
-        sixPack(c, pecs, pack, packLines)
         c.drawPath(mane, solid)
-        piece(c, coat, ears, crown, face)
-        inside(c, head, muzzle, blank)
-        c.drawPath(crest, solid)
-        eyes(c, eyes, pupils, brows)
+        piece(c, blank, ears, face)
+        c.drawPath(forelock, solid)
+        piece(c, blank, muzzle)
         c.drawPath(nostrils, solid)
-        c.drawPath(teeth, toothEdge)
-        c.drawPath(teeth, blank)
         c.drawPath(mouth, fine)
-    }
-
-    /** The chest's two arcs, and the six-pack under them: a rounded block in thirds and halves. */
-    private fun sixPack(c: Canvas, pecs: Path, pack: Path, lines: Path) {
-        c.drawPath(pecs, muscle)
-        piece(c, blank, pack)
-        c.drawPath(lines, muscle)
-    }
-
-    /** Big round eyes (white, outlined), pupils turned to the other one with a glint each, and angry brows. */
-    private fun eyes(c: Canvas, eyes: Path, pupils: FloatArray, brows: Path) {
-        piece(c, blank, eyes)
-        for (i in pupils.indices step 2) {
-            c.drawCircle(pupils[i], pupils[i + 1], 2.4f, solid)
-            c.drawCircle(pupils[i] + 0.8f, pupils[i + 1] - 1f, 0.75f, blank)
-        }
+        c.drawPath(eyes, solid)
         c.drawPath(brows, brow)
     }
 
-    /**
-     * The cow's saber arm (the horse's is its mirror image) from the shoulder, a bicep on it and the hoof
-     * round the hilt: [e] 0 low with the blade held up, 1 raised with the blade swung in to the cross.
-     */
-    private fun saberArm(c: Canvas, e: Float, fill: Paint) {
-        val arm = 20f - 40f * e
-        val blade = -74f + 22f * e
+    // --- their sabers: in the cow's frame (the horse's mirrored), the shoulder at SH -------------
+
+    /** The arm from the shoulder at [deg], [length] long, the hoof at its end; where the hoof is. */
+    private fun arm(c: Canvas, deg: Float, length: Float): Pair<Float, Float> {
+        val a = Math.toRadians(deg.toDouble())
+        val hx = SH_X + length * cos(a).toFloat()
+        val hy = SH_Y + length * sin(a).toFloat()
+        c.drawLine(SH_X, SH_Y, hx, hy, armEdge)
+        c.drawLine(SH_X, SH_Y, hx, hy, armFill)
+        c.drawCircle(hx, hy, ARM_W / 2 + 0.6f, solid)
+        return hx to hy
+    }
+
+    /** A blade from the hoof at ([x], [y]) at [deg], lit [length] of the way, with its glow; [hilt] drawn in its frame first. */
+    private fun saber(c: Canvas, x: Float, y: Float, deg: Float, length: Float, hilt: (Canvas) -> Unit) {
         c.save()
-        c.translate(35f, 41f)
-        c.rotate(arm)
-        piece(c, fill, Saber.arm, Saber.bicep)
-        c.translate(8f, 0f)
-        c.rotate(blade - arm)
-        // The blade's glow, then its core.
-        c.drawLine(Saber.FROM, 0f, Saber.TO, 0f, glowWide)
-        c.drawLine(Saber.FROM, 0f, Saber.TO, 0f, glow)
-        if (lightPage) c.drawLine(Saber.FROM, 0f, Saber.TO, 0f, coreEdge)
-        c.drawLine(Saber.FROM, 0f, Saber.TO, 0f, core)
-        c.drawPath(Saber.hilt, solid)
-        c.drawPath(Saber.bands, blank)
-        c.drawPath(Saber.emitter, solid)
-        c.drawCircle(0f, 0f, 3.4f + LINE, solid) // the hoof
+        c.translate(x, y)
+        c.rotate(deg)
+        if (length > 0.01f) {
+            val to = FROM + (TO - FROM) * length
+            c.drawLine(FROM, 0f, to, 0f, glowWide)
+            c.drawLine(FROM, 0f, to, 0f, glow)
+            if (lightPage) c.drawLine(FROM, 0f, to, 0f, coreEdge)
+            c.drawLine(FROM, 0f, to, 0f, core)
+        }
+        hilt(c)
         c.restore()
+    }
+
+    /**
+     * The cow's saber at [d] drawn and [e] swung: it reaches round to its tail's root (0–COW_GRAB), yanks
+     * it off, the tail hanging from the hoof, a pop where it was (to PULL), then brings it round to en
+     * garde as the blade lights; then the chop, from raised back to forward.
+     */
+    private fun cowSaber(c: Canvas, d: Float, e: Float) {
+        val reach = Math.toDegrees(atan2(TAIL_Y - SH_Y, TAIL_X - SH_X).toDouble()).toFloat()
+        val far = hypot(TAIL_X - SH_X, TAIL_Y - SH_Y) - 1f
+        when {
+            d < COW_GRAB -> {
+                val t = smooth(d / COW_GRAB)
+                arm(c, lerp(75f, reach, t), lerp(ARM, far, t))
+            }
+            d < PULL -> {
+                val t = smooth((d - COW_GRAB) / (PULL - COW_GRAB))
+                pop(c, (d - COW_GRAB) / 0.15f)
+                val (hx, hy) = arm(c, lerp(reach, COW_ARM_0 + 40f, t), lerp(far, ARM, t))
+                // The tail, hanging from the hoof.
+                c.save()
+                c.translate(hx, hy)
+                c.rotate(lerp(200f, 150f, t))
+                c.drawPath(Cow.loose, tailLine)
+                c.restore()
+                c.drawCircle(hx, hy, ARM_W / 2 + 0.6f, solid)
+            }
+            else -> {
+                val t = smooth((d - PULL) / (1f - PULL))
+                val a = if (e == 0f) lerp(COW_ARM_0 + 40f, COW_ARM_0, t) else lerp(COW_ARM_0, COW_ARM_1, e)
+                val b = if (e == 0f) lerp(150f, COW_BLADE_0 + 360f, t) - 360f else lerp(COW_BLADE_0, COW_BLADE_1, e)
+                val (hx, hy) = hoof(a)
+                saber(c, hx, hy, b, if (e == 0f) ((d - 0.7f) / 0.3f).coerceIn(0f, 1f) else 1f) { it.drawPath(Cow.hilt, hilt) }
+                arm(c, a, ARM)
+            }
+        }
+    }
+
+    /**
+     * The horse's saber, in the cow's frame: it reaches down to its member between its legs, the arm
+     * stretching (0–HORSE_GRAB), draws it out, the member stretching with the hoof (to PULL), and it lights
+     * at en garde; then its guard, held up steeper than the cow's chop.
+     */
+    private fun horseSaber(c: Canvas, d: Float, e: Float) {
+        val reach = Math.toDegrees(atan2(MEMBER_Y - SH_Y, MEMBER_X - SH_X).toDouble()).toFloat()
+        val far = hypot(MEMBER_X - SH_X, MEMBER_Y - SH_Y) - 1f
+        when {
+            d < HORSE_GRAB -> {
+                // At rest between the legs, a short tube.
+                c.drawLine(MEMBER_X, MEMBER_Y - 1.5f, MEMBER_X, MEMBER_Y + 4f, memberEdge)
+                c.drawLine(MEMBER_X, MEMBER_Y - 1.5f, MEMBER_X, MEMBER_Y + 4f, memberCore)
+                val t = smooth(d / HORSE_GRAB)
+                arm(c, lerp(75f, reach, t), lerp(ARM, far, t))
+            }
+            d < PULL -> {
+                val t = smooth((d - HORSE_GRAB) / (PULL - HORSE_GRAB))
+                val a = lerp(reach, HORSE_ARM_0 + 30f, t)
+                val length = lerp(far, ARM, t)
+                val (hx, hy) = hoof(a, length)
+                c.drawLine(MEMBER_X, MEMBER_Y - 1.5f, hx, hy, memberEdge)
+                c.drawLine(MEMBER_X, MEMBER_Y - 1.5f, hx, hy, memberCore)
+                arm(c, a, length)
+            }
+            else -> {
+                val t = smooth((d - PULL) / (1f - PULL))
+                val a = if (e == 0f) lerp(HORSE_ARM_0 + 30f, HORSE_ARM_0, t) else lerp(HORSE_ARM_0, HORSE_ARM_1, e)
+                val b = if (e == 0f) lerp(-150f, HORSE_BLADE_0, t) else lerp(HORSE_BLADE_0, HORSE_BLADE_1, e)
+                val (hx, hy) = hoof(a)
+                saber(c, hx, hy, b, if (e == 0f) ((d - 0.7f) / 0.3f).coerceIn(0f, 1f) else 1f) {
+                    it.drawLine(-5f, 0f, FROM, 0f, memberEdge)
+                    it.drawLine(-5f, 0f, FROM, 0f, memberCore)
+                }
+                arm(c, a, ARM)
+            }
+        }
+    }
+
+    private fun hoof(deg: Float, length: Float = ARM): Pair<Float, Float> {
+        val a = Math.toRadians(deg.toDouble())
+        return SH_X + length * cos(a).toFloat() to SH_Y + length * sin(a).toFloat()
+    }
+
+    /** Where the cow's tail came off: three short lines flying out behind, fading over [t] 0–1. */
+    private fun pop(c: Canvas, t: Float) {
+        if (t < 0f || t > 1f) return
+        fine.alpha = ((1f - t) * 255).toInt()
+        for (deg in intArrayOf(150, 190, 230)) {
+            val a = Math.toRadians(deg.toDouble())
+            val dx = cos(a).toFloat(); val dy = sin(a).toFloat()
+            c.drawLine(TAIL_X + dx * (2 + 2 * t), TAIL_Y + dy * (2 + 2 * t), TAIL_X + dx * (4 + 3 * t), TAIL_Y + dy * (4 + 3 * t), fine)
+        }
+        fine.alpha = 255
     }
 
     /** Where the blades cross: a flash, and five short rays flying out between the tips as they fade. */
@@ -350,78 +460,89 @@ class DuelView(
         line.alpha = 255
     }
 
-    /** The cow, at the left, facing right: a round body with a six-pack, big eyes, shouting. */
+    /** The cow, at the left, facing right: horns, ears out to the side, patches, an udder, a plain tail. */
     private object Cow {
-        val tail = svg("M14,46 C8,48 4.6,44 5.8,38.6")
-        val tuft = svg("M5.8,40.2 C3.4,38.8 3.4,35.2 6,33.2 C8.4,35.2 8.4,38.8 5.8,40.2 Z")
-        val legs = join(rrect(17.5f, 47f, 24f, 57.4f, 3f), rrect(30f, 47f, 36.5f, 57.4f, 3f))
-        val body = join(oval(11f, 14.5f, 43f, 55f))
-        val muzzle = oval(29.6f, 25.6f, 44.2f, 34.6f)
-        val horns = join(svg("M17,18 C13.8,15.2 13.2,11.2 14.8,8.4 C17.4,10.2 19.4,13.4 20.4,16.4 Z"), svg("M33.4,15.6 C34.2,12.2 36.4,9.6 39.2,8.6 C39.8,11.4 38.8,14.4 36.8,16.8 Z"))
-        val ears = svg("M13.6,22.4 C8.6,20.2 4.4,21.6 3.6,25 C7.4,27.8 11.8,27.2 14.6,25.4 Z M40.6,19.2 C44,16 48.4,15.6 50.6,17.2 C49.2,21 45.4,22.6 41.4,22.4 Z")
-        val spots = join(oval(7.5f, 39.5f, 16.5f, 49f), svg("M9.5,22 C11.5,16.6 17.6,14.2 21.6,16.4 C20.8,21.2 16,24.8 10,26.4 Z"))
-        val pack = rrect(22.6f, 39f, 33.4f, 51.4f, 3.4f)
-        val packLines = svg("M28,39.6 L28,50.8 M23,43.2 Q28,44.4 33,43.2 M23,47.2 Q28,48.4 33,47.2")
-        val pecs = svg("M19.4,35.6 C21.4,38.2 25.2,38.8 27.6,36.8 M28.4,36.8 C31,38.8 34.6,38.2 36.6,35.6")
-        val eyes = join(oval(23.8f, 16.4f, 31.6f, 25.8f), oval(31.2f, 16.4f, 39f, 25.8f))
-        val pupils = floatArrayOf(28.8f, 21.8f, 36.2f, 21.8f)
-        val brows = svg("M23.6,14.6 L30.6,17.6 M32.4,17.6 L39.4,14.4")
-        val nostrils = join(oval(34.4f, 27.2f, 36.6f, 29.2f), oval(39.2f, 27.2f, 41.4f, 29.2f))
-        val mouth = svg("M34,30.6 Q38.4,31.8 42.6,30.2 C42.4,33.4 40.4,35.2 38.2,35 C35.8,34.8 34.2,33 34,30.6 Z")
-        val tongue = oval(35.6f, 32.6f, 40.8f, 36.2f)
+        val legs = join(rrect(19f, 46f, 25.5f, 57.5f, 2.5f), rrect(30.5f, 46f, 37f, 57.5f, 2.5f))
+        val body = rrect(14f, 25f, 42f, 50f, 9f)
+        val patches = join(
+            svg("M14,31 C18,28 23,30 22,35 C21,39 16,38 14,37 Z"), svg("M27,26 C31,25 36,27 34,31 C32,34 27,32 27,26 Z"),
+            svg("M18,43 C21,41 25,43 24,47 C23,50 18,49 17,47 Z"), el(37.5f, 35.5f, 2.6f, 2.2f),
+        )
+        val udder = svg("M33,44 C33,40 41,40 41,44 C41,47.5 33,47.5 33,44 Z")
+        val teats = svg("M35,47.2 L35,49.4 M37,47.6 L37,49.8 M39,47.2 L39,49.4")
+        val horns = svg("M21,9 C19,6 15.5,5 15,1.5 M35,9 C37,6 40.5,5 41,1.5")
+        val ears = join(el(13.5f, 13f, 5f, 2.8f), el(42.5f, 13f, 5f, 2.8f))
+        val earsInside = join(el(13.5f, 13f, 2.4f, 1.1f), el(42.5f, 13f, 2.4f, 1.1f))
+        val head = rrect(17f, 7f, 39f, 27f, 8f)
+        val muzzle = rrect(21.5f, 18.5f, 34.5f, 25.5f, 3.5f)
+        val nostrils = join(el(25.6f, 21.6f, 0.9f, 1.1f), el(30.4f, 21.6f, 0.9f, 1.1f))
+        val mouth = svg("M26.5,24 Q28,24.8 29.5,24")
+        val eyes = join(el(24.2f, 13.8f, 1.5f, 1.7f), el(32.2f, 13.8f, 1.5f, 1.7f))
+        val brows = svg("M21.6,10.8 L26,12.2 M30.4,12.2 L34.8,10.8")
+        /** On its rump, before it's yanked off. */
+        val tail = svg("M15,41 C9,43 6,40 6.5,34")
+        /** Off, hanging from the hoof (in the hoof's frame), and held as the hilt (in the blade's). */
+        val loose = svg("M0,0 Q5,2 9,0")
+        val hilt = svg("M-5,0 Q0,-1.2 4,0")
     }
 
-    /** The horse, at the right, facing left: a long face with its chin tucked in, a crest, buck teeth. */
+    /** The horse, at the right, facing left: a long face, pointed ears, a forelock, a mane, a flowing tail. */
     private object Horse {
-        val tail = svg("M105.6,39.6 C113,38 117.4,44.2 116.8,53.8 C113.6,49.8 110,47.8 105.4,48.2 Z")
-        val legs = join(rrect(83.5f, 47f, 90f, 57.4f, 3f), rrect(96f, 47f, 102.5f, 57.4f, 3f))
-        val body = join(oval(77f, 25f, 107f, 55f))
-        val neck = svg("M89.6,22 L87.4,38 L103.6,38 L103.4,19 Z")
-        val mane = svg("M101.6,8.6 C104.6,11.6 106,15.2 106.2,19.2 C106.8,25.4 105.8,31.4 103.4,36.8 C101.2,35.4 99.8,33.6 99,31.4 C100.6,26.2 100.6,19.4 98.4,14.2 Z")
-        val pack = rrect(86.6f, 39.6f, 97.4f, 51.8f, 3.4f)
-        val packLines = svg("M92,40.2 L92,51.2 M87,43.8 Q92,45 97,43.8 M87,47.8 Q92,49 97,47.8")
-        val pecs = svg("M83.4,37 C85.4,39.4 89.2,40 91.6,38 M92.4,38 C95,40 98.6,39.4 100.6,37")
-        val ears = svg("M87.8,8.6 C86.6,6 86.8,3.6 88,2 C90.6,2.9 92.6,5 93.4,7.2 Z M97.2,6.4 C98,3.8 99.8,2.2 102,1.8 C102.4,4.2 101.6,6.6 100.2,8.4 Z")
-        val crown = oval(83.3f, 4.2f, 103.7f, 24.6f)
-        val face = svg("M92.63,11.63 C96.38,14.55 95.99,21.3 91.78,26.69 C87.56,32.09 81.11,34.1 77.37,31.17 C73.62,28.25 74.01,21.5 78.22,16.11 C82.44,10.71 88.89,8.7 92.63,11.63 Z")
-        /** The crown and the face together, for what's drawn inside the head. */
-        val head = join(crown, face)
-        val muzzle = svg("M84.76,20.57 C87.63,22.81 87.92,27.24 85.4,30.46 C82.88,33.68 78.52,34.48 75.64,32.23 C72.77,29.99 72.48,25.56 75,22.34 C77.52,19.12 81.88,18.32 84.76,20.57 Z")
-        val crest = svg("M91.4,6.4 C91.4,3.8 93,1.8 95.6,1 C95,2.2 95,3.2 95.6,4.2 C96.8,2.4 99,1.8 101.2,2.2 C99.8,3 99,4.2 98.8,5.6 C100.6,5.2 102.6,5.8 104,7.4 C101.4,7.4 99.6,8.2 98.6,9.6 Z")
-        val eyes = join(oval(82f, 8.8f, 89.6f, 18f), oval(89.2f, 8.8f, 96.8f, 18f))
-        val pupils = floatArrayOf(84.8f, 14f, 92f, 14f)
-        val brows = svg("M83.4,7.6 L89,9.8 M90.6,9.8 L96.6,7.4")
-        val nostrils = join(svg("M77.5,23.85 C77.8,24.38 77.47,25.14 76.75,25.55 C76.03,25.97 75.2,25.88 74.9,25.35 C74.6,24.82 74.93,24.06 75.65,23.65 C76.37,23.23 77.2,23.32 77.5,23.85 Z"), svg("M81.3,25.25 C81.6,25.78 81.27,26.54 80.55,26.95 C79.83,27.37 79,27.28 78.7,26.75 C78.4,26.22 78.73,25.46 79.45,25.05 C80.17,24.63 81,24.72 81.3,25.25 Z"))
-        val mouth = svg("M74.6,28.2 Q79.4,31.8 85,29.2")
-        val teeth = join(rrect(77f, 29.4f, 79.6f, 33.2f, 0.9f), rrect(79.8f, 29.7f, 82.4f, 33.3f, 0.9f))
-    }
-
-    /** In the arm's own frame: the shoulder at 0, the hoof 8 along x; then the saber's, the hoof round its hilt at 0. */
-    private object Saber {
-        val arm = rrect(-3.4f, -3.4f, 11f, 3.4f, 3.4f)
-        val bicep = oval(2.4f, -5.2f, 9.4f, 1.2f)
-        val hilt = rrect(-5.6f, -1.7f, 4.4f, 1.7f, 1f)
-        val bands = join(rrect(-3.6f, -1.7f, -2.6f, 1.7f, 0.3f), rrect(-1.6f, -1.7f, -0.6f, 1.7f, 0.3f))
-        val emitter = rrect(3.6f, -2.3f, 5.8f, 2.3f, 0.8f)
-        /** The blade, from the emitter to its tip, and half its width. */
-        const val FROM = 5.8f
-        const val TO = 31f
-        const val HALF = 1.6f
+        val tail = svg("M105,38 C112,37 115,43 114,51")
+        val tail2 = svg("M106,41 C111,42 112.5,47 111,53")
+        val legs = join(rrect(83f, 46f, 89.5f, 57.5f, 2.5f), rrect(94.5f, 46f, 101f, 57.5f, 2.5f))
+        val body = rrect(78f, 25f, 106f, 50f, 9f)
+        val mane = svg("M100,6 C106,9 108,18 106,30 C103,28 101.5,24 101.5,19 Z")
+        val ears = svg("M84.5,7 L83,0.5 L88.5,4.5 Z M99.5,7 L101,0.5 L95.5,4.5 Z")
+        val face = svg("M83,9 C83,3 101,3 101,9 L100,22 C100,29 84,29 84,22 Z")
+        val forelock = svg("M88,4.8 C90,2.4 94,2.4 96,4.8 C95,8 93,9.4 92,10 C91,9.4 89,8 88,4.8 Z")
+        val muzzle = rrect(85f, 19.5f, 99f, 27.5f, 4f)
+        val nostrils = join(el(89.2f, 23f, 0.9f, 1.2f), el(94.8f, 23f, 0.9f, 1.2f))
+        val mouth = svg("M90.5,25.6 Q92,26.4 93.5,25.6")
+        val eyes = join(el(88f, 13.5f, 1.5f, 1.7f), el(96f, 13.5f, 1.5f, 1.7f))
+        val brows = svg("M85.4,10.6 L89.6,12 M94.4,12 L98.6,10.6")
     }
 
     internal companion object {
         /** The outline's width, in the box's units. */
-        private const val LINE = 1.6f
+        private const val LINE = 1.8f
         /** Where the blades cross, over the middle (x 60), when [progress] is 1. */
-        const val CROSS_Y = 21.3f
+        const val CROSS_Y = 16.6f
+
+        /** The saber arm: its shoulder (in the cow's frame), length and width; en garde → the cross, in degrees. */
+        private const val SH_X = 36.5f
+        private const val SH_Y = 35f
+        private const val ARM = 9f
+        private const val ARM_W = 6.8f
+        private const val COW_ARM_0 = 30f
+        private const val COW_ARM_1 = -18f
+        private const val COW_BLADE_0 = -100f
+        private const val COW_BLADE_1 = -56f
+        private const val HORSE_ARM_0 = 18f
+        private const val HORSE_ARM_1 = -2f
+        private const val HORSE_BLADE_0 = -86f
+        private const val HORSE_BLADE_1 = -60f
+        /** The blade, from the hilt's end at the hoof to its tip, and half its width. */
+        private const val FROM = 4f
+        private const val TO = 29f
+        private const val HALF = 1.6f
+        /** Drawing: the hoof reaches the tail or member by COW_GRAB / HORSE_GRAB, and has it out by PULL. */
+        private const val COW_GRAB = 0.35f
+        private const val HORSE_GRAB = 0.35f
+        private const val PULL = 0.6f
+        /** The cow's tail's root, and the horse's member (in the horse's frame mirrored onto the cow's). */
+        private const val TAIL_X = 15f
+        private const val TAIL_Y = 41f
+        private const val MEMBER_X = 28f
+        private const val MEMBER_Y = 50f
         private val CW = Path.Direction.CW
 
-        /** A path from SVG path data: absolute M, L, Q, C and Z only, each segment with its letter. */
-        private fun oval(l: Float, t: Float, r: Float, b: Float) = Path().apply { addOval(l, t, r, b, CW) }
+        private fun el(cx: Float, cy: Float, rx: Float, ry: Float) = Path().apply { addOval(cx - rx, cy - ry, cx + rx, cy + ry, CW) }
         private fun rrect(l: Float, t: Float, r: Float, b: Float, rad: Float) = Path().apply { addRoundRect(l, t, r, b, rad, rad, CW) }
         /** Shapes as one path: ones that don't overlap, or wind the same way (so their union fills). */
         private fun join(vararg shapes: Path) = Path().apply { shapes.forEach { addPath(it) } }
 
+        /** A path from SVG path data: absolute M, L, Q, C and Z only, each segment with its letter. */
         private fun svg(d: String) = Path().apply {
             val t = Regex("[MLQCZ]|-?[0-9.]+").findAll(d).map { it.value }.toList()
             var i = 0
