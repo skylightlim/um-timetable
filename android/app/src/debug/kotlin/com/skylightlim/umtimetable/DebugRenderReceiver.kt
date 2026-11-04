@@ -40,7 +40,8 @@ import java.io.File
  * (--ez new false: a saved plan's, with Delete; --ei ahead 3: dated 3 days from today, so its reminders show;
  * --ei maxEnd 1140: room until 19:00, so How long's wheel runs on; --ei cap 260: its middle at most 260dp, scrolling, as
  * when the keyboard leaves too little room).
- * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200).
+ * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200); with --ei fps 30
+ * instead, each frame on its own (cache/render/scene/0000.png …, 960 × 540) for a video, a second en garde after.
  * view occcard draws Settings' card for choosing an occurrence (--es code CODE); view shortcard its card for a short name.
  * view pinmenu draws the card a long press on a course page's section name brings up (--ez pinned true: Unpin).
  * view signout draws the Sign out question's card. view settings draws the Settings tab's page (--ez signedIn true|false
@@ -70,6 +71,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         if (intent.getStringExtra("view") == "tabicons") return tabIcons(context)
         if (intent.getStringExtra("view") == "duel") return duel(context, intent.getBooleanExtra("dark", false))
         if (intent.getStringExtra("view") == "duelloop") return duelLoop(context)
+        if (intent.getStringExtra("view") == "scene" && intent.hasExtra("fps")) return sceneFrames(context, intent.getIntExtra("fps", 30))
         if (intent.getStringExtra("view") == "scene") return scene(context, intent.getIntExtra("step", 200))
         val view = intent.getStringExtra("view") ?: "files"
         val dark = intent.getBooleanExtra("dark", false)
@@ -342,6 +344,32 @@ class DebugRenderReceiver : BroadcastReceiver() {
      * from the start. Drawn on a software canvas, so each animation runs on this thread.
      */
     /** The sign-in poster's fight ([DuelScene]) as a contact sheet: a frame every [step] ms, 0 to 5 s, on the poster's blue. */
+    /** The poster's fight frame by frame at [fps] (cache/render/scene/), on the poster's blue, for a video of it. */
+    private fun sceneFrames(context: Context, fps: Int) {
+        val c = ContextThemeWrapper(context, R.style.Theme_UMTimetable)
+        val ui = Ui(c, Palette.LIGHT, Fonts(c))
+        val view = DuelView(ui, 0xFFF1F5FE.toInt(), 0xFF132B7C.toInt(), stage = true)
+        val scene = DuelScene(view)
+        val w = 960
+        val h = 540
+        view.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
+        view.layout(0, 0, w, h)
+        val dir = File(context.cacheDir, "render/scene").apply { deleteRecursively(); mkdirs() }
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        // The fight, then a second as it ends (en garde).
+        val frames = ((5600 + 1000) * fps / 1000)
+        for (i in 0 until frames) {
+            val t = (i * 1000f / fps).coerceAtMost(5600f)
+            view.poses = scene.at(t)
+            scene.sparkAt(t)?.let { (x, y, age) -> view.sparkStill(x, y, age) } ?: view.sparkStill(60f, 0f, 2f)
+            bitmap.eraseColor(0xFF132B7C.toInt())
+            view.draw(canvas)
+            File(dir, "%04d.png".format(i)).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+        Log.i("UMTimetable", "debug render: scene, $frames frames at $fps fps")
+    }
+
     private fun scene(context: Context, step: Int) {
         val c = ContextThemeWrapper(context, R.style.Theme_UMTimetable)
         val ui = Ui(c, Palette.LIGHT, Fonts(c))
