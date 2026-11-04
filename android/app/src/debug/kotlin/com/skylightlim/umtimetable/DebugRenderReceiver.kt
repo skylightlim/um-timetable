@@ -25,6 +25,7 @@ import java.io.File
  * id) that section's own page, as a card or a linked section opens.
  * view icon draws the launcher icon with the phone's mask (icon.png) and its themed layer (icon-mono.png).
  * dow (0 Sunday … 6 Saturday) and min (minutes after midnight) pretend it's another time of the week.
+ * --ez fresh true with a course marks three of its activities New for this render (the New button by the code).
  * view files with --ez sample true draws made-up marks for the first three courses instead of the synced
  * ones (to check the mark cards while Spectrum has none); --ez open true shows them.
  * view due with --ez sample true draws made-up deadlines (late, minutes, hours, days) and attendance
@@ -77,6 +78,15 @@ class DebugRenderReceiver : BroadcastReceiver() {
             openSection = intent.getIntExtra("section", 0).takeIf { it > 0 }
             weekShift = intent.getIntExtra("weekShift", 0)
             if (intent.getBooleanExtra("open", false)) expanded = object : HashSet<String>() { override fun contains(element: String) = true }
+        }
+        // --ez fresh true with --ei course N: three of the course page's activities (first, middle, last) marked New for
+        // this render, the user's own marks put back after it.
+        val marksBefore = SpectrumStore.read(context, "course-marks")
+        host.openCourse?.takeIf { intent.getBooleanExtra("fresh", false) }?.let { id ->
+            val modules = host.courseContents(id)?.optJSONArray("sections")?.objects().orEmpty()
+                .flatMap { it.optJSONArray("modules")?.objects().orEmpty() }
+                .filter { it.optBoolean("uservisible", true) && it.optString("kind") != "subsection" && it.optString("kind") != "label" }
+            if (modules.isNotEmpty()) CourseUpdates.markNew(context, id, listOf(0, modules.size / 2, modules.size - 1).distinct().map { modules[it].optInt("cmid") })
         }
         val page = when (view) {
             "week" -> WeekScreen.build(host, if (intent.getBooleanExtra("sample", false)) samplePlans(host) else null)
@@ -137,6 +147,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
             }
             else -> DayScreen.build(host, intent.getIntExtra("day", homeDay(Timetable.load(context), now)), if (intent.getBooleanExtra("sample", false)) samplePlans(host) else null)
         }
+        if (intent.getBooleanExtra("fresh", false)) SpectrumStore.write(context, "course-marks", marksBefore ?: "{}")
         // --ez tapMore true: taps the first "Show more" before drawing, to check the toggle itself.
         if (intent.getBooleanExtra("tapMore", false)) {
             fun find(v: View): View? = if (v is android.widget.TextView && v.text.toString() == "Show more") v

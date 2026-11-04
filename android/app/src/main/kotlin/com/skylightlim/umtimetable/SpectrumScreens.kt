@@ -810,19 +810,34 @@ object SpectrumScreens {
         CourseUpdates.openPage(ui.context, id, course)
         val top = course?.let(CourseOutline::build).orEmpty()
         val folder = code.ifEmpty { "Spectrum" }
+        // The course code's line, with a button to what's new on the page when there is something ([jumpToNew]).
+        fun codeLine(code: View, fresh: Int, onPage: () -> View) = ui.row(gap = 12f).apply {
+            addView(code, ui.grow())
+            if (fresh > 0) addView(newButton(h, fresh, onPage))
+        }
         h.openSection?.let { CourseOutline.find(top, it) }?.let { node ->
             // A section's own page: the course code over its name, then all of it.
+            val body = sectionBody(h, node, folder, 0, "p${node.id}")
             page.addView(ui.column().apply {
                 setPadding(0, ui.dp(18), 0, ui.dp(12))
-                addView(ui.text((code.ifEmpty { "Course" }).uppercase(), 15f, p.courseText(color), ui.f.monoBold))
+                addView(codeLine(ui.text((code.ifEmpty { "Course" }).uppercase(), 15f, p.courseText(color), ui.f.monoBold), freshIn(node)) { body })
                 addView(ui.text(node.name, 26f, p.text, ui.f.bodyBold).apply { RichText.selectable(this) }, ui.wide(top = 4f))
             })
-            page.addView(sectionBody(h, node, folder, 0, "p${node.id}"))
+            page.addView(body)
+            // Opened by the button: on to the first new thing on it.
+            if (jumpOnOpen) {
+                jumpOnOpen = false
+                page.post { jumpToNew(h, body, 0, emptyMap()) }
+            }
             return page
         }
+        jumpOnOpen = false
+        // Each top section's body, by what opens it again when it's folded to its heading (for the New button).
+        val unfold = HashMap<View, () -> Unit>()
+        val holder = ui.column().apply { tag = unfold }
         page.addView(ui.column().apply {
             setPadding(0, ui.dp(18), 0, ui.dp(14))
-            addView(ui.text((code.ifEmpty { "Course" }).uppercase(), 38f, p.courseText(color), ui.f.sign))
+            addView(codeLine(ui.text((code.ifEmpty { "Course" }).uppercase(), 38f, p.courseText(color), ui.f.sign), top.sumOf(::freshIn)) { holder })
             addView(ui.text(courseName(h, c.optString("name"), code), 20f, p.text, ui.f.bodyBold).apply { RichText.selectable(this) }, ui.wide(top = 6f))
             hoursLine(h, code)?.let { addView(it, ui.wide(top = 4f)) }
         })
@@ -838,7 +853,6 @@ object SpectrumScreens {
         // the order pinned), under "Pinned", then the rest in Spectrum's order.
         val boxes = LinkedHashMap<String, LinearLayout>()
         val pins = SpectrumStore.pinnedSections(ui.context, id).toMutableList()
-        val holder = ui.column()
         val pinnedLabel = ui.label("Pinned", p.muted, 10.5f)
         val restLabel = ui.label("Other sections", p.muted, 10.5f)
         // For the Sections panel: each top section, and the keys in expanded of those folded to their heading.
@@ -908,6 +922,7 @@ object SpectrumScreens {
                 }
                 box.addView(head, ui.wide(top = 14f, bottom = -2f))
                 fold = ::setOpen
+                unfold[body] = { setOpen(true) }
                 foldKeys += shut
                 if (shut in h.expanded) body.visibility = View.GONE
             }
@@ -1031,6 +1046,8 @@ object SpectrumScreens {
         val summary = node.section.optString("summary")
         if (!node.hidden && hasContent(summary)) card.addView(RichText.view(h, summary, "c${node.id}-s", folder, 0, 15f, p.text, h.expanded, selectable = true), ui.wide(top = 8f))
         if (!closed) card.setOnClickListener { h.showSection(node.id) }
+        // Something new inside: the New button opens it ([jumpToNew]).
+        if (!closed && freshIn(node) > 0) card.tag = node
         card.contentDescription = listOf(node.name, inside, if (closed) "not available" else "opens its page").filter { it.isNotEmpty() }.joinToString(", ")
         return card
     }
@@ -1054,6 +1071,7 @@ object SpectrumScreens {
                 SpectrumHtml.isRule(html) -> rule(ui)
                 hasContent(html) -> textBlock(ui, RichText.view(h, html, key, folder, 0, 16f, expanded = h.expanded, selectable = true)).let { block ->
                     if (!m.optBoolean("fresh")) block else ui.column().apply {
+                        tag = FRESH
                         addView(newChip(ui), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = ui.dp(4) })
                         addView(block)
                     }
@@ -1063,7 +1081,10 @@ object SpectrumScreens {
         }
         val item = ui.column()
         val files = m.optJSONArray("files")?.objects().orEmpty()
-        if (m.optBoolean("fresh") && !restricted) item.addView(newChip(ui), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = ui.dp(4) })
+        if (m.optBoolean("fresh") && !restricted) {
+            item.tag = FRESH
+            item.addView(newChip(ui), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = ui.dp(4) })
+        }
         when {
             restricted -> item.addView(ui.row(gap = 10f).apply {
                 background = ui.shape(Color.TRANSPARENT, 12f, p.line)
@@ -1102,6 +1123,81 @@ object SpectrumScreens {
         // A long list of conditions folds under Show more, as on Spectrum's page.
         if (hasContent(availability)) item.addView(RichText.view(h, availability, "$key-a", folder, 2, 13.5f, p.muted, h.expanded, selectable = true).apply { setPadding(ui.dp(42), ui.dp(4), ui.dp(4), ui.dp(2)) })
         return item
+    }
+
+    // --- What's new on a course page: the button by the course code ----------------------------
+
+    /** The tag on an activity marked New ([CourseUpdates]); a section's card with something new inside has its node as tag. */
+    private val FRESH = Any()
+
+    /** The New button opened a section's page: the page goes on to its first new thing once it's shown. */
+    private var jumpOnOpen = false
+
+    /** How many activities marked New are in [node], its subsections and its sections (another group's don't count). */
+    private fun freshIn(node: CourseOutline.Node): Int =
+        node.items.sumOf { i -> i.sub?.let(::freshIn) ?: if (i.module.optBoolean("fresh") && !i.module.optBoolean("restricted")) 1 else 0 } + node.children.sumOf(::freshIn)
+
+    /** What's new under [v], in the page's order: activities marked New, and cards of sections with something new. */
+    private fun freshViews(v: View, into: MutableList<View>): List<View> {
+        if (v.tag === FRESH || v.tag is CourseOutline.Node) into += v
+        else if (v is ViewGroup) for (i in 0 until v.childCount) freshViews(v.getChildAt(i), into)
+        return into
+    }
+
+    /**
+     * "2 new ↓" in the accent, on the course code's line. Each tap goes to the next new thing on the page
+     * ([onPage] gives what holds them), then back to the first; it opens a folded section on the way, and a
+     * section shown as a page of its own.
+     */
+    private fun newButton(h: SpectrumHost, count: Int, onPage: () -> View): View {
+        val ui = h.ui
+        val p = ui.p
+        var next = 0
+        return FrameLayout(ui.context).apply {
+            contentDescription = "$count new on this page. Goes to ${if (count == 1) "it" else "each in turn"}."
+            minimumHeight = ui.dp(48)
+            addView(ui.row(gap = 6f).apply {
+                background = ui.pressable(ui.shape(p.accent, 99f), 99f)
+                setPadding(ui.dp(14), ui.dp(8), ui.dp(12), ui.dp(8))
+                addView(ui.text("$count new", 14f, p.accentInk, ui.f.bodyBold))
+                addView(ui.icon(R.drawable.ic_arrow, p.accentInk, 16f).apply { rotation = 90f })
+                isDuplicateParentStateEnabled = true
+            }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
+            setOnClickListener {
+                Haptics.tick(this)
+                val holder = onPage()
+                @Suppress("UNCHECKED_CAST")
+                next = jumpToNew(h, holder, next, holder.tag as? Map<View, () -> Unit> ?: emptyMap())
+            }
+        }
+    }
+
+    /**
+     * Goes to the new thing at [index] under [holder] (from the first past the last): opens its section if
+     * it's folded ([unfold]: a folded body to what opens it), glides it to the top and pops its New; a
+     * section's card opens that section's page, which goes on to its own first. The index of the next one.
+     */
+    private fun jumpToNew(h: SpectrumHost, holder: View, index: Int, unfold: Map<View, () -> Unit>): Int {
+        val all = freshViews(holder, ArrayList())
+        if (all.isEmpty()) return 0
+        val at = index % all.size
+        val target = all[at]
+        (target.tag as? CourseOutline.Node)?.let { node ->
+            jumpOnOpen = true
+            h.showSection(node.id)
+            return at + 1
+        }
+        var v: View? = target
+        while (v != null && v !== holder) {
+            if (v.visibility != View.VISIBLE) unfold[v]?.invoke()
+            v = v.parent as? View
+        }
+        // Once it's laid out open: there, then its New pops as it arrives.
+        target.post {
+            h.scrollTo(target)
+            (target as? ViewGroup)?.getChildAt(0)?.let { chip -> chip.postDelayed({ Motion.pop(chip, 0.5f) }, 280) }
+        }
+        return at + 1
     }
 
     /** [pinMenu]'s card: a pin and "Pin to top", or an outline pin and "Unpin". */
