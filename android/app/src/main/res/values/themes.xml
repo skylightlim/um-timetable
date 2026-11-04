@@ -11,14 +11,13 @@
         <item name="android:windowSplashScreenBackground">@color/app_ground</item>
     </style>
 
+    <!-- A day's name over the widget's grid: a picture, centred and never scaled. -->
     <style name="GridHead">
         <item name="android:layout_width">0dp</item>
         <item name="android:layout_height">match_parent</item>
         <item name="android:layout_weight">1</item>
-        <item name="android:gravity">center</item>
-        <item name="android:textColor">@color/w_muted</item>
-        <item name="android:textSize">10dp</item>
-        <item name="android:textStyle">bold</item>
+        <item name="android:layout_marginStart">2.5dp</item>
+        <item name="android:scaleType">center</item>
     </style>
 
     <style name="GridCol">

@@ -65,6 +65,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
             android.os.Handler(android.os.Looper.getMainLooper()).post { prefs.edit().putString("classEdits", before ?: "{}").commit(); Timetable.forget() }
         }
         if (intent.hasExtra("bench")) return bench(context, intent.getIntExtra("bench", 20))
+        if (intent.getStringExtra("view") == "widget") return widget(context, intent)
         if (intent.getStringExtra("view") == "icon") return icon(context)
         if (intent.getStringExtra("view") == "tabicons") return tabIcons(context)
         if (intent.getStringExtra("view") == "duel") return duel(context, intent.getBooleanExtra("dark", false))
@@ -192,6 +193,43 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val bitmap = Bitmap.createBitmap(frame.measuredWidth, frame.measuredHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         frame.draw(Canvas(bitmap))
         save(context, bitmap, "$view${host.openCourse?.let { "-$it" } ?: ""}${if (dark) "-dark" else ""}")
+    }
+
+    /**
+     * The home-screen widget as the home screen would draw it (its RemoteViews applied here), at --ei w and --ei h
+     * dp, else at each size the placed widgets are shown at (logged as "widget sizes"), else 4×4's 340×420:
+     * widget-WxH.png, -dark with --ez dark true (the phone's dark mode; --es look light|dark|auto instead of the app's
+     * choice, which may hold it to one). --ei dow/min pretend it's another time of the week.
+     */
+    private fun widget(context: Context, intent: Intent) {
+        val manager = android.appwidget.AppWidgetManager.getInstance(context)
+        val placed = manager.getAppWidgetIds(android.content.ComponentName(context, TimetableWidget::class.java)).flatMap { id ->
+            @Suppress("DEPRECATION")
+            manager.getAppWidgetOptions(id).getParcelableArrayList<android.util.SizeF>(android.appwidget.AppWidgetManager.OPTION_APPWIDGET_SIZES).orEmpty()
+        }.distinct()
+        Log.i("UMTimetable", "widget sizes: $placed")
+        val sizes = if (intent.hasExtra("w")) listOf(android.util.SizeF(intent.getIntExtra("w", 340).toFloat(), intent.getIntExtra("h", 420).toFloat()))
+            else placed.ifEmpty { listOf(android.util.SizeF(340f, 420f)) }
+        val dark = intent.getBooleanExtra("dark", false)
+        val ctx = context.createConfigurationContext(android.content.res.Configuration(context.resources.configuration).apply {
+            uiMode = (uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                if (dark) android.content.res.Configuration.UI_MODE_NIGHT_YES else android.content.res.Configuration.UI_MODE_NIGHT_NO
+        })
+        val now = if (intent.hasExtra("dow")) Now(intent.getIntExtra("dow", 2), intent.getIntExtra("min", 700).toFloat()) else Now.current()
+        val d = context.resources.displayMetrics.density
+        for (size in sizes) {
+            val w = (size.width * d).toInt()
+            val h = (size.height * d).toInt()
+            val frame = FrameLayout(ctx).apply { setBackgroundColor(0xFF5C6F8A.toInt()) }
+            val look = intent.getStringExtra("look")?.let { l -> Look.entries.firstOrNull { it.name.equals(l, true) } } ?: Look.load(context)
+            val view = WidgetRenderer.build(context, Timetable.load(context), now, size.width, size.height, look).apply(ctx, frame)
+            frame.addView(view, FrameLayout.LayoutParams(w, h))
+            frame.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
+            frame.layout(0, 0, w, h)
+            val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            frame.draw(Canvas(bitmap))
+            save(context, bitmap, "widget-${size.width.toInt()}x${size.height.toInt()}${if (dark) "-dark" else ""}")
+        }
     }
 
     private fun logBounds(v: View, depth: Int) {
