@@ -85,6 +85,7 @@ class MainActivity : Activity(), SpectrumHost {
     /** Set by the first Spectrum sign-in: once it has synced, a new app gets its timetable from TimeEdit. */
     private var timetableAfterSync = false
     override val expanded = mutableSetOf<String>()
+    override val folds = HashMap<Int, SpectrumScreens.Fold>()
     override var seenNews: Set<String> = emptySet()
     override var seenGrades: Set<String> = emptySet()
     private val contents = mutableMapOf<Int, JSONObject>()

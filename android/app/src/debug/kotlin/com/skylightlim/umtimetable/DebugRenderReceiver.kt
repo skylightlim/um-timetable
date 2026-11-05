@@ -490,6 +490,13 @@ class DebugRenderReceiver : BroadcastReceiver() {
                 if (i > 0) { build += t1 - t0; measure += t2 - t1; draw += t3 - t2 }
             }
             Log.i("UMTimetable", "bench courses (folds open) split: build %.2f, measure+layout %.2f, draw %.2f ms".format(build / 1e6 / n, measure / 1e6 / n, draw / 1e6 / n))
+            // The same page redrawn, as after a tab switch or a sync with nothing new: the folds built once are kept.
+            val host = Host(c, ui).apply { expanded = object : HashSet<String>() { override fun contains(element: String) = true } }
+            time("courses redrawn (open)") {
+                val frame = FrameLayout(c).apply { addView(SpectrumScreens.courses(host)) }
+                frame.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                frame.layout(0, 0, frame.measuredWidth, frame.measuredHeight)
+            }
         }
         val t = System.currentTimeMillis()
         time("x10 hm()") { repeat(10) { SpectrumStore.hm(t) } }
@@ -585,6 +592,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         override var openSection: Int? = null
         override fun showSection(id: Int) = Unit
         override var expanded: MutableSet<String> = mutableSetOf()
+        override val folds = HashMap<Int, SpectrumScreens.Fold>()
         override val seenNews: Set<String> = context.getSharedPreferences("ui", Context.MODE_PRIVATE).getStringSet("newsSeen", emptySet()) ?: emptySet()
         override val seenGrades: Set<String> = context.getSharedPreferences("ui", Context.MODE_PRIVATE).getStringSet("gradesSeen", emptySet()) ?: emptySet()
         override fun courseContents(id: Int): org.json.JSONObject? = SpectrumStore.read(context, "contents-$id")?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
