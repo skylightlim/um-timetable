@@ -44,9 +44,8 @@ object DueList {
             val (coming, passed) = events.filter { rank(it) == best }.partition { it.optLong("due") > now }
             coming.minByOrNull { it.optLong("due") } ?: passed.maxBy { it.optLong("due") }
         }
-        val seen = HashSet<String>()
         val rows = items.filter { chosen[activityKey(it)] === it }
-            .filter { seen.add("${it.optInt("courseId")}\u0000${it.optString("name").trim().lowercase()}\u0000${it.optLong("due")}") }
+            .distinctBy { "${it.optInt("courseId")}\u0000${it.optString("name").trim().lowercase()}\u0000${it.optLong("due")}" }
         // Of each group's copy of one task, the earliest stays: a later row hidden is safer than an earlier one.
         val kept = ArrayList<JSONObject>()
         for (row in rows.sortedBy { it.optLong("due") }) if (kept.none { copies(it, row) }) kept += row

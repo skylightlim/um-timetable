@@ -778,10 +778,15 @@ class MainActivity : Activity(), SpectrumHost {
 
     /** Back from the attendance log to Settings, where they were scrolled to. */
     private fun logBack() {
-        Haptics.back(shell)
         settingsLog = false
+        popBack(settingsY)
+    }
+
+    /** Back to the page underneath, scrolled to [y], where it was. */
+    private fun popBack(y: Int) {
+        Haptics.back(shell)
         render()
-        scroll.post { scroll.scrollTo(0, settingsY) }
+        scroll.post { scroll.scrollTo(0, y) }
     }
 
     override fun setLook(look: Look) {
@@ -1217,9 +1222,7 @@ class MainActivity : Activity(), SpectrumHost {
     /** Back from a section page to the page it covered, where it was scrolled to. False when none is open. */
     private fun sectionBack(): Boolean {
         val (_, y) = sectionPages.removeLastOrNull() ?: return false
-        Haptics.back(shell)
-        render()
-        scroll.post { scroll.scrollTo(0, y) }
+        popBack(y)
         return true
     }
     override fun courseError(id: Int) = contentErrors[id]
@@ -1248,7 +1251,11 @@ class MainActivity : Activity(), SpectrumHost {
     override fun signIn() = startActivityForResult(Intent(this, LoginActivity::class.java), REQ_LOGIN)
 
     /** Sign out can't be undone: ask first, and only a held button signs out. */
-    override fun signOut(from: View?) = ConfirmDialog.show(ui, SIGN_OUT_TITLE, SIGN_OUT_BODY, "Sign out", hold = true, from = from?.let(Motion::onScreen)) { signOutNow() }
+    override fun signOut(from: View?) {
+        lateinit var close: (then: (() -> Unit)?) -> Unit
+        val card = ConfirmDialog.card(ui, SIGN_OUT_TITLE, SIGN_OUT_BODY, "Sign out", onCancel = { close(null) }, onConfirm = { close { signOutNow() } }, hold = true)
+        close = ConfirmDialog.present(ui, card, from = from?.let(Motion::onScreen))
+    }
 
     /** Sign out deletes everything, and the app starts again at the first-run poster. */
     private fun signOutNow() {

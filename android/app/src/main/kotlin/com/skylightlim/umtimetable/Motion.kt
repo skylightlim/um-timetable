@@ -343,16 +343,6 @@ object Motion {
         })
     }
 
-    /** An icon's tint changing with the pill gliding under it. */
-    fun tint(icon: ImageView, from: Int, to: Int, ms: Long = 220) {
-        tints.remove(icon)?.cancel()
-        icon.imageTintList = android.content.res.ColorStateList.valueOf(if (!enabled) to else from)
-        if (!enabled || from == to) return
-        val a = ValueAnimator.ofArgb(from, to).setDuration(ms).apply { addUpdateListener { icon.imageTintList = android.content.res.ColorStateList.valueOf(it.animatedValue as Int) } }
-        a.start()
-        tints[icon] = a
-    }
-
     /**
      * A text's colour changing with the pill gliding under it. The label the pill leaves should change
      * faster ([ms] 90): its light colour on the bare slot is barely readable.

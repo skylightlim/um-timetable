@@ -139,7 +139,7 @@ object SpectrumStore {
 
     /** The sections of course [courseId] the user pinned to the top of its page, in the order pinned. */
     fun pinnedSections(c: Context, courseId: Int): List<String> =
-        json(c, "pinned-sections").optJSONArray(courseId.toString())?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty()
+        CourseUpdates.strings(json(c, "pinned-sections").optJSONArray(courseId.toString()))
 
     /** Pins section [key] of course [courseId] (after those pinned already), or unpins it. */
     fun pinSection(c: Context, courseId: Int, key: String, pin: Boolean) {
@@ -149,7 +149,8 @@ object SpectrumStore {
         write(c, "pinned-sections", all.toString())
     }
 
-    private fun json(c: Context, name: String) = read(c, name)?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
+    /** The saved file [name] as JSON: empty if it isn't there or doesn't parse. */
+    fun json(c: Context, name: String) = read(c, name)?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
     fun write(c: Context, name: String, json: String) {
         // A sync still running when the user signs out mustn't put back what Sign out deleted.
         if (!signedIn(c)) return

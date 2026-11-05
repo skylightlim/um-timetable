@@ -9,7 +9,6 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.text.InputType
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -25,7 +24,6 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.window.OnBackInvokedDispatcher
-import com.skylightlim.umtimetable.Motion.spring
 import java.time.format.TextStyle
 import java.util.Locale
 
@@ -138,22 +136,11 @@ object PlanSheet {
         val body = ui.column().apply { setPadding(ui.dp(20), ui.dp(16), ui.dp(20), 0) }
         val scroll = Capped(c).apply { addView(body) }
         content.addView(scroll)
-        val field = EditText(c).apply {
-            setText(plan.text)
+        val field = ui.field(plan.text) {
             // A time that has passed is for saying what really happened.
             hint = if (passed) "What did you do? Be honest." else "What will you do?"
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-            setTextColor(p.text)
-            setHintTextColor(p.faint)
-            typeface = ui.f.bodySemi
-            background = ui.shape(p.surface2, 12f)
-            setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
-            minHeight = ui.dp(52)
             maxLines = 3
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            imeOptions = EditorInfo.IME_ACTION_DONE
-            textCursorDrawable = ui.shape(p.accentText, 1f).apply { setSize(ui.dp(2), 0) }
-            setSelection(text.length)
         }
         body.addView(field)
         val editor = Editor(card, content, body, field, scroll)
@@ -271,7 +258,7 @@ object PlanSheet {
      * Shows the card for [plan] flying out of [from], the cell in the week grid (screen coordinates), an
      * hour there being [hourPx] tall; [onDone] runs after a save or delete.
      */
-    fun show(ui: Ui, from: RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float, onRepick: (Plan) -> Unit = {}, onDone: () -> Unit) {
+    fun show(ui: Ui, from: RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float, onRepick: (Plan) -> Unit, onDone: () -> Unit) {
         val c = ui.context
         val editor = build(ui, plan, isNew, maxEnd)
         val card = editor.card

@@ -25,8 +25,6 @@ object ClassReminders {
         schedule(c)
     }
 
-    fun label(c: Context): String = CHOICES.firstOrNull { it.first == before(c) }?.second ?: "Off"
-
     private class Due(val at: Long, val start: Long, val end: Long, val key: String, val session: Session)
 
     /** Each class's reminder from today to a week ahead, [before] minutes ahead of it. */

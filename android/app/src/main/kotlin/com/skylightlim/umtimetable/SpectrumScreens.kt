@@ -1,17 +1,13 @@
 package com.skylightlim.umtimetable
 
 import android.graphics.Color
-import android.graphics.drawable.InsetDrawable
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.TextView
 import com.skylightlim.umtimetable.Motion.spring
-import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Calendar
 
@@ -141,13 +137,6 @@ object SpectrumScreens {
         return "Last synced ${if (label == "Today") hm(t) else if (label == "Yesterday") "yesterday" else label}"
     }
 
-    private fun synced(h: SpectrumHost): String {
-        val t = SpectrumStore.lastSync(h.ui.context)
-        if (t == 0L) return "not synced yet"
-        val label = dayLabel(t)
-        return "synced ${if (label == "Today") hm(t) else label.lowercase()}"
-    }
-
     private fun colorOf(h: Host, code: String) = h.timetable.courses.firstOrNull { it.code == code }?.color ?: 0xFF8F9AA9.toInt()
 
     /**
@@ -187,12 +176,24 @@ object SpectrumScreens {
         addView(button(ui, "Sign in to Spectrum") { h.signIn() })
     }
 
+    /** A problem's box: a red tint on the card colour. */
+    private fun <T : View> T.asError(ui: Ui) = apply {
+        background = ui.shape(Palette.mix(0xFFF2645F.toInt(), ui.p.surface, 0.14f), 12f)
+        setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10))
+    }
+
+    /** Opens or shuts the fold [key] (kept in [SpectrumHost.expanded] across redraws), showing or hiding [list] and turning [chevron]; true if open now. */
+    private fun flip(h: SpectrumHost, key: String, list: View?, chevron: View): Boolean {
+        val open = h.expanded.add(key) || !h.expanded.remove(key)
+        list?.visibility = if (open) View.VISIBLE else View.GONE
+        Motion.turn(chevron, open)
+        return open
+    }
+
     private fun problem(h: SpectrumHost, into: LinearLayout) {
         val ui = h.ui
         val error = SpectrumStore.lastError(ui.context) ?: return
-        val box = ui.column().apply {
-            background = ui.shape(Palette.mix(0xFFF2645F.toInt(), ui.p.surface, 0.14f), 12f)
-            setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10))
+        val box = ui.column().asError(ui).apply {
             addView(ui.text(error, 13.5f))
             if ("expired" in error) addView(link(ui, "Sign in again") { h.signIn() })
         }
@@ -308,9 +309,7 @@ object SpectrumScreens {
             contentDescription = "${items.size} dismissed. Long press one to bring it back."
             setOnClickListener {
                 Motion.resize(this)
-                val open = h.expanded.add(key) || !h.expanded.remove(key)
-                list.visibility = if (open) View.VISIBLE else View.GONE
-                Motion.turn(chevron, open)
+                flip(h, key, list, chevron)
             }
         }
         return ui.column().apply {
@@ -372,7 +371,7 @@ object SpectrumScreens {
         }
     }
 
-    private const val LATE = 0xFFE5534B.toInt()
+    const val LATE = 0xFFE5534B.toInt()
 
     /** When a deadline is: "today 23:59", "Wed 17:00" within the week, else "26 Oct". */
     private fun whenDue(ms: Long): String {
@@ -475,9 +474,7 @@ object SpectrumScreens {
         head.background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
         head.setOnClickListener {
             Motion.resize(head)
-            val open = h.expanded.add(key) || !h.expanded.remove(key)
-            list.visibility = if (open) View.VISIBLE else View.GONE
-            Motion.turn(chevron, open)
+            flip(h, key, list, chevron)
         }
         return ui.column().apply {
             addView(head)
@@ -524,11 +521,10 @@ object SpectrumScreens {
             if (word.isNotEmpty()) {
                 row.addView(ui.text(word, 22f, p.accentText, ui.f.sign))
             } else {
-                fun num(x: Double) = "%.2f".format(x).trimEnd('0').trimEnd('.')
                 // The mark and its maximum share a baseline.
                 row.addView(ui.row(gap = 3f, center = false).apply {
-                    addView(ui.text(num(g.getDouble("raw")), 28f, p.accentText, ui.f.sign))
-                    addView(ui.text("/ ${num(g.optDouble("max"))}", 12f, p.muted, ui.f.mono))
+                    addView(ui.text(SpectrumSync.num(g.getDouble("raw")), 28f, p.accentText, ui.f.sign))
+                    addView(ui.text("/ ${SpectrumSync.num(g.optDouble("max"))}", 12f, p.muted, ui.f.mono))
                 })
             }
             item.addView(row)
@@ -616,10 +612,7 @@ object SpectrumScreens {
         lateinit var button: LinearLayout
         button = moduleButton(ui, R.drawable.ic_module, if (count == 1) "1 reply" else "$count replies", "") {
             Motion.resize(button)
-            val open = h.expanded.add(key) || !h.expanded.remove(key)
-            list.visibility = if (open) View.VISIBLE else View.GONE
-            Motion.turn(chevron, open)
-            if (open) load()
+            if (flip(h, key, list, chevron)) load()
         }
         button.addView(chevron, LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)))
         list.visibility = if (key in h.expanded) View.VISIBLE else View.GONE
@@ -743,9 +736,7 @@ object SpectrumScreens {
         toggle.setOnClickListener {
             Haptics.tick(toggle)
             Motion.resize(toggle)
-            val now = h.expanded.add(key) || !h.expanded.remove(key)
-            open(now)
-            Motion.turn(chevron, now)
+            open(flip(h, key, null, chevron))
         }
         return ui.column().apply {
             addView(ui.row().apply {
@@ -845,7 +836,7 @@ object SpectrumScreens {
             hoursLine(h, code)?.let { addView(it, ui.wide(top = 4f)) }
         })
         h.courseError(id)?.let {
-            page.addView(ui.text(it, 13.5f).apply { background = ui.shape(Palette.mix(0xFFF2645F.toInt(), p.surface, 0.14f), 12f); setPadding(ui.dp(14), ui.dp(10), ui.dp(14), ui.dp(10)) })
+            page.addView(ui.text(it, 13.5f).asError(ui))
             return page
         }
         if (course == null) {
@@ -1108,9 +1099,7 @@ object SpectrumScreens {
                 lateinit var button: LinearLayout
                 button = moduleButton(ui, R.drawable.ic_tab_courses, m.optString("name"), "${files.size} files") {
                     Motion.resize(button)
-                    val open = h.expanded.add("$key-files") || !h.expanded.remove("$key-files")
-                    sub.visibility = if (open) View.VISIBLE else View.GONE
-                    Motion.turn(chevron, open)
+                    flip(h, "$key-files", sub, chevron)
                 }
                 button.addView(chevron, LinearLayout.LayoutParams(ui.dp(8), ui.dp(16)))
                 item.addView(button)
@@ -1273,16 +1262,16 @@ object SpectrumScreens {
         setOnClickListener { onClick() }
     }
 
-    private fun fileButton(h: Host, f: JSONObject, code: String, label: String? = null, compact: Boolean = false): View {
+    private fun fileButton(h: Host, f: JSONObject, code: String, label: String? = null): View {
         val ui = h.ui
         val name = f.optString("name")
         val size = f.optLong("size")
         val meta = listOf(name.substringAfterLast('.', "").uppercase().take(4), if (size <= 0) "" else if (size < 1_000_000) "${maxOf(1, size / 1000)} KB" else "${"%.1f".format(size / 1e6)} MB")
             .filter { it.isNotEmpty() }.joinToString(" · ")
         return ui.row(gap = 10f).apply {
-            background = ui.pressable(if (compact) ui.shape(ui.p.surface2, 12f) else ui.shape(ui.p.surface, 12f, ui.p.line), 12f)
+            background = ui.pressable(ui.shape(ui.p.surface, 12f, ui.p.line), 12f)
             minimumHeight = ui.dp(48)
-            setPadding(ui.dp(12), ui.dp(if (compact) 8 else 11), ui.dp(12), ui.dp(if (compact) 8 else 11))
+            setPadding(ui.dp(12), ui.dp(11), ui.dp(12), ui.dp(11))
             addView(ui.icon(R.drawable.ic_file, ui.p.muted, 18f))
             addView(ui.text(label ?: name, 15.5f, ui.p.text, ui.f.bodySemi), ui.grow())
             if (meta.isNotEmpty()) addView(ui.text(meta, 11f, ui.p.muted, ui.f.mono))

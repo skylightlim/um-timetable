@@ -172,14 +172,8 @@ class DebugSpectrumReceiver : BroadcastReceiver() {
             return
         }
         intent.getStringExtra("call")?.let { fn ->
-            fun plain(v: Any?): Any? = when (v) {
-                is org.json.JSONObject -> v.keys().asSequence().associateWith { plain(v.get(it)) }
-                is org.json.JSONArray -> (0 until v.length()).map { plain(v.get(it)) }
-                org.json.JSONObject.NULL -> null
-                else -> v
-            }
             @Suppress("UNCHECKED_CAST")
-            val params = plain(org.json.JSONObject(intent.getStringExtra("params") ?: "{}")) as Map<String, Any?>
+            val params = toKotlin(org.json.JSONObject(intent.getStringExtra("params") ?: "{}")) as Map<String, Any?>
             val pending = goAsync()
             thread {
                 try {

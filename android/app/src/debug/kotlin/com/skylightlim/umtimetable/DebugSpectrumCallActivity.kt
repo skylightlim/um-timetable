@@ -44,11 +44,12 @@ class DebugSpectrumCallActivity : Activity() {
             runOnUiThread { finish() }
         }
     }
+}
 
-    private fun toKotlin(v: Any?): Any? = when (v) {
-        is JSONObject -> v.keys().asSequence().associateWith { toKotlin(v.get(it)) }
-        is JSONArray -> (0 until v.length()).map { toKotlin(v.get(it)) }
-        JSONObject.NULL -> null
-        else -> v
-    }
+/** JSON as plain Kotlin maps and lists, for a web-service call's arguments (the debug tools). */
+internal fun toKotlin(v: Any?): Any? = when (v) {
+    is JSONObject -> v.keys().asSequence().associateWith { toKotlin(v.get(it)) }
+    is JSONArray -> (0 until v.length()).map { toKotlin(v.get(it)) }
+    JSONObject.NULL -> null
+    else -> v
 }

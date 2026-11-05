@@ -1,7 +1,6 @@
 package com.skylightlim.umtimetable
 
 import android.content.Context
-import android.text.Html
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -24,7 +23,7 @@ object MayaImport {
     fun events(html: String): List<Event> = DAY_ROW.findAll(html).flatMap { row ->
         ITEM.findAll(row.groupValues[2]).mapNotNull { li ->
             val text = li.groupValues[1].replace(Regex("<[^>]+>"), "\n")
-            val f = FIELD.findAll(text).associate { it.groupValues[1] to decode(it.groupValues[2]) }
+            val f = FIELD.findAll(text).associate { it.groupValues[1] to SpectrumSync.plain(it.groupValues[2]) }
             val time = TIME.find(text) ?: return@mapNotNull null
             val code = f["Code"]?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
             Event(row.groupValues[1], time.groupValues[1], time.groupValues[2], code, f["Activity"].orEmpty(), f["Occurrence"]?.toIntOrNull() ?: 0, f["Room"].orEmpty(), f["Semester"].orEmpty())
@@ -207,8 +206,6 @@ object MayaImport {
         }.joinToString("@")
     }.joinToString(" ").replace(Regex("""\bI\b|\bIi\b|\bIii\b|\bUm\b""")) { it.value.uppercase() }
 
-    private fun decode(s: String) = Html.fromHtml(s, Html.FROM_HTML_MODE_LEGACY).toString().trim()
-
     private fun calendar(date: String) = Calendar.getInstance().apply {
         clear()
         set(date.substring(0, 4).toInt(), date.substring(4, 6).toInt() - 1, date.substring(6, 8).toInt())
@@ -222,4 +219,6 @@ object MayaImport {
 
     /** The course colours an import hands out, in order: purple, blue, orange, teal, pink, red, lime, cyan, ochre. Themes recolour by slot. */
     val PALETTE = listOf("#a586e8", "#4f9cf0", "#f0913c", "#2ec4a0", "#e97bc0", "#f2645f", "#a6cf4f", "#5cc8e0", "#d9a54a")
+    /** [PALETTE] as colours, parsed by hand rather than with Color.parseColor, so the JVM tests run it. */
+    val COLORS = PALETTE.map { (0xFF000000 or it.removePrefix("#").toLong(16)).toInt() }
 }

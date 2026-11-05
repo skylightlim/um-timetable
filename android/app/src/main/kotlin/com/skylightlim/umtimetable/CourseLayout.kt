@@ -39,14 +39,16 @@ object CourseLayout {
     private const val VERSION = 2
 
     /** { "<section id>": { parent: <section id, 0 at the top>, link, cms: [activity ids in the page's order] } } as last kept, or null. */
-    fun kept(c: Context, courseId: Int): JSONObject? =
-        SpectrumStore.read(c, "layout-$courseId")?.let { runCatching { JSONObject(it) }.getOrNull() }
-            ?.takeIf { it.optInt("v") == VERSION }?.optJSONObject("sections")
+    fun kept(c: Context, courseId: Int): JSONObject? = keptFile(c, courseId)?.optJSONObject("sections")
+
+    /** The kept layout's file, if it's this [VERSION]'s shape. */
+    private fun keptFile(c: Context, courseId: Int) =
+        SpectrumStore.read(c, "layout-$courseId")?.let { runCatching { JSONObject(it) }.getOrNull() }?.takeIf { it.optInt("v") == VERSION }
 
     /** Whether the kept layout should be read again: none, a day old, or missing one of [course]'s sections. */
     fun stale(c: Context, courseId: Int, course: JSONObject): Boolean {
-        val kept = SpectrumStore.read(c, "layout-$courseId")?.let { runCatching { JSONObject(it) }.getOrNull() }
-        val sections = kept?.takeIf { it.optInt("v") == VERSION }?.optJSONObject("sections") ?: return true
+        val kept = keptFile(c, courseId)
+        val sections = kept?.optJSONObject("sections") ?: return true
         val ids = course.optJSONArray("sections")?.objects().orEmpty().map { it.optInt("id").toString() }
         return System.currentTimeMillis() - kept.optLong("at") > DAY || !ids.all(sections::has)
     }

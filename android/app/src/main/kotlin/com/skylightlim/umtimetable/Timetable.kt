@@ -130,8 +130,7 @@ class Timetable(
         val courseEdits = edits.optJSONObject("courses")
         val classEdits = edits.optJSONObject("classes")
         if ((courseEdits?.length() ?: 0) == 0 && (classEdits?.length() ?: 0) == 0) return this
-        // Parsed by hand rather than with Color.parseColor, so the JVM tests run it.
-        val palette = MayaImport.PALETTE.map { (0xFF000000 or it.removePrefix("#").toLong(16)).toInt() }
+        val palette = MayaImport.COLORS
         fun edited(c: Course): Course {
             val e = courseEdits?.optJSONObject(c.code) ?: return c
             val name = e.optString(ClassEdits.NAME).trim().takeIf { it.isNotEmpty() }
@@ -171,7 +170,7 @@ class Timetable(
      */
     fun recolored(scheme: Scheme): Timetable {
         val palette = scheme.courses ?: return this
-        val defaults = MayaImport.PALETTE.map { Color.parseColor(it) }
+        val defaults = MayaImport.COLORS
         val now = courses.withIndex().associate { (i, c) -> c to c.copy(color = palette[(defaults.indexOf(c.color).takeIf { it >= 0 } ?: i) % palette.size]) }
         val byCode = now.values.associateBy { it.code }
         return Timetable(

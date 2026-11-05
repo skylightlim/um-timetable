@@ -185,7 +185,7 @@ object AutoAttendance {
             AttendanceLog.add(c, "$what: opening \"${session.optString("name")}\" ($url)")
             val answer = mark(c, url, dry = false)
             val last = answer.optBoolean("ok") || answer.optString("error") in FINAL || later == null
-            AttendanceLog.add(c, "$what: $answer${if (last) "" else "; trying again at ${SpectrumStore.hm(later!!)}"}")
+            AttendanceLog.add(c, "$what: $answer${if (last) "" else "; trying again at ${SpectrumStore.hm(later)}"}")
             if (!last) continue
             finish()
             // Marked already (by the user, or the lecturer): nothing to tell.
@@ -199,7 +199,7 @@ object AutoAttendance {
     /** For the log: the course's attendance activities, each with how well it fits [s] (x: it can't be). */
     private fun candidates(c: Context, s: Session): String {
         val courseId = SpectrumStore.array(c, "courses").objects().firstOrNull { it.optString("code") == s.course.code }?.optInt("id") ?: return "Not a Spectrum course."
-        val list = runCatching { JSONObject(SpectrumStore.read(c, "attendance-activities") ?: "{}") }.getOrDefault(JSONObject()).optJSONArray("$courseId")?.objects().orEmpty()
+        val list = SpectrumStore.json(c, "attendance-activities").optJSONArray("$courseId")?.objects().orEmpty()
         if (list.isEmpty()) return "The course has no attendance activities."
         return "Occ ${s.course.occ}; its activities: " + list.joinToString("; ") { "\"${it.optString("name")}\" ${AttendanceMatch.score(it.optString("name"), s.course.occ, s) ?: "x"}" }
     }

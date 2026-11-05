@@ -182,7 +182,7 @@ object Updater {
         bar.requestLayout()
     }
 
-    private fun dir(c: Context) = File(c.getExternalFilesDir(null) ?: c.filesDir, "updates").apply { mkdirs() }
+    fun dir(c: Context) = File(c.getExternalFilesDir(null) ?: c.filesDir, "updates").apply { mkdirs() }
 
     /** Downloads the APK into the app's own storage (older downloads go first), telling [onProgress] how far. */
     private fun download(c: Context, release: Release, cancelled: () -> Boolean, onProgress: (Float) -> Unit): File {
@@ -251,7 +251,7 @@ object Updater {
  */
 class UpdateProvider : ContentProvider() {
     private fun file(uri: Uri): File {
-        val dir = File(context!!.getExternalFilesDir(null) ?: context!!.filesDir, "updates")
+        val dir = Updater.dir(context!!)
         val file = File(dir, uri.lastPathSegment ?: "")
         if (file.parentFile != dir || !file.name.endsWith(".apk") || !file.isFile) throw FileNotFoundException(uri.toString())
         return file

@@ -66,11 +66,6 @@ object ConfirmDialog {
         }
     }
 
-    fun show(ui: Ui, title: String, body: String, action: String, hold: Boolean = false, from: android.graphics.RectF? = null, onConfirm: () -> Unit) {
-        lateinit var close: (then: (() -> Unit)?) -> Unit
-        close = present(ui, card(ui, title, body, action, onCancel = { close(null) }, onConfirm = { close(onConfirm) }, hold = hold), from = from)
-    }
-
     /**
      * Shows [card] over the screen behind it, blurred and dimmed, and returns what closes it. Closing runs
      * its argument once the card has gone: the action may restart the screen (Sign out does), and a dialog
@@ -86,7 +81,7 @@ object ConfirmDialog {
         val dialog = Dialog(ui.context, android.R.style.Theme_Translucent_NoTitleBar)
         // The screen behind blurs where the phone can (not in battery saver, say), with a lighter dim over it;
         // where it can't, the dim alone is darker.
-        val blur = Build.VERSION.SDK_INT >= 31 && ui.context.getSystemService(android.view.WindowManager::class.java).isCrossWindowBlurEnabled
+        val blur = ui.context.getSystemService(android.view.WindowManager::class.java).isCrossWindowBlurEnabled
         val scrim = View(ui.context).apply { setBackgroundColor(if (blur) 0x59000000 else 0x99000000.toInt()) }
         var radius = 0
         var blurring: ValueAnimator? = null

@@ -309,14 +309,7 @@ object SettingsSheet {
         val chosen = TimeEditLookup.occurrences(context)
         if (chosen.length() == 0) return null
         fun summary() = SpectrumStore.occurrencePicks(context).length().let { n -> if (n == 0) "From Spectrum" else "$n chosen" }
-
-        // A 16dp box: turned on its side the 8×16 chevron is 16dp wide.
-        val chevron = Motion.chevron(ui, occurrencesOpen, p.faint).apply { layoutParams = LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)) }
-        val shown = value(ui, summary())
-        val head = row(ui, "Occurrences", end = chosen(ui, shown, chevron))
-        val fold = ui.column().apply { setPadding(ui.dp(14), ui.dp(2), ui.dp(14), ui.dp(12)) }
-
-        fun fill() {
+        return fold(ui, "Occurrences", summary(), occurrencesOpen, { occurrencesOpen = it }) { fold, shown ->
             val spectrum = SpectrumStore.spectrumOccurrences(context)
             val offered = SpectrumStore.occurrenceOptions(context)
             val names = SpectrumStore.array(context, "courses").objects().associate { it.optString("code") to it.optString("name") }
@@ -336,7 +329,7 @@ object SettingsSheet {
                 val course = h.timetable.courses.firstOrNull { it.code == code }
                 val name = course?.short ?: names[code].orEmpty()
                 val theirs = spectrum.optInt(code).takeIf { it > 0 }
-                val known = offered.optJSONArray(code)?.let { a -> (0 until a.length()).map { a.getInt(it) } }.orEmpty()
+                val known = CourseUpdates.ints(offered.optJSONArray(code))
                 // Said only when the choice isn't Spectrum's: the fold's head already says the rest are.
                 val note = ui.text("", 12.5f, p.muted)
                 fun showNote(occ: Int) {
@@ -380,21 +373,6 @@ object SettingsSheet {
             }
             fold.addView(update, ui.wide(top = 16f))
         }
-
-        fold.visibility = if (occurrencesOpen) View.VISIBLE else View.GONE
-        if (occurrencesOpen) fill()
-        head.background = ui.pressable(ui.shape(Color.TRANSPARENT, 0f), 0f)
-        head.setOnClickListener {
-            Motion.resize(head)
-            occurrencesOpen = !occurrencesOpen
-            if (occurrencesOpen && fold.childCount == 0) fill()
-            fold.visibility = if (occurrencesOpen) View.VISIBLE else View.GONE
-            Motion.turn(chevron, occurrencesOpen)
-        }
-        return ui.column().apply {
-            addView(head)
-            addView(fold)
-        }
     }
 
     /** Whether the Short names fold is open: it stays so when the page is redrawn. */
@@ -406,23 +384,12 @@ object SettingsSheet {
      */
     fun shortFormCard(ui: Ui, course: Course, done: (String?) -> Unit): View {
         val p = ui.p
-        val field = android.widget.EditText(ui.context).apply {
-            setText(course.form.orEmpty())
+        val field = ui.field(course.form.orEmpty()) {
             hint = ShortForms.suggest(course.name)
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
-            setTextColor(p.text)
-            setHintTextColor(p.faint)
-            typeface = ui.f.bodySemi
-            background = ui.shape(p.surface2, 12f)
-            setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
-            minHeight = ui.dp(52)
             isSingleLine = true
             filters = arrayOf(android.text.InputFilter.LengthFilter(ShortForms.MAX))
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
-            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
-            textCursorDrawable = ui.shape(p.accentText, 1f).apply { setSize(ui.dp(2), 0) }
             contentDescription = "Short name for ${course.code}"
-            setSelection(text.length)
             setOnEditorActionListener { _, _, _ -> done(text.toString()); true }
         }
         return ConfirmDialog.frame(ui).apply {
@@ -446,12 +413,7 @@ object SettingsSheet {
         val ui = h.ui
         val p = ui.p
         fun summary() = ShortForms.all(context).length().let { n -> if (n == 0) "None" else "$n set" }
-        val chevron = Motion.chevron(ui, shortFormsOpen, p.faint).apply { layoutParams = LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)) }
-        val shown = value(ui, summary())
-        val head = row(ui, "Short names", end = chosen(ui, shown, chevron))
-        val fold = ui.column().apply { setPadding(ui.dp(14), ui.dp(2), ui.dp(14), ui.dp(12)) }
-
-        fun fill() {
+        return fold(ui, "Short names", summary(), shortFormsOpen, { shortFormsOpen = it }) { fold, shown ->
             for ((n, listed) in h.timetable.courses.withIndex()) {
                 val code = listed.code
                 val value = ui.text(listed.form ?: "Add", 14f, if (listed.form == null) p.accentText else p.text, ui.f.bodySemi)
@@ -485,16 +447,30 @@ object SettingsSheet {
                 })
             }
         }
+    }
 
-        fold.visibility = if (shortFormsOpen) View.VISIBLE else View.GONE
-        if (shortFormsOpen) fill()
+    /**
+     * A fold in Classes: [title] with its [summary] and a chevron. [fill] builds the rows into it (and may
+     * update the summary's text) when it first opens: it's usually shut. [onToggle] keeps it open or shut
+     * across redraws.
+     */
+    private fun fold(ui: Ui, title: String, summary: String, open: Boolean, onToggle: (Boolean) -> Unit, fill: (fold: LinearLayout, shown: android.widget.TextView) -> Unit): View {
+        // A 16dp box: turned on its side the 8×16 chevron is 16dp wide.
+        val chevron = Motion.chevron(ui, open, ui.p.faint).apply { layoutParams = LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)) }
+        val shown = value(ui, summary)
+        val head = row(ui, title, end = chosen(ui, shown, chevron))
+        val fold = ui.column().apply { setPadding(ui.dp(14), ui.dp(2), ui.dp(14), ui.dp(12)) }
+        var isOpen = open
+        fold.visibility = if (open) View.VISIBLE else View.GONE
+        if (open) fill(fold, shown)
         head.background = ui.pressable(ui.shape(Color.TRANSPARENT, 0f), 0f)
         head.setOnClickListener {
             Motion.resize(head)
-            shortFormsOpen = !shortFormsOpen
-            if (shortFormsOpen && fold.childCount == 0) fill()
-            fold.visibility = if (shortFormsOpen) View.VISIBLE else View.GONE
-            Motion.turn(chevron, shortFormsOpen)
+            isOpen = !isOpen
+            onToggle(isOpen)
+            if (isOpen && fold.childCount == 0) fill(fold, shown)
+            fold.visibility = if (isOpen) View.VISIBLE else View.GONE
+            Motion.turn(chevron, isOpen)
         }
         return ui.column().apply {
             addView(head)

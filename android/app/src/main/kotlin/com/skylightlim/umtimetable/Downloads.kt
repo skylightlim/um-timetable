@@ -18,6 +18,8 @@ import kotlin.concurrent.thread
  * already downloaded at the same size opens straight away.
  */
 object Downloads {
+    /** Characters a file or folder name can't have. */
+    private val UNSAFE = Regex("""[\\/:*?"<>|]""")
 
     fun open(activity: Activity, url: String, name: String, mime: String?, size: Long, folder: String) {
         val token = SpectrumStore.token(activity)
@@ -25,11 +27,11 @@ object Downloads {
             Toast.makeText(activity, "Sign in to Spectrum first.", Toast.LENGTH_SHORT).show()
             return
         }
-        val fileName = name.substringAfterLast('/').replace(Regex("""[\\/:*?"<>|]"""), "_").ifBlank { "file" }
+        val fileName = name.substringAfterLast('/').replace(UNSAFE, "_").ifBlank { "file" }
         val type = mime?.takeIf { it.isNotBlank() && it != "application/octet-stream" }
             ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(fileName.substringAfterLast('.', "").lowercase())
             ?: "application/octet-stream"
-        val dir = "Download/UM Spectrum/${folder.replace(Regex("""[\\/:*?"<>|]"""), "_").ifBlank { "Spectrum" }}/"
+        val dir = "Download/UM Spectrum/${folder.replace(UNSAFE, "_").ifBlank { "Spectrum" }}/"
         Toast.makeText(activity, "Opening $fileName…", Toast.LENGTH_SHORT).show()
         thread {
             try {

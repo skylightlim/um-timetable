@@ -19,19 +19,19 @@ import java.util.Locale
 object AttendanceLogPage {
     /** Past this many steps the page shows only the newest: the file holds about a month. */
     private const val SHOWN = 200
-    private const val LATE = 0xFFE5534B.toInt()
     private val CLOCK = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.UK)
 
-    /** The problems in the past [days] days. */
-    private fun recentProblems(entries: List<AttendanceLog.Entry>, days: Long = 7): List<AttendanceLog.Entry> {
-        val since = LocalDateTime.now().minusDays(days)
+    /** The problems in the past week. */
+    private fun recentProblems(entries: List<AttendanceLog.Entry>): List<AttendanceLog.Entry> {
+        val since = LocalDateTime.now().minusDays(7)
         return entries.filter { it.problem && it.time.isAfter(since) }
     }
 
     /** What the page's top line says: "2 problems this week", "No problems this week", "Nothing logged yet". */
-    fun summary(c: android.content.Context, entries: List<AttendanceLog.Entry> = AttendanceLog.read(c)): String = when {
-        entries.isEmpty() -> "Nothing logged yet"
-        else -> when (val n = recentProblems(entries).size) {
+    fun summary(c: android.content.Context): String {
+        val entries = AttendanceLog.read(c)
+        if (entries.isEmpty()) return "Nothing logged yet"
+        return when (val n = recentProblems(entries).size) {
             0 -> "No problems in the past week"
             1 -> "1 problem in the past week"
             else -> "$n problems in the past week"
@@ -90,9 +90,9 @@ object AttendanceLogPage {
             page.addView(ui.row(gap = 12f, center = false).apply {
                 setPadding(0, ui.dp(10), 0, ui.dp(10))
                 contentDescription = "${CLOCK.format(e.time)}${if (e.problem) ", problem" else ""}: ${e.text}"
-                addView(ui.text(CLOCK.format(e.time), 12f, if (e.problem) LATE else p.muted, ui.f.mono), LinearLayout.LayoutParams(ui.dp(64), ViewGroup.LayoutParams.WRAP_CONTENT))
+                addView(ui.text(CLOCK.format(e.time), 12f, if (e.problem) SpectrumScreens.LATE else p.muted, ui.f.mono), LinearLayout.LayoutParams(ui.dp(64), ViewGroup.LayoutParams.WRAP_CONTENT))
                 // Long press to select and copy a step.
-                addView(ui.text(e.text, 13.5f, if (e.problem) LATE else p.text).apply { RichText.selectable(this) }, ui.grow())
+                addView(ui.text(e.text, 13.5f, if (e.problem) SpectrumScreens.LATE else p.text).apply { RichText.selectable(this) }, ui.grow())
             })
         }
         if (list.size > SHOWN) page.addView(ui.text("Showing the newest $SHOWN of ${list.size}. Copy log has all of it.", 13f, p.muted), ui.wide(top = 12f))

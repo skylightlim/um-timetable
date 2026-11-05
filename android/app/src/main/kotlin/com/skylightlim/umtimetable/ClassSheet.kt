@@ -7,7 +7,6 @@ import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -273,21 +272,10 @@ object ClassSheet {
             val typed = field.text.toString().trim().replace(Regex("""\s+"""), " ")
             close { if (typed != value) done(typed) }
         }
-        field = EditText(ui.context).apply {
-            setText(value)
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
-            setTextColor(p.text)
-            setHintTextColor(p.faint)
-            typeface = ui.f.bodySemi
-            background = ui.shape(p.surface2, 12f)
-            setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
-            minHeight = ui.dp(52)
+        field = ui.field(value) {
             isSingleLine = true
             inputType = InputType.TYPE_CLASS_TEXT or caps
-            imeOptions = EditorInfo.IME_ACTION_DONE
-            textCursorDrawable = ui.shape(p.accentText, 1f).apply { setSize(ui.dp(2), 0) }
             contentDescription = heading
-            setSelection(text.length)
             setOnEditorActionListener { _, _, _ -> save(); true }
         }
         val card = ConfirmDialog.frame(ui).apply {

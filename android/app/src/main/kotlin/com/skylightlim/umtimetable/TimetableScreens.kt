@@ -44,7 +44,7 @@ interface Host {
     /** Shows a Spectrum course's page (its id) in the Courses tab. */
     fun showCourse(id: Int)
     /** Weeks from the strip's own week ([daysFromToday]) to the one shown: swiping on Week moves it. */
-    val weekShift: Int get() = 0
+    val weekShift: Int
     /**
      * Opens the plan editor ([PlanSheet]) out of the week grid's cell [from] (screen coordinates) for
      * [plan] ([isNew] if it isn't saved yet); it can run to [maxEnd] at most; an hour is [hourPx] tall.
@@ -289,7 +289,7 @@ object DayScreen {
             until?.let { if (start > it) agenda.addView(gap(ui, it, start, isToday, now)) }
             until = maxOf(until ?: end, end)
             when (item) {
-                is Session -> if (item == lifted && status != null) agenda.addView(liftedSlot(h, item, status).also { hero = it })
+                is Session -> if (item == lifted) agenda.addView(liftedSlot(h, item, status).also { hero = it })
                     else agenda.addView(slot(h, item, past = off))
                 is Plan -> agenda.addView(planSlot(h, item, items, live = isToday && now.min >= item.start && now.min < item.end))
             }
@@ -767,7 +767,7 @@ class WeekGrid(
                 fill.color = Palette.mix(p.accent, p.surface, 0.07f)
                 canvas.drawRoundRect(RectF(left, top, left + colW, bottom), ui.dp(6f).toFloat(), ui.dp(6f).toFloat(), fill)
             }
-            if (holiday != null) drawHoliday(canvas, holiday, RectF(left, top, left + colW, bottom))
+            if (holiday != null) drawHoliday(canvas, RectF(left, top, left + colW, bottom))
             fill.color = p.line
             for (h in 0..hours) canvas.drawRect(left, top + h * hour, left + colW, top + h * hour + 1, fill)
             // A faint guide across the other days, under their classes, so "now" lines up across the week.
@@ -819,7 +819,7 @@ class WeekGrid(
     }
 
     /** A holiday's column: tinted and hatched in the accent, under its (faded) classes. */
-    private fun drawHoliday(canvas: Canvas, @Suppress("UNUSED_PARAMETER") holiday: Holidays.Holiday, col: RectF) {
+    private fun drawHoliday(canvas: Canvas, col: RectF) {
         val radius = ui.dp(6f).toFloat()
         fill.color = Palette.mix(p.accent, p.surface, 0.12f)
         canvas.drawRoundRect(col, radius, radius, fill)

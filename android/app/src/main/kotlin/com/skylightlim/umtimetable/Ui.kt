@@ -13,6 +13,8 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -137,7 +139,7 @@ enum class Scheme(
     );
 
     /** The course colours this theme shows, in import-slot order. */
-    val courseColors: List<Int> get() = courses ?: MayaImport.PALETTE.map { Color.parseColor(it) }
+    val courseColors: List<Int> get() = courses ?: MayaImport.COLORS
 
     /** [base] with this scheme's accent fill, accent text and ink, and its greys if it has its own. */
     fun applyTo(base: Palette): Palette {
@@ -156,8 +158,8 @@ enum class Scheme(
 }
 
 /** The theme button: Auto follows the phone's dark mode; Light and Dark override it. */
-enum class Look(val label: String, val icon: Int) {
-    AUTO("Auto", R.drawable.ic_look_auto), LIGHT("Light", R.drawable.ic_look_light), DARK("Dark", R.drawable.ic_look_dark);
+enum class Look(val label: String) {
+    AUTO("Auto"), LIGHT("Light"), DARK("Dark");
 
     fun palette(context: Context, scheme: Scheme = Scheme.load(context)): Palette = scheme.applyTo(when (this) {
         LIGHT -> Palette.LIGHT
@@ -199,7 +201,7 @@ open class FitText(context: Context, private val maxPx: Float, private val wides
             val room = View.MeasureSpec.getSize(widthSpec) - totalPaddingLeft - totalPaddingRight
             val all = text.toString()
             val needed = when {
-                words -> all.split(Regex("\\s+")).maxOfOrNull { paint.measureText(it) } ?: 0f
+                words -> all.split(SPACES).maxOfOrNull { paint.measureText(it) } ?: 0f
                 widest != null -> maxOf(paint.measureText(widest), paint.measureText(all))
                 else -> paint.measureText(all)
             }
@@ -209,6 +211,8 @@ open class FitText(context: Context, private val maxPx: Float, private val wides
         }
         super.onMeasure(widthSpec, heightSpec)
     }
+
+    private companion object { val SPACES = Regex("\\s+") }
 }
 
 /**
@@ -225,13 +229,6 @@ class SegmentPill(context: Context, private val pill: Drawable, private var at: 
 
     /** Where the pill is now, as an option's index (fractional while it moves). */
     val position get() = at
-
-    /** Puts the pill at [position] at once (following a finger). */
-    fun put(position: Float) {
-        gliding?.cancel()
-        at = position
-        invalidate()
-    }
 
     fun glide(to: Int, spring: Motion.Spring = Motion.BOUNCY) {
         gliding?.cancel()
@@ -587,6 +584,22 @@ class Ui(val context: Context, val p: Palette, val f: Fonts) {
             maxLines = lines
             ellipsize = TextUtils.TruncateAt.END
         }
+    }
+
+    /** A card's text field (class, short name, plan): [setup] adds its own input type and hint; the cursor starts at the end. */
+    fun field(value: CharSequence?, setup: EditText.() -> Unit) = EditText(context).apply {
+        setText(value)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+        setTextColor(p.text)
+        setHintTextColor(p.faint)
+        typeface = f.bodySemi
+        background = shape(p.surface2, 12f)
+        setPadding(dp(14), dp(12), dp(14), dp(12))
+        minHeight = dp(52)
+        imeOptions = EditorInfo.IME_ACTION_DONE
+        textCursorDrawable = shape(p.accentText, 1f).apply { setSize(dp(2), 0) }
+        setup()
+        setSelection(text.length)
     }
 
     /** [text], shrinking to fit its width: see [FitText] for [widest] and [words]. */

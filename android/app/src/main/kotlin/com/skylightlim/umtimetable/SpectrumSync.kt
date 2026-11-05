@@ -368,7 +368,7 @@ object SpectrumSync {
 
     /** What each course has that's new, for [notifyCourseUpdates]. A course that fails keeps its place for the next sync. */
     private fun fetchCourseUpdates(c: Context, api: Api, courses: JSONArray): Map<JSONObject, List<JSONObject>> {
-        val state = runCatching { JSONObject(SpectrumStore.read(c, "course-updates") ?: "{}") }.getOrDefault(JSONObject())
+        val state = SpectrumStore.json(c, "course-updates")
         val occurrences = SpectrumStore.occurrences(c)
         val requests = courses.objects().map { course ->
             val id = course.getInt("id")
@@ -627,7 +627,7 @@ object SpectrumSync {
      * (attendance modules only). Refetched on a full sync; the background attendance checks reuse them.
      */
     private fun attendanceActivities(c: Context, api: Api, ids: Set<Int>, fresh: Boolean): Map<Int, List<AttendanceMatch.Activity>> {
-        val saved = runCatching { JSONObject(SpectrumStore.read(c, "attendance-activities") ?: "{}") }.getOrDefault(JSONObject())
+        val saved = SpectrumStore.json(c, "attendance-activities")
         val got = java.util.concurrent.ConcurrentHashMap<Int, JSONArray>()
         ids.filter { fresh || !saved.has("$it") }.map { id ->
             thread {
@@ -711,7 +711,10 @@ object SpectrumSync {
 
     /** "100.00 %" → "100%", "85.50 %" → "85.5%"; anything else (e.g. "-") unchanged. */
     private fun percent(s: String): String =
-        Regex("""^([\d.]+)\s*%$""").find(s.trim())?.groupValues?.get(1)?.toDoubleOrNull()?.let { "%.2f".format(it).trimEnd('0').trimEnd('.') + "%" } ?: s
+        Regex("""^([\d.]+)\s*%$""").find(s.trim())?.groupValues?.get(1)?.toDoubleOrNull()?.let { num(it) + "%" } ?: s
+
+    /** A mark's number: 8.50 → "8.5", 10.00 → "10". */
+    fun num(x: Double) = "%.2f".format(x).trimEnd('0').trimEnd('.')
 
     /** One mark's identity: a regrade counts as new. */
     fun gradeKey(g: JSONObject) = "${g.getInt("id")}:${g.opt("raw")}"
@@ -719,7 +722,6 @@ object SpectrumSync {
     /** "8.5 / 10 · 85%", or the scale word. */
     fun markText(g: JSONObject): String {
         g.optString("word").takeIf { it.isNotEmpty() }?.let { return it }
-        fun num(x: Double) = "%.2f".format(x).trimEnd('0').trimEnd('.')
         val percent = g.optString("percent").takeIf { it.isNotEmpty() && it != "-" }
         return "${num(g.getDouble("raw"))} / ${num(g.optDouble("max"))}" + (percent?.let { " · $it" } ?: "")
     }

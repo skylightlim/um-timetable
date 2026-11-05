@@ -77,7 +77,7 @@ data class Plan(
                 o.optString("text"), o.getInt("color"), if (o.isNull("remind")) null else o.optInt("remind"),
                 weekly = o.optBoolean("weekly"),
                 until = o.optString("until").takeIf { it.isNotEmpty() }?.let(LocalDate::parse),
-                skip = o.optJSONArray("skip")?.let { a -> (0 until a.length()).map { LocalDate.parse(a.getString(it)) }.toSet() }.orEmpty(),
+                skip = CourseUpdates.strings(o.optJSONArray("skip")).map(LocalDate::parse).toSet(),
             )
         }
 

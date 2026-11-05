@@ -84,7 +84,7 @@ object CourseUpdates {
 
     private const val MARKS = "course-marks"
 
-    private fun marks(c: Context) = runCatching { JSONObject(SpectrumStore.read(c, MARKS) ?: "{}") }.getOrDefault(JSONObject())
+    private fun marks(c: Context) = SpectrumStore.json(c, MARKS)
 
     fun marksNow(c: Context): JSONObject = synchronized(this) { marks(c) }
 
