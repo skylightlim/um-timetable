@@ -90,14 +90,16 @@ class DebugRenderReceiver : BroadcastReceiver() {
             weekShift = intent.getIntExtra("weekShift", 0)
             if (intent.getBooleanExtra("open", false)) expanded = object : HashSet<String>() { override fun contains(element: String) = true }
         }
-        // --ez fresh true with --ei course N: three of the course page's activities (first, middle, last) marked New for
-        // this render, the user's own marks put back after it.
+        // --ez fresh true with --ei course N: three of the course page's activities (first, middle, last) and the first
+        // section with a text marked New for this render, the user's own marks put back after it.
         val marksBefore = SpectrumStore.read(context, "course-marks")
         host.openCourse?.takeIf { intent.getBooleanExtra("fresh", false) }?.let { id ->
-            val modules = host.courseContents(id)?.optJSONArray("sections")?.objects().orEmpty()
-                .flatMap { it.optJSONArray("modules")?.objects().orEmpty() }
+            val sections = host.courseContents(id)?.optJSONArray("sections")?.objects().orEmpty()
+            val modules = sections.flatMap { it.optJSONArray("modules")?.objects().orEmpty() }
                 .filter { it.optBoolean("uservisible", true) && it.optString("kind") != "subsection" && it.optString("kind") != "label" }
-            if (modules.isNotEmpty()) CourseUpdates.markNew(context, id, listOf(0, modules.size / 2, modules.size - 1).distinct().map { modules[it].optInt("cmid") })
+            val keys = modules.takeIf { it.isNotEmpty() }?.let { listOf(0, it.size / 2, it.size - 1).distinct().map { i -> "${it[i].optInt("cmid")}" } }.orEmpty() +
+                listOfNotNull(sections.firstOrNull { it.optBoolean("uservisible", true) && SpectrumSync.plain(it.optString("summary")).isNotBlank() }?.let { "s${it.optInt("id")}" })
+            if (keys.isNotEmpty()) CourseUpdates.markNew(context, id, keys)
         }
         val page = when (view) {
             "week" -> WeekScreen.build(host, if (intent.getBooleanExtra("sample", false)) samplePlans(host) else null)

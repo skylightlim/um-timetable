@@ -990,7 +990,7 @@ object SpectrumScreens {
         val availability = node.section.optString("availability")
         if (hasContent(availability)) body.addView(RichText.view(h, availability, "$key-a", folder, 2, 13.5f, p.muted, h.expanded, selectable = true), ui.wide(bottom = 8f))
         val summary = node.section.optString("summary")
-        if (hasContent(summary)) body.addView(textBlock(ui, RichText.view(h, summary, "$key-s", folder, 0, 16f, expanded = h.expanded, selectable = true)), ui.wide(bottom = 8f))
+        if (hasContent(summary)) body.addView(withNew(ui, node.section.optBoolean("fresh") && !node.restricted, textBlock(ui, RichText.view(h, summary, "$key-s", folder, 0, 16f, expanded = h.expanded, selectable = true))), ui.wide(bottom = 8f))
         val list = ui.column(gap = 8f)
         node.items.forEachIndexed { mi, item ->
             val sub = item.sub
@@ -1073,13 +1073,7 @@ object SpectrumScreens {
             return when {
                 restricted -> if (hasContent(availability)) RichText.view(h, availability, "$key-a", folder, 2, 13.5f, p.muted, h.expanded, selectable = true) else null
                 SpectrumHtml.isRule(html) -> rule(ui)
-                hasContent(html) -> textBlock(ui, RichText.view(h, html, key, folder, 0, 16f, expanded = h.expanded, selectable = true)).let { block ->
-                    if (!m.optBoolean("fresh")) block else ui.column().apply {
-                        tag = FRESH
-                        addView(newChip(ui), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = ui.dp(4) })
-                        addView(block)
-                    }
-                }
+                hasContent(html) -> withNew(ui, m.optBoolean("fresh"), textBlock(ui, RichText.view(h, html, key, folder, 0, 16f, expanded = h.expanded, selectable = true)))
                 else -> null
             }
         }
@@ -1135,8 +1129,16 @@ object SpectrumScreens {
     /** The New button opened a section's page: the page goes on to its first new thing once it's shown. */
     private var jumpOnOpen = false
 
-    /** How many activities marked New are in [node], its subsections and its sections (another group's don't count). */
+    /** [text] (a section's or a text block's) under a New chip when it's [fresh], tagged for the New button; else [text] itself. */
+    private fun withNew(ui: Ui, fresh: Boolean, text: View): View = if (!fresh) text else ui.column().apply {
+        tag = FRESH
+        addView(newChip(ui), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = ui.dp(4) })
+        addView(text)
+    }
+
+    /** How many things marked New are in [node] (its text, its activities), its subsections and its sections (another group's don't count). */
     private fun freshIn(node: CourseOutline.Node): Int =
+        (if (node.section.optBoolean("fresh") && !node.restricted && !node.hidden && hasContent(node.section.optString("summary"))) 1 else 0) +
         node.items.sumOf { i -> i.sub?.let(::freshIn) ?: if (i.module.optBoolean("fresh") && !i.module.optBoolean("restricted")) 1 else 0 } + node.children.sumOf(::freshIn)
 
     /** What's new under [v], in the page's order: activities marked New, and cards of sections with something new. */

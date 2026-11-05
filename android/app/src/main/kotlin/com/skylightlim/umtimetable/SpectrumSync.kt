@@ -390,39 +390,38 @@ object SpectrumSync {
     }
 
     /**
-     * One course's report since its last, with what to tell of it and what to remember. The first time
-     * only records what's there, so nothing already on the page is called new.
+     * One course's report since its last, with what to tell of it and what to remember: new activities and
+     * files, and texts added or changed on the page since the last sync's ([CourseUpdates.told]). The first
+     * time only records what's there, so nothing already on the page is called new; so does the first sync
+     * that keeps the texts.
      */
     private fun courseUpdates(api: Api, id: Int, saved: JSONObject?, occ: Int): Pair<JSONObject, List<JSONObject>> {
         val now = System.currentTimeMillis() / 1000
-        if (saved == null) {
-            return JSONObject().put("since", now).put("known", JSONArray(courseModules(api, id).keys)).put("seen", JSONArray()) to emptyList()
-        }
+        // The page as it is, its activities without their files: read every sync, as nothing else tells of a section's text changing.
+        val sections = (api.call("core_course_get_contents", mapOf("courseid" to id, "options" to listOf(mapOf("name" to "excludecontents", "value" to true)))) as JSONArray).objects()
+        val texts = CourseUpdates.pageTexts(sections, occ, ::plain)
+        val modules = sections.flatMap { (it.optJSONArray("modules") ?: JSONArray()).objects() }
+            .onEach { it.put("name", plain(it.optString("name"))) }.associateBy { it.getInt("id") }
+        val kept = JSONObject().put("since", now).put("texts", JSONObject(texts.associate { it.key to it.text }))
+        if (saved == null) return kept.put("known", JSONArray(modules.keys)).put("seen", JSONArray()) to emptyList()
         val known = CourseUpdates.ints(saved.optJSONArray("known"))
         val seen = CourseUpdates.strings(saved.optJSONArray("seen"))
         val report = api.call("core_course_get_updates_since", mapOf("courseid" to id, "since" to saved.getLong("since") - UPDATES_OVERLAP, "filter" to listOf("configuration", "fileareas"))) as JSONObject
         val changes = CourseUpdates.changes(report.optJSONArray("instances")?.objects().orEmpty(), known)
-        // Named only when there's something to tell, as this is the whole course's list.
-        val modules = if (changes.isEmpty()) emptyMap() else courseModules(api, id)
-        val items = CourseUpdates.items(changes, modules, seen.toSet(), occ)
-        return JSONObject().put("since", now).put("known", JSONArray(known + modules.keys))
+        val items = CourseUpdates.items(changes, modules, seen.toSet(), occ) +
+            saved.optJSONObject("texts")?.let { CourseUpdates.told(it, texts, known) }.orEmpty()
+        return kept.put("known", JSONArray(known + modules.keys))
             .put("seen", JSONArray((seen + changes.flatMap { it.keys }).distinct().takeLast(UPDATES_SEEN))) to items
     }
-
-    /** A course's activities by id, without their files. */
-    private fun courseModules(api: Api, id: Int): Map<Int, JSONObject> =
-        (api.call("core_course_get_contents", mapOf("courseid" to id, "options" to listOf(mapOf("name" to "excludecontents", "value" to true)))) as JSONArray)
-            .objects().flatMap { (it.optJSONArray("modules") ?: JSONArray()).objects() }
-            .onEach { it.put("name", plain(it.optString("name"))) }.associateBy { it.getInt("id") }
 
     /** One notification a course, which a later one replaces. */
     private fun notifyCourseUpdates(c: Context, found: Map<JSONObject, List<JSONObject>>) {
         for ((course, items) in found) {
             val id = course.getInt("id")
-            CourseUpdates.markNew(c, id, items.map { it.getInt("cmid") })
+            CourseUpdates.markNew(c, id, items.map { it.getString("mark") })
             Notify.post(
                 c, Notify.FILES, "files-$id",
-                "${course.optString("code").ifEmpty { course.optString("name") }} · New on the course page",
+                "${course.optString("code").ifEmpty { course.optString("name") }} · ${if (items.all { it.has("said") }) "Changed" else "New"} on the course page",
                 CourseUpdates.text(items),
                 Notify.openCourse(c, id),
             )
