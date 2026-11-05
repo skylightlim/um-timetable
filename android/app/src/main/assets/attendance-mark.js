@@ -6,10 +6,13 @@
 // {error, detail, rows}. Dry, it only says what it found on this page and opens nothing: opening the link
 // can already mark the student. rows: the page's sessions as text, for the app's log.
 //
-// With {"dry": false, "link": …}, on any Spectrum page, it opens that link instead: a session's link read
-// from the lecturer's QR code (attendance.php?qrpass=…&sessid=…), which marks the student at once or shows
-// the form with the code's password filled in. Its answer also has cmid, the attendance activity Spectrum
-// went back to, when it says.
+// Not marked (and dry), the answer also has images: the pictures on this page and on the session's own
+// (its description), where a lecturer may have put the session's QR code. Each is {src, data} (base64,
+// read with the student's session) or {src, url} (another site's, for the app to fetch). The app reads
+// them for a code (AttendanceCode) and, finding one, sends {"dry": false, "link": …}: on any Spectrum page
+// the script then opens that link instead, the session's link the code holds
+// (attendance.php?qrpass=…&sessid=…), which marks the student at once or shows the form with the code's
+// password filled in. Its answer also has cmid, the attendance activity Spectrum went back to, if it says.
 //
 // No link but today's session has a status already: {ok, already, status}.
 // Errors: notopen (no link: no session open for self-marking), password (the lecturer's password),
@@ -17,6 +20,10 @@
 // (only from the campus network), closed, nostatus, failed.
 (() => {
   const RECORDED = /attendance in this session has been recorded|already submitted your attendance/i;
+  /** Answers a code on the page might get past (not a session that isn't open, nor the network). */
+  const PICTURES_FOR = new Set(['password', 'qr', 'notopen', 'nostatus', 'failed']);
+  /** The session pages opened on the way (the form), whose pictures count too. */
+  const opened = [];
 
   // Spectrum's error pages (a QR code expired, a session already marked) come with HTTP 404 and say what's
   // wrong: they're read like any other page.
@@ -54,10 +61,54 @@
     }
     const anchors = [...document.querySelectorAll('a[href*="/mod/attendance/attendance.php"]')].filter(a => /[?&]sessid=\d+/.test(a.href));
     const links = anchors.map(a => a.href);
-    if (dry) return { ok: false, dry: true, links: links.length, title: document.title, rows: rows() };
-    if (!links.length) return already() || { error: 'notopen' };
-    return settle(await text(links[0]), anchors[0]);
+    if (dry) return { ok: false, dry: true, links: links.length, title: document.title, rows: rows(), images: await pictures([document]) };
+    const answer = (links.length ? await settle(await text(links[0]), anchors[0]) : already()) || { error: 'notopen' };
+    if (!answer.ok && PICTURES_FOR.has(answer.error)) answer.images = await pictures([document, ...opened]);
+    return answer;
   }
+
+  /**
+   * The pictures in [docs]' main parts, at most 8, where a session's QR code may be: Spectrum's own (a
+   * lecturer's upload, read with the student's session, or a picture written into the page) as base64,
+   * another site's as its address. Moodle's icons and people's pictures are left out, and SVGs, which the
+   * app can't read.
+   */
+  async function pictures(docs) {
+    const out = [];
+    const seen = new Set();
+    for (const doc of docs) {
+      const root = doc.querySelector('[role=main], #region-main') || doc.body;
+      for (const img of root ? root.querySelectorAll('img') : []) {
+        if (out.length >= 8) return out;
+        let url;
+        try { url = new URL(img.getAttribute('src') || '', location.href); } catch (_) { continue; }
+        if (seen.has(url.href) || img.matches('.icon, .userpicture, .activityicon')) continue;
+        seen.add(url.href);
+        const src = url.protocol === 'data:' ? 'a picture in the page' : (url.origin === location.origin ? '' : url.host) + url.pathname.split('/').pop();
+        try {
+          if (url.protocol === 'data:') {
+            const m = /^data:image\/(png|jpe?g|gif|webp|bmp);base64,(.*)$/is.exec(url.href);
+            if (m) out.push({ src, data: m[2] });
+          } else if (url.origin === location.origin) {
+            if (/^\/(theme|pix|user\/pix\.php|lib\/)/.test(url.pathname)) continue;
+            const r = await fetch(url.href, { credentials: 'include' });
+            const blob = await r.blob();
+            if (r.ok && /^image\/(?!svg)/.test(blob.type) && blob.size < 4e6) out.push({ src, data: await base64(blob) });
+          } else if (/^https?:$/.test(url.protocol)) {
+            out.push({ src, url: url.href });
+          }
+        } catch (_) { /* a picture that won't load isn't a code */ }
+      }
+    }
+    return out;
+  }
+
+  const base64 = blob => new Promise((done, fail) => {
+    const reader = new FileReader();
+    reader.onload = () => done(String(reader.result).slice(String(reader.result).indexOf(',') + 1));
+    reader.onerror = () => fail(reader.error);
+    reader.readAsDataURL(blob);
+  });
 
   /**
    * Opening a session's link ended on [first]: Spectrum recorded the student at once and went back to the
@@ -65,6 +116,7 @@
    */
   async function settle(first, anchor) {
     const doc = page(first.html);
+    opened.push(doc);
     if (RECORDED.test(first.html)) return { ok: true, status: (already(doc) || {}).status || '' };
     const form = doc.querySelector('form input[name="sessid"]')?.form;
     if (!form) return trouble(doc) || { error: 'failed', detail: 'no form at ' + new URL(first.url).pathname + (first.status === 200 ? '' : ' (HTTP ' + first.status + ')') };

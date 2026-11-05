@@ -52,21 +52,47 @@ class AttendanceCodeTest {
         assertNull(AttendanceCode.parse(""))
     }
 
-    @Test fun readsACodeFromACameraFrame() {
-        val text = "$site/mod/attendance/attendance.php?qrpass=aB3dE6&sessid=48213"
-        val matrix = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, 240, 240, mapOf(EncodeHintType.MARGIN to 2))
-        // A 640 × 480 frame, its rows padded to 704 bytes as camera frames often are; the code a little off centre on grey.
-        val width = 640
-        val height = 480
-        val stride = 704
-        val y = ByteArray(stride * height) { 0x80.toByte() }
-        for (row in 0 until matrix.height) for (col in 0 until matrix.width) {
-            y[(row + 150) * stride + col + 260] = if (matrix[col, row]) 0x10 else 0xF0.toByte()
+    /** [text] as a QR code drawn into an ARGB picture of [width] × [height] on [ground], [module] px a square, its corner at x, y. */
+    private fun picture(text: String, width: Int, height: Int, x: Int, y: Int, module: Int, ground: Int = WHITE, ink: Int = BLACK): IntArray {
+        val matrix = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, 0, 0, mapOf(EncodeHintType.MARGIN to 2))
+        val px = IntArray(width * height) { ground }
+        for (row in 0 until matrix.height) for (col in 0 until matrix.width) if (matrix[col, row]) {
+            for (dy in 0 until module) for (dx in 0 until module) px[(y + row * module + dy) * width + x + col * module + dx] = ink
         }
-        val decoder = QrDecoder()
-        assertEquals(text, decoder.decode(y, stride, width, height))
-        // And again: the harder look on every other frame reads it too.
-        assertEquals(text, decoder.decode(y, stride, width, height))
-        assertNull(decoder.decode(ByteArray(stride * height) { 0x80.toByte() }, stride, width, height))
+        return px
+    }
+
+    private val link = "$site/mod/attendance/attendance.php?qrpass=Kelas2&sessid=48213"
+
+    @Test fun readsALecturersUploadedCode() {
+        // The code alone, as uploaded to the session's description: 8 px a square (41 squares, its margin too).
+        val px = picture(link, 400, 400, 0, 0, 8)
+        assertEquals(link, QrDecoder.decode(px, 400, 400))
+        assertEquals(AttendanceCode(48213, "Kelas2"), AttendanceCode.parse(QrDecoder.decode(px, 400, 400)!!))
+    }
+
+    @Test fun readsACodeOnASlide() {
+        // A screenshot of a slide: a grey page with a title bar, the code small in a corner.
+        val w = 1280
+        val h = 720
+        val px = picture(link, w, h, 900, 380, 3, ground = GREY)
+        for (y in 40 until 120) for (x in 60 until 1100) px[y * w + x] = BLACK
+        assertEquals(link, QrDecoder.decode(px, w, h))
+    }
+
+    @Test fun readsALightCodeOnDark() {
+        val px = picture(link, 400, 400, 0, 0, 8, ground = BLACK, ink = WHITE)
+        assertEquals(link, QrDecoder.decode(px, 400, 400))
+    }
+
+    @Test fun aPictureWithoutACode() {
+        val px = IntArray(400 * 300) { i -> if ((i / 400 / 20 + i % 400 / 20) % 2 == 0) WHITE else BLACK }
+        assertNull(QrDecoder.decode(px, 400, 300))
+    }
+
+    private companion object {
+        const val WHITE = 0xFFFFFFFF.toInt()
+        const val BLACK = 0xFF000000.toInt()
+        const val GREY = 0xFFD8D8D8.toInt()
     }
 }

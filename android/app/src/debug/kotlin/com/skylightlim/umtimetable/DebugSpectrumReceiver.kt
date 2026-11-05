@@ -18,6 +18,7 @@ import kotlin.concurrent.thread
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es timeedit build
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es automark dry [--ei cmid N]
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es automark alarm [--ei cmid N]
+ *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es automark picture --es file qr.png
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es sync full
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es haptic tick|back|cross|uncross
  *   adb shell am broadcast -n com.skylightlim.umtimetable/.DebugSpectrumReceiver --es fake signin
@@ -110,6 +111,26 @@ class DebugSpectrumReceiver : BroadcastReceiver() {
             )
             exactAlarm(c.getSystemService(android.app.AlarmManager::class.java), System.currentTimeMillis() + 15_000, pi)
             Log.i("UMTimetable", "automark alarm: dry read of $url in 15 s")
+            return
+        }
+        // --es automark picture --es file qr.png: reads that picture (pushed to the app's folder of shared storage,
+        // /sdcard/Android/data/com.skylightlim.umtimetable/files/) as a page's picture is read for a session's QR
+        // code, Spectrum untouched: logged as "automark picture" (the session, never the code's password).
+        if (intent.getStringExtra("automark") == "picture") {
+            val name = intent.getStringExtra("file") ?: return
+            val pending = goAsync()
+            Thread {
+                try {
+                    val bytes = java.io.File(c.getExternalFilesDir(null), name).readBytes()
+                    val images = org.json.JSONArray().put(org.json.JSONObject().put("src", name).put("data", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)))
+                    val (code, found) = AutoAttendance.pageCode(images)
+                    Log.i("UMTimetable", "automark picture: ${code?.let { "session ${it.sessid}, link to Spectrum: ${it.link().startsWith(Spectrum.SITE + "/mod/attendance/attendance.php?")}" } ?: "no code"}; $found")
+                } catch (e: Exception) {
+                    Log.i("UMTimetable", "automark picture: $e")
+                } finally {
+                    pending.finish()
+                }
+            }.start()
             return
         }
         if (intent.getStringExtra("automark") == "dry") {

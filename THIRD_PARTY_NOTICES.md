@@ -9,7 +9,7 @@ The app bundles these typefaces (`android/app/src/main/res/font/`), all under th
 | Instrument Sans | `instrumentsans_400.ttf`, `_600`, `_700` | The Instrument Sans Project Authors (github.com/Instrument/instrument-sans) |
 | JetBrains Mono | `jetbrainsmono_500.ttf`, `_700` | The JetBrains Mono Project Authors (github.com/JetBrains/JetBrainsMono) |
 
-The attendance QR scanner reads codes with [ZXing](https://github.com/zxing/zxing)'s core library
+Auto attendance reads a session's QR code from its page with [ZXing](https://github.com/zxing/zxing)'s core library
 (`com.google.zxing:core`), Copyright ZXing authors, under the
 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
 

@@ -54,8 +54,7 @@ They often have the app open, or are on a video call shown in picture-in-picture
 - Debug tools exist only in debug builds. To use them, install debug, check, then put the release back.
   - `DebugRenderReceiver` draws a page to `cache/render/<view>.png` (`<view>-dark.png` with `--ez dark true`) with nothing on screen. Views: day,
     week, due, files, sheet, settings, signout, signin, webbar, plan, pinmenu, tabicons, duel,
-    duelloop, scene, icon (the launcher icon with the phone's mask), scan (the attendance QR scanner over
-    a stand-in camera, `--es state aim|working|done|trouble|camera`). Options are in its KDoc. A still
+    duelloop, scene, icon (the launcher icon with the phone's mask). Options are in its KDoc. A still
     can't show motion: frame sheets (scene, duel, duelloop, tabicons) and poses (`--ef hopAt`,
     `--ei boxDay/boxAt`, `--ei weekShift`) stand in, and the report says what still needs a try by hand.
   - `--ei bench N` logs build, layout and draw times per page and for a week swipe (logcat `bench`).
@@ -109,7 +108,13 @@ To release a new version of the app, once the user asks:
   404 and say what's wrong in the page, so `attendance-mark.js` reads every answer's text rather than
   stopping at the status. Read as an error, a session taking its QR code only looked like a passing
   failure and was retried in silence until the class ended. How a QR code's link is answered:
-  mod_attendance's `attendance.php` (MOODLE_500_STABLE); a rotating code lasts about 15 s plus 2.
+  mod_attendance's `attendance.php` (MOODLE_500_STABLE).
+- Spectrum never shows students a session's QR code itself; some lecturers put it on the attendance page
+  as a picture (another student asked for it to be used; the user's own pages have none, all 16 checked
+  6 Nov 2026). When a first try doesn't mark, auto attendance reads the pictures on the activity's page
+  and the session's, and marks with the code's link; the log's `"qr"` says what it found. A rotating code
+  is no picture: its session shows a password box instead of the Submit link, which the script doesn't
+  fill in (it says notopen).
 - TimeEdit: native `HttpURLConnection` with WebView cookies gets HTTP 412, so lookups run in the
   page (`assets/timeedit-lookup.js` over a WebMessagePort). MAYA has no single sign-on: the user signs
   in themselves, then the app reads the page.

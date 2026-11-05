@@ -3,7 +3,7 @@ package com.skylightlim.umtimetable
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
-import com.google.zxing.PlanarYUVLuminanceSource
+import com.google.zxing.RGBLuminanceSource
 import com.google.zxing.ReaderException
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.qrcode.QRCodeReader
@@ -14,7 +14,8 @@ import java.net.URLEncoder
  * What a lecturer's attendance QR code says: Spectrum's attendance plugin (mod_attendance) shows a link
  * to the session, `…/mod/attendance/attendance.php?qrpass=…&sessid=…`, where qrpass is the session's
  * password (a fixed one, or with "Rotate QR code" a new one every 15 seconds or so). Opening it signed in
- * marks the student at once, or shows the session's form with the password filled in.
+ * marks the student at once, or shows the session's form with the password filled in. Auto attendance
+ * reads one put on the session's page as a picture ([AutoAttendance]).
  *
  * Only the session and the password are taken from the code: [link] is always on Spectrum itself, so a
  * code made on another site never sends the app, or the user's sign-in, anywhere else.
@@ -49,24 +50,27 @@ data class AttendanceCode(val sessid: Long, val qrpass: String?) {
 }
 
 /**
- * Reads a QR code from a camera frame's brightness: the Y plane of a YUV_420_888 image, [rowStride] bytes
- * a row (often more than [width]). Every other frame looks harder, for a small or tilted code far away.
+ * Reads a QR code from a picture's pixels ([argb], row after row): a lecturer's upload of the session's
+ * code, or a screenshot with the code somewhere in it. A plain code on white reads as a "pure" one when a
+ * photo-style look misses it, and a light-on-dark one is tried inverted.
  */
-class QrDecoder {
-    private val reader = QRCodeReader()
-    private var frames = 0
-    private val quick = mapOf(DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE))
-    private val hard = quick + (DecodeHintType.TRY_HARDER to true)
+object QrDecoder {
+    private val formats = listOf(BarcodeFormat.QR_CODE)
+    private val looks = listOf(
+        mapOf(DecodeHintType.POSSIBLE_FORMATS to formats, DecodeHintType.TRY_HARDER to true),
+        mapOf(DecodeHintType.POSSIBLE_FORMATS to formats, DecodeHintType.PURE_BARCODE to true),
+    )
 
-    /** The code's text, or null when the frame has none that reads. */
-    fun decode(y: ByteArray, rowStride: Int, width: Int, height: Int): String? {
-        val source = PlanarYUVLuminanceSource(y, rowStride, height, 0, 0, width, height, false)
-        return try {
-            reader.decode(BinaryBitmap(HybridBinarizer(source)), if (frames++ % 2 == 0) quick else hard).text
-        } catch (e: ReaderException) {
-            null
-        } finally {
-            reader.reset()
+    /** The code's text, or null when the picture has none that reads. */
+    fun decode(argb: IntArray, width: Int, height: Int): String? {
+        val picture = RGBLuminanceSource(width, height, argb)
+        for (source in listOf(picture, picture.invert())) for (hints in looks) {
+            try {
+                return QRCodeReader().decode(BinaryBitmap(HybridBinarizer(source)), hints).text
+            } catch (e: ReaderException) {
+                // not with this look
+            }
         }
+        return null
     }
 }

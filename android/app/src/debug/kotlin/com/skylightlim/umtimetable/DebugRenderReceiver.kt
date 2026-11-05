@@ -48,9 +48,6 @@ import java.io.File
  * for either Account row); view signin the first-run sign-in poster, at screen height (or --ei height px).
  * view sheet draws a class sheet: --es code WIX1002 for the course's sheet, plus --ei session N for its
  * Nth class of the week (0 first); --ez edit true draws it in its edit mode (after a tap on its pen).
- * view scan draws the attendance QR scanner at screen height over a stand-in for the camera (a made-up code
- * in the frame): --es state aim|working|done|trouble|camera (the camera refused), --es what "WIX1001 tutorial"
- * as from auto attendance's notification, which also gives it the reason line and the Open in Spectrum button.
  */
 class DebugRenderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -135,7 +132,6 @@ class DebugRenderReceiver : BroadcastReceiver() {
             // --ez open true: the Occurrences fold open.
             "settings" -> SettingsSheet.also { it.occurrencesOpen = intent.getBooleanExtra("open", false) }.build(host, c, intent.getBooleanExtra("signedIn", SpectrumStore.signedIn(context)))
             "signin" -> SignInScreen.build(host.ui) {}
-            "scan" -> scan(c, intent)
             // The top bar as MainActivity lays it out: --es view title --es page Courses|Due|day|week (day and week
             // with their widest titles)
             "title" -> host.ui.row().apply {
@@ -174,14 +170,14 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val frame = FrameLayout(c).apply {
             setBackgroundColor(host.ui.p.ground)
             // A sheet runs edge to edge, from the bottom of the screen.
-            if (view != "sheet" && view != "signin" && view != "webbar" && view != "scan") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
+            if (view != "sheet" && view != "signin" && view != "webbar") setPadding(host.ui.dp(16), 0, host.ui.dp(16), host.ui.dp(24))
             // As the app's page holder: what reaches into the margins (Week's grid) isn't cut off there.
             clipToPadding = false
             addView(page)
         }
         frame.measure(
             View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
-            if (view == "signin" || view == "scan") View.MeasureSpec.makeMeasureSpec(intent.getIntExtra("height", context.resources.displayMetrics.heightPixels), View.MeasureSpec.EXACTLY) else View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+            if (view == "signin") View.MeasureSpec.makeMeasureSpec(intent.getIntExtra("height", context.resources.displayMetrics.heightPixels), View.MeasureSpec.EXACTLY) else View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
         )
         frame.layout(0, 0, frame.measuredWidth, frame.measuredHeight)
         // --ez bounds true: every view's place and size (and a text's baseline) in logcat, as "bounds".
@@ -201,51 +197,6 @@ class DebugRenderReceiver : BroadcastReceiver() {
         val bitmap = Bitmap.createBitmap(frame.measuredWidth, frame.measuredHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         frame.draw(Canvas(bitmap))
         save(context, bitmap, "$view${host.openCourse?.let { "-$it" } ?: ""}${if (dark) "-dark" else ""}")
-    }
-
-    /**
-     * The QR scanner's face (ScanScreen) in --es state, over a dim grey "camera" with a made-up attendance code where
-     * the frame is, laid out as on screen (the status and navigation bars' room taken from the phone).
-     */
-    private fun scan(c: Context, intent: Intent): View {
-        val ui = Ui(c, Scheme.load(c).applyTo(Palette.DARK), Fonts(c))
-        val what = intent.getStringExtra("what")
-        val screen = ScanScreen(ui, what) {}
-        val res = c.resources
-        fun bar(name: String) = res.getIdentifier(name, "dimen", "android").takeIf { it != 0 }?.let(res::getDimensionPixelSize) ?: 0
-        screen.inset(0, bar("status_bar_height"), 0, bar("navigation_bar_height"))
-        val why = "The session takes its QR code only."
-        val open = "Open in Spectrum" to {}
-        when (intent.getStringExtra("state") ?: "aim") {
-            "working" -> screen.show(ScanScreen.Mood.WORKING, "Marking you", "Sending the code to Spectrum…", null)
-            "done" -> screen.show(ScanScreen.Mood.DONE, "Marked present", "WIX1001 · Spectrum recorded it at 10:02.", "Done" to {})
-            "trouble" -> screen.show(ScanScreen.Mood.TROUBLE, "Only on UM's Wi-Fi", "Spectrum takes this session from the campus network only. Join UM's Wi-Fi, then scan again.", null)
-            "camera" -> screen.show(ScanScreen.Mood.TROUBLE, "The camera is off", "Let ${c.getString(R.string.app_name)} use the camera to read the lecturer's QR code. It only reads codes: nothing is kept or sent but the code's link, to Spectrum.", "Allow the camera" to {})
-            else -> screen.show(ScanScreen.Mood.AIM, "Point at the QR code",
-                if (what != null) "$why Hold the lecturer's code in the frame." else "Hold the lecturer's code in the frame. Pinch to zoom in on a screen far away.",
-                if (what != null) open else null, quiet = true)
-        }
-        screen.settle()
-        // The "camera": a lecture-hall grey, and a made-up code (sessid 1) a little smaller than the frame.
-        val matrix = com.google.zxing.qrcode.QRCodeWriter().encode("https://spectrum.um.edu.my/mod/attendance/attendance.php?qrpass=Abc123&sessid=1",
-            com.google.zxing.BarcodeFormat.QR_CODE, 0, 0, mapOf(com.google.zxing.EncodeHintType.MARGIN to 2))
-        val code = Bitmap.createBitmap(matrix.width, matrix.height, Bitmap.Config.ARGB_8888).apply {
-            for (y in 0 until height) for (x in 0 until width) setPixel(x, y, if (matrix[x, y]) 0xFF222222.toInt() else 0xFFE8E8E8.toInt())
-        }
-        val qr = android.widget.ImageView(c).apply {
-            setImageBitmap(code)
-            scaleType = android.widget.ImageView.ScaleType.FIT_XY
-            (drawable as? android.graphics.drawable.BitmapDrawable)?.paint?.isFilterBitmap = false
-            rotation = -4f
-        }
-        val width = intent.getIntExtra("width", res.displayMetrics.widthPixels)
-        val height = intent.getIntExtra("height", res.displayMetrics.heightPixels)
-        val side = (minOf(width * 0.7f, height * 0.36f) * 0.78f).toInt()
-        return FrameLayout(c).apply {
-            background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xFF4A4F57.toInt(), 0xFF2E3238.toInt(), 0xFF1B1D21.toInt()))
-            addView(qr, FrameLayout.LayoutParams(side, side).apply { leftMargin = (width - side) / 2; topMargin = (height * 0.42f - side / 2f).toInt() })
-            addView(screen.view, FrameLayout.LayoutParams(-1, -1))
-        }
     }
 
     /**

@@ -14,6 +14,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
@@ -21,6 +22,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.util.Base64
 import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.WebMessage
@@ -29,6 +31,7 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.time.LocalDate
@@ -45,8 +48,10 @@ import kotlin.concurrent.thread
  * no web service for it, so a hidden page opens the class's attendance activity with the user's
  * Spectrum sign-in (Microsoft signs it in again when Spectrum's session has run out) and runs
  * assets/attendance-mark.js there. Marked or not, a notification says so, and what stopped it:
- * a session not open yet, a lecturer's password, a QR code, the campus network only. Not marked, a tap
- * opens the QR scanner ([ScanActivity]) for that class: the lecturer's code marks it from there.
+ * a session not open yet, a lecturer's password, a QR code, the campus network only. When that first try
+ * doesn't mark it, the pictures on the activity's page and the session's are read for the session's QR
+ * code ([AttendanceCode], [pageCode]): a lecturer who put it there has put its password in it, and the
+ * code's link marks the user with no one touching the phone.
  *
  * The alarm starts a short foreground service ([AutoAttendanceService]) for it: Android lets an app's
  * foreground service use mobile data even when the user has turned the app's background data off, and
@@ -248,24 +253,19 @@ object AutoAttendance {
         ).filterNotNull().joinToString(", ")
     }
 
-    /**
-     * Says how it went, in the place of the session's "Attendance open" notification. Not marked, it opens
-     * the QR scanner for the class (its attendance page a button away there), but for a sign-in, which
-     * Spectrum's own page asks for.
-     */
+    /** Says how it went, in the place of the session's "Attendance open" notification. */
     private fun notify(c: Context, s: Session, id: String, url: String, answer: JSONObject) {
         val what = "${s.course.code} ${s.type.lowercase()}"
-        val key = "att-$id"
         if (answer.optBoolean("ok")) {
             val status = answer.optString("status").ifBlank { "present" }.lowercase()
-            Notify.post(c, Notify.ATTENDANCE, key, "Marked $status · $what", "Spectrum recorded your attendance at ${SpectrumStore.hm(System.currentTimeMillis())}.", Notify.openSpectrum(c, url))
+            val how = if (answer.has("first")) ", with the QR code on its page" else ""
+            Notify.post(c, Notify.ATTENDANCE, "att-$id", "Marked $status · $what", "Spectrum recorded your attendance at ${SpectrumStore.hm(System.currentTimeMillis())}$how.", Notify.openSpectrum(c, url))
             return
         }
-        val error = answer.optString("error")
-        val why = when (error) {
+        val why = when (answer.optString("error")) {
             "notopen", "closed" -> "No attendance session opened for it while the app kept trying."
             "password" -> "The session needs your lecturer's password."
-            "qr" -> "The session takes its QR code only."
+            "qr" -> "The session needs its QR code scanned in class."
             "network" -> "Spectrum only takes this session from UM's network: join the campus Wi-Fi."
             "nostatus" -> "Spectrum offered no status to choose."
             "signedout" -> "Spectrum wants you to sign in again."
@@ -274,15 +274,74 @@ object AutoAttendance {
             else -> "Spectrum didn't confirm it."
         }
         if (!Notify.allowed(c)) AttendanceLog.add(c, "notifications are off: the user isn't told")
-        if (error == "signedout") Notify.post(c, Notify.ATTENDANCE, key, "Couldn't mark attendance · $what", "$why Tap to mark it yourself.", Notify.openSpectrum(c, url))
-        else Notify.post(c, Notify.ATTENDANCE, key, "Couldn't mark attendance · $what", "$why Tap to scan the lecturer's QR code.", ScanActivity.pending(c, what, why, url, key))
+        Notify.post(c, Notify.ATTENDANCE, "att-$id", "Couldn't mark attendance · $what", "$why Tap to mark it yourself.", Notify.openSpectrum(c, url))
+    }
+
+    /**
+     * The session's QR code among a page's [images] (the script's pictures: base64, or another site's
+     * address), and what was found, for the log: "session 123 from qr.png, with a password", or "2
+     * picture(s), no attendance code (qr.png: a code to forms.office.com/r)". Run off the main thread.
+     */
+    internal fun pageCode(images: JSONArray): Pair<AttendanceCode?, String> {
+        val notes = mutableListOf<String>()
+        for (image in images.objects()) {
+            val src = image.optString("src").ifBlank { "a picture" }
+            val bytes = runCatching {
+                image.optString("data").takeIf { it.isNotEmpty() }?.let { Base64.decode(it, Base64.DEFAULT) } ?: download(image.optString("url"))
+            }.getOrNull()
+            if (bytes == null) {
+                notes += "$src didn't load"
+                continue
+            }
+            val text = readCode(bytes) ?: continue
+            val code = AttendanceCode.parse(text)
+            if (code != null) return code to "session ${code.sessid} from $src${if (code.qrpass != null) ", with a password" else ""}"
+            // Not a session's: where it goes (no query, which may hold someone's password).
+            notes += "$src: a code to " + (WHERE.find(text)?.let { it.groupValues[1] + it.groupValues[2] } ?: "text, not a link")
+        }
+        return null to "${images.length()} picture(s), no attendance code" + (if (notes.isEmpty()) "" else " (${notes.joinToString("; ")})")
+    }
+
+    private val WHERE = Regex("^https?://([^/?#]+)([^?#]*)")
+
+    /** Another site's picture, as a browser showing the page would load it: no cookies, at most 4 MB. */
+    private fun download(url: String): ByteArray? {
+        if (!url.startsWith("https://") && !url.startsWith("http://")) return null
+        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        conn.connectTimeout = 10_000
+        conn.readTimeout = 10_000
+        return try {
+            if (conn.responseCode != 200 || conn.contentLengthLong > 4_000_000) null
+            else conn.inputStream.use { input -> input.readNBytes(4_000_001).takeIf { it.size <= 4_000_000 } }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** A picture's QR code text: the picture at most 2048 px a side (a phone photo is read smaller). */
+    private fun readCode(bytes: ByteArray): String? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 2048) sample *= 2
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+        return try {
+            val pixels = IntArray(bitmap.width * bitmap.height)
+            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+            QrDecoder.decode(pixels, bitmap.width, bitmap.height)
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     /**
      * Opens [url], an attendance activity's page, in a hidden page and runs the script there: marks the
-     * user, or ([dry]) only says what the page offers. Blocks (call it off the main thread) until it has
-     * an answer, at most about a minute. Errors of its own: signedout (Microsoft wants the user),
-     * blocked (Android cut the app's network), unreachable. The answer lists the pages it went through.
+     * user, or ([dry]) only says what the page offers, and what QR code its pictures hold. Blocks (call it
+     * off the main thread) until it has an answer, at most about a minute and a half. Errors of its own:
+     * signedout (Microsoft wants the user), blocked (Android cut the app's network), unreachable. The answer
+     * lists the pages it went through; marked with the page's QR code, it says so ("qr", and "first": what
+     * the first try ran into).
      */
     fun mark(c: Context, url: String, dry: Boolean): JSONObject {
         val main = Handler(Looper.getMainLooper())
@@ -313,7 +372,21 @@ object AutoAttendance {
                     pages += "$lastHost${u.path.orEmpty()}"
                     if (asked || lastHost != Uri.parse(Spectrum.SITE).host || u.path != "/mod/attendance/view.php") return
                     asked = true
-                    ask(web, dry) { finish(it) }
+                    ask(web, dry) { answer ->
+                        val images = answer.remove("images") as? JSONArray
+                        if (images?.length() == 0 && !answer.optBoolean("ok")) answer.put("qr", "no pictures")
+                        if (answer.optBoolean("ok") || images == null || images.length() == 0) return@ask finish(answer)
+                        // Not marked: the session's QR code may be among the pages' pictures. Read off the main thread.
+                        thread {
+                            val (code, found) = runCatching { pageCode(images) }.getOrElse { null to "pictures unreadable: $it" }
+                            main.post {
+                                answer.put("qr", found)
+                                if (code == null || dry || over) return@post finish(answer)
+                                // Its link, from this page: "first" says what the first try ran into.
+                                ask(web, false, code.link()) { second -> finish(second.put("qr", found).put("first", answer.optString("error"))) }
+                            }
+                        }
+                    }
                 }
 
                 // The page itself didn't load (no network, or Android cut this app off): say so now, rather
@@ -329,17 +402,17 @@ object AutoAttendance {
             main.postDelayed({
                 if (!asked) finish(JSONObject().put("error", if (hostIn(lastHost, "microsoftonline.com", "live.com")) "signedout" else "unreachable"))
             }, 30_000)
-            main.postDelayed({ finish(JSONObject().put("error", "unreachable").put("detail", "no answer in time")) }, 60_000)
+            main.postDelayed({ finish(JSONObject().put("error", "unreachable").put("detail", "no answer in time")) }, 90_000)
         }
-        done.await(70, TimeUnit.SECONDS)
+        done.await(100, TimeUnit.SECONDS)
         return answer
     }
 
     /**
      * Runs the script in [web]'s page and hands its answer to [done], over a port only Spectrum's page can
-     * take. With [link] (a session's link from a QR code), the script opens that instead of the page's own.
+     * take. With [link] (a session's link from its QR code), the script opens that instead of the page's own.
      */
-    internal fun ask(web: WebView, dry: Boolean, link: String? = null, done: (JSONObject) -> Unit) {
+    private fun ask(web: WebView, dry: Boolean, link: String? = null, done: (JSONObject) -> Unit) {
         val (mine, theirs) = web.createWebMessageChannel()
         mine.setWebMessageCallback(object : WebMessagePort.WebMessageCallback() {
             override fun onMessage(port: WebMessagePort, message: WebMessage) {
