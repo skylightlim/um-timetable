@@ -58,8 +58,11 @@ They often have the app open, or are on a video call shown in picture-in-picture
     can't show motion: frame sheets (scene, duel, duelloop, tabicons) and poses (`--ef hopAt`,
     `--ei boxDay/boxAt`, `--ei weekShift`) stand in, and the report says what still needs a try by hand.
   - `--ei bench N` logs build, layout and draw times per page and for a week swipe (logcat `bench`).
-    Run it two or three times after a debug install: the first run is about 5× slower (not compiled
-    yet). A frame at the phone's 120 Hz is 8.3 ms; a week swipe costs about 4.6 ms.
+    Time the **benchmark** build (`assembleBenchmark`: release code plus these tools, then
+    `compile -m speed -f`), not debug: a debug build runs the app's code in the interpreter, about 2×
+    slower. Run it two or three times. A frame at the phone's 120 Hz is 8.3 ms. On 6 Nov 2026 the
+    benchmark build took: Settings 6.6 ms, Due 4.8, Files 4.7, Day 2.8, Week 0.8, a week swipe 0.9,
+    Courses with every fold open 29.
   - `DebugSpectrumReceiver`: sync, attendance and TimeEdit checks, fake sign-in, raw Moodle calls (see
     its KDoc). Delete any raw dumps afterwards.
 - Auto attendance logs every step to a file any build writes and adb reads without `run-as` (any

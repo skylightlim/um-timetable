@@ -22,8 +22,8 @@ android {
     }
 
     // The release key lives outside the project and is never committed: ~/.android/um-timetable-release.properties
-    // names its keystore, alias and passwords. Every build is signed with it when it's there, so debug
-    // and release builds install over one another and keep the app's data; without it they
+    // names its keystore, alias and passwords. Every build is signed with it when it's there, so debug,
+    // release and benchmark builds install over one another and keep the app's data; without it they
     // fall back to this computer's debug key (fine for trying the code, not for publishing).
     val releaseKey = File(System.getProperty("user.home"), ".android/um-timetable-release.properties")
         .takeIf { it.exists() }?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
@@ -48,6 +48,12 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
             signingConfig = signing
         }
+        // The release build plus the debug-only tools (DebugRenderReceiver's timings), for measuring speed:
+        // a debug build runs the app's code in the interpreter, so its timings overstate it several times.
+        create("benchmark") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+        }
     }
 
     compileOptions {
@@ -58,6 +64,15 @@ android {
     kotlin {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
+    }
+
+    sourceSets {
+        getByName("benchmark") {
+            // Built-in Kotlin only compiles kotlin source dirs; a java.srcDirs entry is ignored here.
+            kotlin.srcDirs("src/debug/kotlin")
+            manifest.srcFile("src/debug/AndroidManifest.xml")
+            res.srcDirs("src/debug/res")
         }
     }
 }
