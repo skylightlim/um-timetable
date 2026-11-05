@@ -20,6 +20,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- Updates from GitHub Releases: the app hands the downloaded APK to Android's installer (Updater). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- The attendance QR scanner reads the lecturer's code with the camera (ScanActivity), asked for when
+         it first opens. Phones without a camera can still install the app. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
 
     <application
         android:allowBackup="false"
@@ -54,6 +60,11 @@
             android:name=".SpectrumWebActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:exported="false" />
+        <activity
+            android:name=".ScanActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:exported="false"
+            android:screenOrientation="portrait" />
 
         <!-- Lends a downloaded update to the installer, read only (Updater). -->
         <provider

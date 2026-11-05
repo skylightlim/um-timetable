@@ -78,6 +78,8 @@ android {
 }
 
 dependencies {
+    // The attendance QR scanner's decoder (AttendanceCode.kt): ZXing's core, plain Java, Apache 2.0.
+    implementation("com.google.zxing:core:3.5.4")
     // JVM tests of the rules that read names (attendance activities, MAYA, TimeEdit), in src/test:
     // ./gradlew testDebugUnitTest
     testImplementation("junit:junit:4.13.2")

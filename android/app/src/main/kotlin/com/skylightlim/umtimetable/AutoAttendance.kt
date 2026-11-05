@@ -45,7 +45,8 @@ import kotlin.concurrent.thread
  * no web service for it, so a hidden page opens the class's attendance activity with the user's
  * Spectrum sign-in (Microsoft signs it in again when Spectrum's session has run out) and runs
  * assets/attendance-mark.js there. Marked or not, a notification says so, and what stopped it:
- * a session not open yet, a lecturer's password, a QR code, the campus network only.
+ * a session not open yet, a lecturer's password, a QR code, the campus network only. Not marked, a tap
+ * opens the QR scanner ([ScanActivity]) for that class: the lecturer's code marks it from there.
  *
  * The alarm starts a short foreground service ([AutoAttendanceService]) for it: Android lets an app's
  * foreground service use mobile data even when the user has turned the app's background data off, and
@@ -247,18 +248,24 @@ object AutoAttendance {
         ).filterNotNull().joinToString(", ")
     }
 
-    /** Says how it went, in the place of the session's "Attendance open" notification. */
+    /**
+     * Says how it went, in the place of the session's "Attendance open" notification. Not marked, it opens
+     * the QR scanner for the class (its attendance page a button away there), but for a sign-in, which
+     * Spectrum's own page asks for.
+     */
     private fun notify(c: Context, s: Session, id: String, url: String, answer: JSONObject) {
         val what = "${s.course.code} ${s.type.lowercase()}"
+        val key = "att-$id"
         if (answer.optBoolean("ok")) {
             val status = answer.optString("status").ifBlank { "present" }.lowercase()
-            Notify.post(c, Notify.ATTENDANCE, "att-$id", "Marked $status · $what", "Spectrum recorded your attendance at ${SpectrumStore.hm(System.currentTimeMillis())}.", Notify.openSpectrum(c, url))
+            Notify.post(c, Notify.ATTENDANCE, key, "Marked $status · $what", "Spectrum recorded your attendance at ${SpectrumStore.hm(System.currentTimeMillis())}.", Notify.openSpectrum(c, url))
             return
         }
-        val why = when (answer.optString("error")) {
+        val error = answer.optString("error")
+        val why = when (error) {
             "notopen", "closed" -> "No attendance session opened for it while the app kept trying."
             "password" -> "The session needs your lecturer's password."
-            "qr" -> "The session needs its QR code scanned in class."
+            "qr" -> "The session takes its QR code only."
             "network" -> "Spectrum only takes this session from UM's network: join the campus Wi-Fi."
             "nostatus" -> "Spectrum offered no status to choose."
             "signedout" -> "Spectrum wants you to sign in again."
@@ -267,7 +274,8 @@ object AutoAttendance {
             else -> "Spectrum didn't confirm it."
         }
         if (!Notify.allowed(c)) AttendanceLog.add(c, "notifications are off: the user isn't told")
-        Notify.post(c, Notify.ATTENDANCE, "att-$id", "Couldn't mark attendance · $what", "$why Tap to mark it yourself.", Notify.openSpectrum(c, url))
+        if (error == "signedout") Notify.post(c, Notify.ATTENDANCE, key, "Couldn't mark attendance · $what", "$why Tap to mark it yourself.", Notify.openSpectrum(c, url))
+        else Notify.post(c, Notify.ATTENDANCE, key, "Couldn't mark attendance · $what", "$why Tap to scan the lecturer's QR code.", ScanActivity.pending(c, what, why, url, key))
     }
 
     /**
@@ -327,8 +335,11 @@ object AutoAttendance {
         return answer
     }
 
-    /** Runs the script in [web]'s page and hands its answer to [done], over a port only Spectrum's page can take. */
-    private fun ask(web: WebView, dry: Boolean, done: (JSONObject) -> Unit) {
+    /**
+     * Runs the script in [web]'s page and hands its answer to [done], over a port only Spectrum's page can
+     * take. With [link] (a session's link from a QR code), the script opens that instead of the page's own.
+     */
+    internal fun ask(web: WebView, dry: Boolean, link: String? = null, done: (JSONObject) -> Unit) {
         val (mine, theirs) = web.createWebMessageChannel()
         mine.setWebMessageCallback(object : WebMessagePort.WebMessageCallback() {
             override fun onMessage(port: WebMessagePort, message: WebMessage) {
@@ -337,7 +348,7 @@ object AutoAttendance {
             }
         })
         web.evaluateJavascript(web.context.assets.open(SCRIPT).bufferedReader().use { it.readText() }) {
-            web.postWebMessage(WebMessage(JSONObject().put("dry", dry).toString(), arrayOf(theirs)), Uri.parse(Spectrum.SITE))
+            web.postWebMessage(WebMessage(JSONObject().put("dry", dry).apply { if (link != null) put("link", link) }.toString(), arrayOf(theirs)), Uri.parse(Spectrum.SITE))
         }
     }
 

@@ -6,43 +6,71 @@
 // {error, detail, rows}. Dry, it only says what it found on this page and opens nothing: opening the link
 // can already mark the student. rows: the page's sessions as text, for the app's log.
 //
+// With {"dry": false, "link": …}, on any Spectrum page, it opens that link instead: a session's link read
+// from the lecturer's QR code (attendance.php?qrpass=…&sessid=…), which marks the student at once or shows
+// the form with the code's password filled in. Its answer also has cmid, the attendance activity Spectrum
+// went back to, when it says.
+//
 // No link but today's session has a status already: {ok, already, status}.
 // Errors: notopen (no link: no session open for self-marking), password (the lecturer's password),
-// qr (a rotating QR code), network (only from the campus network), closed, nostatus, failed.
+// qr (a rotating QR code: the session takes its code only, or a scanned one has just expired), network
+// (only from the campus network), closed, nostatus, failed.
 (() => {
   const RECORDED = /attendance in this session has been recorded|already submitted your attendance/i;
-  const PASSWORD = /password/i;
 
+  // Spectrum's error pages (a QR code expired, a session already marked) come with HTTP 404 and say what's
+  // wrong: they're read like any other page.
   async function text(url, init) {
     const r = await fetch(url, Object.assign({ credentials: 'include' }, init));
-    if (!r.ok) throw new Error('Spectrum answered HTTP ' + r.status);
-    return { url: r.url, html: await r.text() };
+    return { url: r.url, status: r.status, html: await r.text() };
   }
 
   const page = html => new DOMParser().parseFromString(html, 'text/html');
 
-  /** What a page Spectrum ended on says went wrong, or null when it doesn't say. */
+  /** What a page Spectrum ended on says went wrong (or that it's marked already), or null when it doesn't say. */
   function trouble(doc) {
     const said = (doc.querySelector('[role=main], #region-main, .alert, .errorbox, .notifymessage') || doc.body || {}).textContent || '';
-    if (/certain locations|not on the allowed list/i.test(said)) return { error: 'network', detail: said.trim().slice(0, 160) };
-    if (/qr code|scan again/i.test(said)) return { error: 'qr', detail: said.trim().slice(0, 160) };
-    if (/not currently available|closed|not open/i.test(said)) return { error: 'closed', detail: said.trim().slice(0, 160) };
+    const detail = said.replace(/\s+/g, ' ').trim().slice(0, 160);
+    if (/attendance has already been set/i.test(said)) return { ok: true, already: true, status: '' };
+    if (/certain locations|not on the allowed list/i.test(said)) return { error: 'network', detail };
+    if (/qr code|qr session|scan again/i.test(said)) return { error: 'qr', detail };
+    if (/incorrect password/i.test(said)) return { error: 'password', detail };
+    if (/not currently available|closed|not open/i.test(said)) return { error: 'closed', detail };
     return null;
   }
 
-  async function mark(dry) {
+  /** Where Spectrum sent the student back to: the attendance activity's id in view.php?id=…, or 0. */
+  function cmid(url) {
+    const u = new URL(url, location.href);
+    return u.pathname === '/mod/attendance/view.php' ? Number(u.searchParams.get('id')) || 0 : 0;
+  }
+
+  async function mark(dry, link) {
+    if (link) {
+      if (new URL(link, location.href).origin !== location.origin) return { error: 'failed', detail: 'not a Spectrum link' };
+      const first = await text(link);
+      const answer = await settle(first, null);
+      return Object.assign(answer, { cmid: answer.cmid || cmid(first.url) });
+    }
     const anchors = [...document.querySelectorAll('a[href*="/mod/attendance/attendance.php"]')].filter(a => /[?&]sessid=\d+/.test(a.href));
     const links = anchors.map(a => a.href);
     if (dry) return { ok: false, dry: true, links: links.length, title: document.title, rows: rows() };
     if (!links.length) return already() || { error: 'notopen' };
+    return settle(await text(links[0]), anchors[0]);
+  }
 
-    // The link itself: Spectrum may record the student at once and go back to this page.
-    const first = await text(links[0]);
-    if (RECORDED.test(first.html)) return { ok: true, status: '' };
+  /**
+   * Opening a session's link ended on [first]: Spectrum recorded the student at once and went back to the
+   * activity's page, or shows the form to send, or says why not. [anchor]: the link on this page, if it was.
+   */
+  async function settle(first, anchor) {
     const doc = page(first.html);
+    if (RECORDED.test(first.html)) return { ok: true, status: (already(doc) || {}).status || '' };
     const form = doc.querySelector('form input[name="sessid"]')?.form;
-    if (!form) return trouble(doc) || { error: 'failed', detail: 'no form at ' + new URL(first.url).pathname };
-    if (form.querySelector('[name="studentpassword"]')) return { error: 'password' };
+    if (!form) return trouble(doc) || { error: 'failed', detail: 'no form at ' + new URL(first.url).pathname + (first.status === 200 ? '' : ' (HTTP ' + first.status + ')') };
+    // The password box: empty unless a QR code's link filled it in.
+    const password = form.querySelector('[name="studentpassword"]');
+    if (password && !password.value) return { error: 'password' };
 
     // The statuses offered, by their labels; "Present" (or Malay "Hadir") if there is one.
     const options = [...form.querySelectorAll('input[type="radio"][name="status"]:not([disabled])')].map(input => ({
@@ -57,7 +85,7 @@
     const submit = form.querySelector('[type="submit"][name="submitbutton"]');
     if (submit) data.set('submitbutton', submit.value);
     const sent = await text(new URL(form.getAttribute('action') || first.url, first.url).href, { method: 'POST', body: data });
-    if (RECORDED.test(sent.html) || await taken(anchors[0])) return { ok: true, status: chosen.label };
+    if (RECORDED.test(sent.html) || (anchor && await taken(anchor))) return { ok: true, status: chosen.label, cmid: cmid(sent.url) };
     return trouble(page(sent.html)) || { error: 'failed', detail: 'no confirmation from Spectrum' };
   }
 
@@ -65,17 +93,17 @@
    * Today's session already has a status (the student marked it, or the lecturer did): its row starts
    * with today's date as Spectrum writes it ("Mon 19 Oct 2026") and has no "?" left. Else null.
    */
-  function already() {
+  function already(doc = document) {
     const d = new Date();
     const today = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()] + ' ' + d.getDate() + ' ' +
       ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + ' ' + d.getFullYear();
-    const row = allRows().find(t => t.startsWith(today + ' ') && !t.includes('?'));
+    const row = allRows(doc).find(t => t.startsWith(today + ' ') && !t.includes('?'));
     if (!row) return null;
     return { ok: true, already: true, status: (row.match(/\b(present|late|excused|absent|hadir|lewat|tidak hadir)\b/i) || [''])[0] };
   }
 
   /** The session table's rows, condensed: date, time, what each says (a status, "Submit attendance", "?"). */
-  const allRows = () => [...document.querySelectorAll('table tbody tr')]
+  const allRows = (doc = document) => [...doc.querySelectorAll('table tbody tr')]
     .map(tr => [...tr.children].map(td => td.textContent).join(' ').replace(/\s+/g, ' ').trim().slice(0, 140));
   /** For the log: the last dozen, where the sessions around today and the totals are. */
   const rows = () => allRows().slice(-12);
@@ -106,9 +134,10 @@
     if (!ask || typeof ask.dry !== 'boolean') return;
     window.removeEventListener('message', handler);
     const port = e.ports[0];
-    // A failure carries the page's sessions too, for the app's log.
-    mark(ask.dry).then(
-      answer => port.postMessage(JSON.stringify(answer.ok || answer.rows ? answer : Object.assign(answer, { rows: rows() }))),
+    const link = typeof ask.link === 'string' ? ask.link : null;
+    // A failure on an attendance page carries the page's sessions too, for the app's log.
+    mark(ask.dry, link).then(
+      answer => port.postMessage(JSON.stringify(answer.ok || answer.rows || link ? answer : Object.assign(answer, { rows: rows() }))),
       err => port.postMessage(JSON.stringify({ error: 'failed', detail: String((err && err.message) || err) })),
     );
   });

@@ -323,7 +323,7 @@ class WebBar(ui: Ui, site: String, titleText: String, closeLabel: String, status
 }
 
 /** Text that rolls over when it changes, once [rolls] is set: the old slips up and out, the new rises in. */
-private class RollText(context: Context) : TextView(context) {
+internal class RollText(context: Context) : TextView(context) {
     var rolls = false
 
     override fun setText(text: CharSequence?, type: BufferType?) {
