@@ -479,6 +479,8 @@ class MainActivity : Activity(), SpectrumHost {
         val swiped = dotsFly
         dotsFly = false
         if (!swiped || view != "week" || stripWeek != false || !Motion.enabled || stripDots.size != 5) return null
+        // An exam week's grid has no classes for them to land in.
+        if (examWeek(dateOf(1))) return null
         val starts = stripDots.mapIndexed { k, row ->
             val day = timetable.day(k + 1)
             row.mapIndexedNotNull { i, v -> day.getOrNull(i)?.let { s -> Triple(i, s.course.color, Motion.onScreen(v).let { r -> android.graphics.PointF(r.centerX(), r.centerY()) }) } }
@@ -838,7 +840,7 @@ class MainActivity : Activity(), SpectrumHost {
     /**
      * The Spectrum deadlines in the week shown (Monday [monday] days from today, to Sunday): those not yet
      * passed ("3 deadlines this week", "next week"), or all of them for a week that's over ("last week");
-     * null when not signed in.
+     * null when not signed in. An exam week without any says "Good luck".
      */
     private fun weekDeadlines(monday: Int): String? {
         if (!SpectrumStore.signedIn(this)) return null
@@ -853,7 +855,7 @@ class MainActivity : Activity(), SpectrumHost {
             else -> ""
         }
         return when (n) {
-            0 -> "No deadlines$which"
+            0 -> if (examWeek(LocalDate.now().plusDays(monday.toLong()))) "Good luck" else "No deadlines$which"
             1 -> "1 deadline$which"
             else -> "$n deadlines$which"
         }

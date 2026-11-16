@@ -66,6 +66,9 @@ fun weekOff(date: LocalDate): String? = when (AcademicCalendar.week(date)?.kind)
     else -> null
 }
 
+/** [date] is in one of UM's exam weeks: Week shows only the exams then, without the classes or the calendar's card. */
+fun examWeek(date: LocalDate): Boolean = AcademicCalendar.week(date)?.kind == AcademicCalendar.Kind.EXAMS
+
 /**
  * Why a day or week has no classes: a public holiday in Kuala Lumpur ([holiday]), or UM's break,
  * revision or exam week ([week]). A card in the accent's tint, above the day's classes or the week grid.
@@ -648,7 +651,8 @@ object WeekScreen {
         val tt = h.timetable
         // The week's dates are in the top bar and its week of the semester on the Week chip.
         val page = ui.column().apply { setPadding(0, ui.dp(2), 0, 0) }
-        // A break, revision or exam week says so above the grid (whose classes are then faded).
+        // A break or revision week says so above the grid (whose classes are then faded). An exam week doesn't:
+        // its exams are on the grid, and its classes aren't.
         val offSlot = FrameLayout(ui.context)
         offCard(h)?.let { offSlot.addView(it) }
         page.addView(offSlot, ui.wide())
@@ -682,7 +686,7 @@ object WeekScreen {
         return page
     }
 
-    private fun offCard(h: Host): View? = weekOff(h.dateOf(1))?.let { FrameLayout(h.ui.context).apply { addView(offCard(h.ui, null, it)); setPadding(0, 0, 0, h.ui.dp(12)) } }
+    private fun offCard(h: Host): View? = weekOff(h.dateOf(1))?.takeUnless { examWeek(h.dateOf(1)) }?.let { FrameLayout(h.ui.context).apply { addView(offCard(h.ui, null, it)); setPadding(0, 0, 0, h.ui.dp(12)) } }
 
     private fun grid(h: Host, plans: List<Plan>?) =
         WeekGrid(h.ui, h.timetable, h.now(), h.daysTo(1), plans ?: Plans.inWeek(h.ui.context, h.dateOf(1)), h::openPlan, Exams.inWeek(h.ui.context, h.dateOf(1))) { s -> h.openSheet(s.course, s) }
@@ -757,6 +761,8 @@ class WeekGrid(
     /** Each day's public holiday in Kuala Lumpur, Monday first; and whether the week is one of UM's without classes. */
     private val holidays = dates.map { Holidays.on(it) }
     private val weekOff = weekOff(LocalDate.now().plusDays(monday.toLong())) != null
+    /** One of UM's exam weeks: only the exams (and plans) are drawn, no classes. */
+    private val examWeek = examWeek(dates[0])
 
     // The grid's boxes are as tall as their hours and a fifth of the width, so its text follows the system
     // font size only up to 1.15×: past that, names broke into syllables ("Pro- / gram- / ming"). A class's
@@ -789,7 +795,7 @@ class WeekGrid(
     private val fillClip = android.graphics.Path()
 
     init {
-        contentDescription = "Week timetable: " + tt.sessions.joinToString("; ") { "${DAY_NAMES[it.day]} ${clockText(it.start)} ${it.course.code} ${it.type} ${it.room}" } +
+        contentDescription = "Week timetable: " + (if (examWeek) emptyList() else tt.sessions).joinToString("; ") { "${DAY_NAMES[it.day]} ${clockText(it.start)} ${it.course.code} ${it.type} ${it.room}" } +
             exams.joinToString("") { "; exam ${DAY_NAMES[it.date.dayOfWeek.value % 7]} ${clockText(it.start)} ${it.code} ${it.shortRoom}" }
     }
 
@@ -835,7 +841,7 @@ class WeekGrid(
             for (plan in plans.filter { it.date == dates[d - 1] && it.id != picking?.id }) drawPlan(canvas, plan, RectF(left + ui.dp(1f), top + (plan.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (plan.end - startMin) / 60f * hour - 1))
             // Faded: today's classes that are over, and those on a holiday or in a week without classes.
             val cancelled = holiday != null || weekOff
-            for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), cancelled || (isToday && now.min >= s.end))
+            if (!examWeek) for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), cancelled || (isToday && now.min >= s.end))
             // Exams over the classes, within the grid's hours.
             for (e in exams.filter { it.date == dates[d - 1] }) drawExam(canvas, e, RectF(left + ui.dp(1f), maxOf(top, top + (e.start - startMin) / 60f * hour + 1), left + colW - ui.dp(1f), minOf(bottom, top + (e.end - startMin) / 60f * hour - 1)))
             // The holiday's name goes over its (faded) classes, so it can always be read.
@@ -1047,6 +1053,7 @@ class WeekGrid(
 
     /** Where day [day]'s [index]th class (in the strip's order) is on screen, the middle of its block: where its dot goes. Null before layout. */
     fun classAt(day: Int, index: Int): PointF? {
+        if (examWeek) return null
         val s = tt.day(day).getOrNull(index) ?: return null
         if (width == 0) return null
         val at = IntArray(2).also(::getLocationOnScreen)
@@ -1141,7 +1148,7 @@ class WeekGrid(
     }
 
     /** What's taken on day [d]: its classes, exams and plans (but [except], the plan being moved). */
-    private fun busy(d: Int, except: String?) = tt.day(d).map { it.start to it.end } +
+    private fun busy(d: Int, except: String?) = (if (examWeek) emptyList() else tt.day(d)).map { it.start to it.end } +
         exams.filter { it.date == dates[d - 1] }.map { it.start to it.end } +
         plans.filter { it.date == dates[d - 1] && it.id != except }.map { it.start to it.end }
 
