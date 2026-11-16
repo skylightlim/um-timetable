@@ -1,21 +1,24 @@
 """Draws the launcher icon: a cow (牛) and a horse (马) rearing up on either side of an empty shield in
-UM's shape, holding it up the way the two tigers hold up the arms of Malaysia, in the same proportions:
-upright and slim, their heads well above the shield, a front hoof on each of its top corners, standing on
-their hind legs; the shield about two fifths of the width. Realistic silhouettes, all in the gold of UM's
-shield rim on its blue (the adaptive icon's background, @color/ic_bg).
+UM's shape, holding it up the way the two tigers hold up the arms of Malaysia, and in its proportions:
+the shield about two fifths of the width and three quarters of a supporter's height, their heads well
+above it, one front hoof on its top and the other against its side, one hind leg raised. Realistic
+silhouettes in gold, light at the top and deep at the bottom like the metal, on UM's blue (the adaptive
+icon's background, @color/ic_bg).
 
     uv run --with skia-pathops python crest.py ../app/src/main/res/drawable [key=value ...]
 
 Writes ic_fg.xml, ic_mono.xml and the status-bar icon ic_notify.xml (the shield alone) there, and
-preview-circle.svg / preview-squircle.svg here (with no directory, only the previews).
+preview-circle.svg / preview-squircle.svg / preview-study.svg here (with no directory, only the previews).
 
-Each animal is one outline (COW, HORSE: points round it, smoothed into curves, a corner where marked),
-drawn rearing upright in a 100 x 170 box facing right, hind hooves on its bottom; the horse is turned to
-face the cow. Placed by its hind hooves, then slid sideways until its near front hoof rests on the shield's
-corner. The cow is told from a goat by a cow's head: big and boxy, a tall square muzzle and a deep jaw, a
-short horn reaching forward, an ear out sideways; and a dewlap, an udder, a tufted tail. Where an animal covers the shield, a blue gap of one line width parts them. Path
-booleans resolve it into one gold shape, so the blue is a hole rather than paint, and the themed icon
-(ic_mono) is that same shape. They're not DuelView's pair (the duel has its own line drawings).
+Each animal is drawn standing, the way it's easiest to judge against a photo (preview-study.svg shows
+both standing and reared), and then posed: the trunk turned up about the hip, the neck and the head
+turned back down, each leg bone and the tail given a direction. The cow is told from the horse by a
+deep barrel on short legs, a straight back, a blunt square muzzle, a pair of short horns with an ear
+behind them, an udder and a thin tail ending in a tuft; the horse by long legs, an arched neck, pricked
+ears and a full tail. The cow is sized so both stand on the same ground with their hooves on the same
+shield. Nothing overlaps the shield: each hoof stops a line's width short of it, and where an animal
+would cover it, a gap of that width parts them. Path booleans resolve it all into one shape, which is
+also the themed icon (ic_mono). They're not DuelView's pair (the duel has its own line drawings).
 """
 import math
 import re
@@ -24,15 +27,13 @@ import sys
 from pathops import LineCap, LineJoin, Path, PathOp, decompose_quadratic_segment, op
 
 P = dict(
-    blue="#223E99", gold="#BB9632",  # UM crest colours: the shield and its rim
-    line=1.0,       # the gap between an animal and the shield, in icon units (dp in the 108-unit icon)
-    scale=0.235,    # the animals: icon units per unit of their 100 x 170 box
-    rim=2.6,        # the shield's gold rim
-    # As on Malaysia's arms: the shield about two fifths of the width, about four fifths of a supporter's height,
-    # its top where their front hooves rest and their heads well above it.
-    shield_w=28.0, shield_h=30.3,
-    cow_x=33.0, horse_x=75.0, feet_y=70.0,  # where each one's hind hooves stand, before sliding to the shield
-    lean=0.0,       # degrees each is turned about its hind hooves (they're drawn upright)
+    blue="#223E99",  # UM's blue
+    gold_hi="#F7E08A", gold="#D9AE3A", gold_lo="#B4841C",  # gold from the top of the drawing to its bottom
+    line=0.9,       # the gap between a hoof and the shield, in icon units (dp in the 108-unit icon)
+    scale=0.18,     # the horse: icon units per unit it's drawn in (it stands 92 high at the withers)
+    rim=2.4,        # the shield's rim
+    shield_w=23.5, shield_h=24.5,
+    inset=1.6,      # how far in from the shield's corner the upper front hoof rests
 )
 res = sys.argv[1] if len(sys.argv) > 1 and "=" not in sys.argv[1] else None
 for kv in sys.argv[1 if res is None else 2:]:
@@ -67,77 +68,6 @@ def shield(cx, top, w, h):
                f"C{cx - 0.24 * w},{top + 0.9 * h} {l},{top + 0.74 * h} {l},{side} Z")
 
 
-# --- drawing: a painter that keeps one resolved shape per colour ------------------------------------
-
-class Painter:
-    def __init__(self):
-        self.shapes = {"gold": Path()}
-
-    def put(self, shape, colour):
-        """[shape] painted [colour]: "gold", or "blue" to uncover the background."""
-        for k in self.shapes:
-            self.shapes[k] = op(self.shapes[k], shape, PathOp.UNION if k == colour else PathOp.DIFFERENCE)
-
-    def inside(self, shape, within, colour="gold"):
-        self.put(op(shape, within, PathOp.INTERSECTION), colour)
-
-
-# --- the cow and the horse: rearing silhouettes ----------------------------------------------------
-# In a 100 x 170 box, rearing upright, facing right, hind hooves on y = 166. A point (x, y, "c") is a
-# corner (a hoof, a horn's tip); the rest are smoothed through. Their front legs reach forward, the near
-# one's hoof the frontmost point, the one that rests on the shield.
-
-HORSE = [
-    # ears and the long head, turned toward the shield, nose a little down; the jaw's round cheek
-    (58, 4, "c"), (62, 12), (68, 14), (77, 18), (85, 25), (90, 31), (91, 36, "c"), (86, 39), (79, 38), (74, 38), (69, 37), (66, 40),
-    # the throat, down the neck's front to a deep chest
-    (65, 47), (65, 55), (67, 63),
-    # near foreleg, reaching forward: forearm, knee, cannon, hoof
-    (73, 63), (80, 60), (86, 58, "c"), (91, 63), (95, 66, "c"), (92, 71, "c"), (88, 69), (84, 66), (77, 70), (70, 74),
-    # far foreleg, lower
-    (76, 78), (82, 78, "c"), (86, 84), (89, 88, "c"), (85, 91, "c"), (81, 87), (76, 85), (67, 86),
-    # belly, down to the flank
-    (63, 96), (60, 106), (58, 115),
-    # near hind leg, standing: stifle, the hock behind, cannon, hoof
-    (59, 124), (57, 134), (53, 143), (54, 152), (57, 160), (61, 166, "c"), (51, 167, "c"), (47, 160), (45, 152), (44, 146), (40, 140),
-    # far hind leg
-    (38, 147), (38, 155), (40, 160), (43, 166, "c"), (33, 167, "c"), (30, 160), (29, 151), (27, 142),
-    # buttock and the tail, falling in waves
-    (24, 132), (22, 121), (22, 110), (17, 111), (11, 119), (8, 131), (9, 145), (13, 157, "c"), (15, 146), (16, 134), (19, 123), (23, 115),
-    # the back up to the withers, the mane in tufts up the arched neck, the poll
-    (26, 99), (31, 84), (37, 71), (42, 60), (45, 53),
-    (42, 48), (47, 44), (46, 38), (51, 34), (50, 27), (55, 23), (54, 16), (57, 11),
-]
-
-COW = [
-    # the poll; a short thick horn reaching forward from it, curling up at the tip
-    (56, 21), (60, 17), (66, 14), (71, 10), (74, 4, "c"), (73, 12), (69, 18), (66, 22),
-    # the broad forehead, the long straight face, steep, down to a tall square muzzle
-    (69, 24), (75, 30), (80, 37), (84, 44), (87, 49), (89, 53), (89.5, 59, "c"), (84, 61.5), (78, 61.5),
-    # the deep flat jaw, back to a round cheek; the throat and a dewlap down the neck, the chest
-    (71, 61), (65, 59.5), (61, 61), (60, 67), (61, 72), (64, 76), (67, 78),
-    # near foreleg, reaching forward
-    (74, 74), (81, 68), (86, 64, "c"), (90, 68), (93, 71, "c"), (89, 75, "c"), (86, 73), (82, 72), (75, 78), (69, 83),
-    # far foreleg
-    (75, 87), (81, 85, "c"), (85, 90), (88, 93, "c"), (84, 96, "c"), (80, 93), (75, 93), (67, 95),
-    # a deeper belly, the udder
-    (63, 106), (61, 114), (60, 120), (61, 124), (59, 128, "c"), (55, 127),
-    # near hind leg, standing: thicker than the horse's, the hock behind
-    (56, 134), (55, 142), (52, 149), (53, 157), (56, 166, "c"), (46, 167, "c"), (44, 159), (42, 151), (40, 144), (38, 140),
-    # far hind leg
-    (37, 148), (37, 157), (40, 166, "c"), (30, 167, "c"), (28, 158), (27, 148), (25, 140),
-    # buttock, the tail hanging close, ending in a tuft
-    (23, 130), (21, 118), (21, 108), (17, 113), (15, 125), (14, 138), (12, 150), (10, 157), (13, 163, "c"), (19, 162), (18, 155, "c"),
-    (18, 145), (19, 132), (20, 120),
-    # tailhead, the straight back, withers and the thick neck up to the poll
-    (22, 102, "c"), (27, 92), (33, 80), (39, 67), (45, 54), (49, 43), (51, 35),
-    # the ear: a broad leaf, straight out behind the horn
-    (49, 32), (43, 31), (37, 30, "c"), (42, 26), (48, 24), (52, 23),
-]
-
-FEET = (45, 167)  # between the hind hooves, in the box
-
-
 def outline(pts):
     """A closed shape through [pts], smoothed (Catmull-Rom, as cubics), sharp at the corners."""
     p, n = Path(), len(pts)
@@ -153,36 +83,205 @@ def outline(pts):
     return op(p, Path(), PathOp.UNION)
 
 
-def placed(pts, x0, face_left):
-    """[pts] with the hind hooves at ([x0], feet_y), turned upright by lean, facing left if [face_left]."""
-    a, s = math.radians(P["lean"]), P["scale"]
-    out = []
-    for q in pts:
-        x, y = (q[0] - FEET[0]) * s, (q[1] - FEET[1]) * s
-        x, y = x * math.cos(a) - y * math.sin(a), x * math.sin(a) + y * math.cos(a)
-        out.append((x0 + (-x if face_left else x), P["feet_y"] + y) + tuple(q[2:]))
+def union(shapes):
+    out = Path()
+    for s in shapes:
+        out = op(out, s, PathOp.UNION)
     return out
 
 
-def slid(pts, to_x, front):
-    """[pts] moved sideways so the frontmost of them is at [to_x]; that point's height."""
-    f = front(pts, key=lambda q: q[0])
-    return [(q[0] + to_x - f[0], q[1]) + tuple(q[2:]) for q in pts], f[1]
+def circle(x, y, r):
+    k = 0.5523 * r
+    return svg(f"M{x + r},{y} C{x + r},{y + k} {x + k},{y + r} {x},{y + r} C{x - k},{y + r} {x - r},{y + k} {x - r},{y} "
+               f"C{x - r},{y - k} {x - k},{y - r} {x},{y - r} C{x + k},{y - r} {x + r},{y - k} {x + r},{y} Z")
+
+
+def limb(joints, steps=3):
+    """A leg or a tail: a tube along a smooth line through [joints] (x, y, half width), tapering between
+    them. Built from round beads joined by their tangents, so a wide thigh on a sharp bend can't fold over."""
+    n = len(joints)
+    at = lambda i: joints[min(max(i, 0), n - 1)]
+    beads = []
+    for i in range(n - 1):
+        p0, p1, p2, p3 = at(i - 1), at(i), at(i + 1), at(i + 2)
+        for k in range(steps + (i == n - 2)):
+            t = k / steps
+            f = [((-t + 2) * t - 1) * t / 2, ((3 * t - 5) * t * t + 2) / 2, ((-3 * t + 4) * t + 1) * t / 2, (t - 1) * t * t / 2]
+            beads.append(tuple(sum(w * p[c] for w, p in zip(f, (p0, p1, p2, p3))) for c in (0, 1)) + (p1[2] + (p2[2] - p1[2]) * t,))
+    parts = [circle(*j) for j in beads]
+    for (x0, y0, r0), (x1, y1, r1) in zip(beads, beads[1:]):
+        d = math.hypot(x1 - x0, y1 - y0)
+        if d <= abs(r0 - r1):
+            continue
+        ux, uy = (x1 - x0) / d, (y1 - y0) / d
+        sin = (r0 - r1) / d
+        cos = math.sqrt(1 - sin * sin)
+        side = lambda k: (ux * sin - k * uy * cos, uy * sin + k * ux * cos)  # toward where a side touches both beads
+        (ax, ay), (bx, by) = side(1), side(-1)
+        parts.append(svg(f"M{x0 + r0 * ax},{y0 + r0 * ay} L{x1 + r1 * ax},{y1 + r1 * ay} "
+                         f"L{x1 + r1 * bx},{y1 + r1 * by} L{x0 + r0 * bx},{y0 + r0 * by} Z"))
+    return smoothed(union(parts))
+
+
+def smoothed(shape, gap=2.5):
+    """[shape]'s outline redrawn as one flowing curve through points [gap] apart along it."""
+    out, line = [], []
+    for verb, pts in list(shape.segments) + [("moveTo", ())]:
+        if verb == "moveTo":
+            if len(line) > 2:
+                lengths = [math.dist(a, b) for a, b in zip(line, line[1:] + line[:1])]
+                n, walked, i, pts2 = max(8, round(sum(lengths) / gap)), 0.0, 0, []
+                for k in range(n):
+                    want = k * sum(lengths) / n
+                    while walked + lengths[i] < want:
+                        walked, i = walked + lengths[i], i + 1
+                    t, (ax, ay), (bx, by) = (want - walked) / lengths[i], line[i], line[(i + 1) % len(line)]
+                    pts2.append((ax + (bx - ax) * t, ay + (by - ay) * t))
+                out.append(outline(pts2))
+            line = list(pts)
+        elif verb == "lineTo":
+            line += pts
+        elif verb == "curveTo":
+            (x0, y0), (x1, y1), (x2, y2), (x3, y3) = line[-1], *pts
+            line += [((1 - t) ** 3 * x0 + 3 * (1 - t) ** 2 * t * x1 + 3 * (1 - t) * t * t * x2 + t ** 3 * x3,
+                      (1 - t) ** 3 * y0 + 3 * (1 - t) ** 2 * t * y1 + 3 * (1 - t) * t * t * y2 + t ** 3 * y3)
+                     for t in (0.25, 0.5, 0.75, 1)]
+        elif verb == "qCurveTo":
+            for (x1, y1), (x2, y2) in decompose_quadratic_segment(pts):
+                x0, y0 = line[-1]
+                line += [((1 - t) ** 2 * x0 + 2 * (1 - t) * t * x1 + t * t * x2, (1 - t) ** 2 * y0 + 2 * (1 - t) * t * y1 + t * t * y2)
+                         for t in (0.25, 0.5, 0.75, 1)]
+    return union(out)
+
+
+# --- the horse and the cow ---------------------------------------------------------------------------
+# Each is drawn standing, facing right, the ground at y = 0 (so heights are negative). trunk, neck, head,
+# horn and extra are outlines: points round them, smoothed into curves, a corner where marked "c". The
+# neck's first point sits inside the trunk so that, turned down, the neck runs on from the back. A leg is
+# where it joins the trunk, its half width there, and its bones (length, half width at the far end): hind
+# legs are thigh, gaskin in two, cannon in two and pastern, front legs upper arm, forearm in two, cannon
+# in two and pastern; hoof is (half width, height, toe). The legs are the standing hind one, the raised
+# hind one, the upper front one and the lower front one. The tail is bones too.
+# A pose turns the trunk about the hip (lean), the neck about neck_at and the head about the poll, all
+# anticlockwise in degrees, and gives every bone its direction (0 = forward, 90 = down, 180 = back) and
+# every hoof the direction its sole faces.
+
+HORSE = dict(
+    trunk=[(0, -84), (7, -91), (18, -93), (32, -90.5), (46, -87.5), (58, -88.5), (67, -93),
+           (76, -86), (85, -73), (86.5, -65), (82, -57), (72, -53), (64, -52), (50, -51.5), (36, -53.5),
+           (25, -58), (19, -58), (10, -57), (2, -63), (-3, -73), (-2.5, -80)],
+    neck=[(58, -80), (66, -101), (75, -110), (84, -116), (93, -119),
+          (94, -100), (92.5, -92), (90.5, -83), (88.5, -73), (86, -62), (72, -60), (58, -74)],
+    head=[(89.6, -119), (93.6, -130.2, "c"), (96.4, -122.3), (99.2, -129.1, "c"), (100.8, -120.7),   # the ears
+          (105.3, -116.2), (109.8, -108.9), (113.7, -101.1), (116, -95.5), (116, -91), (112.6, -88.7),  # the face, the muzzle
+          (108.1, -91.5), (103.1, -94.3), (97.5, -96.6), (92.4, -101.1), (89.6, -110)],                 # the jaw, the jowl
+    tail=dict(at=(2, -84), r=3, bones=[(7, 5), (10, 6.2), (12, 6), (12, 4.5), (10, 0.8)]),
+    hip=(11, -73), neck_at=(74, -80), poll=(93, -114.5), dock=(0, -84),
+    legs=[
+        dict(at=(13, -74), r=13.5, bones=[(24, 8), (12, 6), (12, 4.3), (10.5, 2.8), (10.5, 3.2), (6, 2.7)], hoof=(3.2, 5, 3)),
+        dict(at=(14, -74), r=13, bones=[(24, 8), (12, 6), (12, 4.3), (10.5, 2.8), (10.5, 3.2), (6, 2.7)], hoof=(3.2, 5, 3)),
+        dict(at=(78, -70), r=8, bones=[(16.5, 6.5), (12.5, 5), (12.5, 3.9), (9.5, 2.6), (9.5, 3), (7, 2.5)], hoof=(3, 5, 3)),
+        dict(at=(77, -69), r=8, bones=[(16.5, 6.5), (12.5, 5), (12.5, 3.9), (9.5, 2.6), (9.5, 3), (7, 2.5)], hoof=(3, 5, 3)),
+    ],
+    stand=dict(lean=0, neck=0, head=0, tail=[160, 120, 95, 85, 80], hoof=[90, 90, 90, 90],
+               legs=[[65, 115, 115, 88, 88, 60], [80, 112, 112, 95, 95, 60], [115, 90, 90, 90, 90, 60], [105, 80, 80, 95, 95, 60]]),
+    rear=dict(lean=60, neck=-40, head=-3, tail=[150, 120, 100, 92, 88], hoof=[90, 60, 90, 0],
+              legs=[[50, 128, 128, 78, 78, 50], [15, 100, 100, 50, 50, 35], [50, -45, -45, 40, 40, 55], [75, 22, 22, 100, 100, 50]]),
+)
+
+COW = dict(
+    trunk=[(0, -78, "c"), (9, -78.5), (24, -76), (42, -75), (58, -76), (70, -78),
+           (80, -70), (88, -56), (86, -44), (78, -37), (68, -33), (54, -31), (40, -31), (28, -33),
+           (22, -38), (12, -40), (3, -46), (-2, -58), (-3, -70)],
+    neck=[(55, -68), (76, -80.5), (86, -83), (95, -85), (94, -66), (91, -58), (90, -50), (88, -42), (74, -42), (62, -62)],
+    head=[(91, -81), (86, -84), (81, -91, "c"), (88, -89.5), (92, -87.5),                           # the ear, up and back
+          (93, -92), (96.5, -97), (101, -98, "c"), (98, -93.5), (97.5, -89.5), (99, -86),          # the horn
+          (104, -83), (110, -78.5), (115, -73.5), (119, -69.5), (121.5, -65), (121.5, -60), (119, -56.5, "c"),  # the face, a square muzzle
+          (112, -56), (105, -57), (99, -59.5, "c"), (95, -66), (91, -75)],
+    tail=dict(at=(1, -76), r=2.4, bones=[(5, 2.2), (11, 2), (11, 2), (7, 2.4), (7, 4), (6, 0.8)]),
+    extra=[[(16, -36), (30, -35), (35, -29), (33, -23.5), (31, -22), (30.5, -18, "c"), (28.5, -22), (25, -22.5), (20, -26)]],  # the udder
+    horn=[(99, -86), (99.5, -92), (103, -96.5), (107.5, -97, "c"), (104.5, -93), (104, -89), (105, -84), (101, -83)],  # the far horn
+    hip=(12, -58), neck_at=(78, -64), poll=(95, -79), dock=(0, -77),
+    legs=[
+        dict(at=(14, -59), r=15.5, bones=[(19, 10.5), (10, 7.5), (10, 5.2), (8, 3.8), (8, 4.2), (4, 3.6)], hoof=(4, 4.5, 2.6)),
+        dict(at=(15, -59), r=15, bones=[(19, 10.5), (10, 7.5), (10, 5.2), (8, 3.8), (8, 4.2), (4, 3.6)], hoof=(4, 4.5, 2.6)),
+        dict(at=(77, -57), r=10, bones=[(18, 8), (9, 6.2), (9, 5), (6.5, 3.6), (6.5, 4), (4, 3.4)], hoof=(3.8, 4.5, 2.6)),
+        dict(at=(76, -56), r=10, bones=[(18, 8), (9, 6.2), (9, 5), (6.5, 3.6), (6.5, 4), (4, 3.4)], hoof=(3.8, 4.5, 2.6)),
+    ],
+    stand=dict(lean=0, neck=0, head=0, tail=[150, 110, 95, 90, 88, 85], hoof=[90, 90, 90, 90],
+               legs=[[60, 118, 118, 86, 86, 65], [78, 112, 112, 95, 95, 65], [115, 90, 90, 90, 90, 65], [105, 82, 82, 95, 95, 65]]),
+    rear=dict(lean=58, neck=-20, head=-12, tail=[140, 108, 96, 92, 90, 90], hoof=[90, 60, 90, 0],
+              legs=[[50, 125, 125, 80, 80, 55], [15, 100, 100, 55, 55, 40], [50, -45, -45, 40, 40, 55], [75, 29, 29, 100, 100, 50]]),
+)
+
+
+def bones(x, y, r, parts, angles):
+    """The joints of a chain of bones from (x, y): each bone's length and far half width, and its direction."""
+    joints = [(x, y, r)]
+    for (length, r), deg in zip(parts, angles):
+        x, y = x + length * math.cos(math.radians(deg)), y + length * math.sin(math.radians(deg))
+        joints.append((x, y, r))
+    return joints
+
+
+def turn(p, about, deg):
+    """[p] turned [deg] anticlockwise (as seen, y pointing down) about a point; keeps a corner mark."""
+    a, dx, dy = math.radians(deg), p[0] - about[0], p[1] - about[1]
+    return (about[0] + dx * math.cos(a) + dy * math.sin(a), about[1] - dx * math.sin(a) + dy * math.cos(a)) + tuple(p[2:])
+
+
+def posed(a, pose):
+    """The animal's shape in [pose], its standing hind hoof on y = 0; and where each hoof's sole is."""
+    hip, t = a["hip"], pose["lean"]
+    trunk = lambda p: turn(p, hip, t)
+    neck = lambda p: trunk(turn(p, a["neck_at"], pose["neck"]))
+    head = lambda p: neck(turn(p, a["poll"], pose["head"]))
+    shapes = [outline([trunk(p) for p in a["trunk"]]), outline([neck(p) for p in a["neck"]]),
+              outline([head(p) for p in a["head"]])]
+    shapes += [outline([trunk(p) for p in e]) for e in a.get("extra", [])]
+    shapes += [outline([head(p) for p in a[k]]) for k in ("horn",) if k in a]
+    shapes.append(limb(bones(*trunk(a["tail"]["at"]), a["tail"]["r"], a["tail"]["bones"], pose["tail"])))
+    soles = []
+    for leg, angles, down in zip(a["legs"], pose["legs"], pose["hoof"]):
+        joints = bones(*trunk(leg["at"]), leg["r"], leg["bones"], angles)
+        shapes.append(limb(joints))
+        x, y = joints[-1][:2]
+        c, h, toe = leg["hoof"]
+        ux, uy = math.cos(math.radians(down)), math.sin(math.radians(down))  # down the hoof
+        fx, fy = uy, -ux                                                    # toward its toe
+        at = lambda f, u: (x + f * fx + u * ux, y + f * fy + u * uy, "c")
+        shapes.append(outline([at(-c, -1.5), at(c, -1.5), at(c + toe, h), at(-c - 0.6, h)]))
+        soles.append((x + toe / 2 * fx + h * ux, y + toe / 2 * fy + h * uy))
+    ground = soles[0][1]
+    shape = union(shapes).transform(1, 0, 0, 1, 0, -ground)
+    return shape, [(sx, sy - ground) for sx, sy in soles]
+
+
+def placed(a, edge, top, face_left, size=1.0):
+    """[a] rearing, scaled into the icon: its upper front hoof on the shield's top, a line's width above
+    it and `inset` in from the side at x = [edge]. And how far its lower front hoof is from that side."""
+    shape, soles = posed(a, a["rear"])
+    s, (rx, ry), d = P["scale"] * size, soles[2], -1 if face_left else 1
+    x, y = edge + d * P["inset"], top - P["line"]
+    p = shape.transform(d * s, 0, 0, s, x - d * rx * s, y - ry * s)
+    return op(p, Path(), PathOp.UNION), P["inset"] - (rx - soles[3][0]) * s
 
 
 # --- the icon -------------------------------------------------------------------------------------
 
-g = Painter()
-w, h = P["shield_w"], P["shield_h"]
-cow, cow_hoof = slid(placed(COW, P["cow_x"], False), 54 - w / 2 + 1.4, max)
-horse, horse_hoof = slid(placed(HORSE, P["horse_x"], True), 54 + w / 2 - 1.4, min)
-top = (cow_hoof + horse_hoof) / 2 - 1.0  # the hooves just over the rim
-sh = shield(54, top, w, h)
-g.inside(stroked(sh, 2 * P["rim"]), sh)
-for animal in (cow, horse):
-    shape = outline(animal)
-    g.put(stroked(shape, 2 * P["line"]), "blue")
-    g.put(shape, "gold")
+def icon(top):
+    """The whole drawing as one shape, the shield's top at [top]."""
+    w, h = P["shield_w"], P["shield_h"]
+    sh = shield(54, top, w, h)
+    gold = op(stroked(sh, 2 * P["rim"]), sh, PathOp.INTERSECTION)
+    level = posed(HORSE, HORSE["rear"])[1][2][1] / posed(COW, COW["rear"])[1][2][1]  # the cow as tall as the horse
+    for a, x, left, size in ((COW, 54 - w / 2, False, level), (HORSE, 54 + w / 2, True, 1.0)):
+        shape, side = placed(a, x, top, left, size)
+        if abs(-side - P["line"]) > 0.25:
+            print(f"a lower front hoof is {-side:.2f} from the shield's side, not a line's width ({P['line']}): "
+                  "turn its forearm", file=sys.stderr)
+        gold = op(op(gold, stroked(shape, 2 * P["line"]), PathOp.DIFFERENCE), shape, PathOp.UNION)
+    return gold
 
 
 def num(v):
@@ -203,9 +302,14 @@ def data(p):
     return "".join(out)
 
 
-gold = data(g.shapes["gold"])
-far = max(math.hypot(x - 54, y - 54) for _, pts in g.shapes["gold"].segments for x, y in pts)
+g = icon(40)
+l, t, r, b = g.bounds
+g = icon(40 + 54 - (t + b) / 2)  # centred top to bottom
+l, t, r, b = g.bounds
+gold = data(g)
+far = max(math.hypot(x - 54, y - 54) for _, pts in g.segments for x, y in pts)
 print(f"farthest point from the centre: {far:.1f} (the safe zone is 33, a round mask shows 36)", file=sys.stderr)
+stops = ((0, P["gold_hi"]), (0.5, P["gold"]), (1, P["gold_lo"]))
 
 
 # The status-bar icon, 24 units: the shield alone, its rim in one colour (the animals can't be read at
@@ -215,28 +319,45 @@ small = shield(12, 12 - N["h"] / 2, N["w"], N["h"])
 notify = data(op(stroked(small, 2 * N["rim"]), small, PathOp.INTERSECTION))
 
 
-def vector(comment, color, path, box=108):
+def vector(comment, fill, path, box=108):
+    """A vector drawable of one path; [fill] is a colour, or gradient stops running down the drawing."""
+    if isinstance(fill, str):
+        paint, aapt = f'<path android:fillColor="{fill}" android:pathData="{path}" />', ""
+    else:
+        aapt = ' xmlns:aapt="http://schemas.android.com/aapt"'
+        items = "".join(f'\n                <item android:offset="{o}" android:color="#FF{c[1:].upper()}" />' for o, c in fill)
+        paint = (f'<path android:pathData="{path}">\n        <aapt:attr name="android:fillColor">\n'
+                 f'            <gradient android:type="linear" android:startX="54" android:startY="{num(t)}" '
+                 f'android:endX="54" android:endY="{num(b)}">{items}\n'
+                 "            </gradient>\n        </aapt:attr>\n    </path>")
     return ('<?xml version="1.0" encoding="utf-8"?>\n'
             f"<!-- {comment} Drawn by android/icon/crest.py; edit that, not this. -->\n"
-            '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+            f'<vector xmlns:android="http://schemas.android.com/apk/res/android"{aapt}\n'
             f'    android:width="{box}dp" android:height="{box}dp"\n'
             f'    android:viewportWidth="{box}" android:viewportHeight="{box}">\n'
-            f'    <path android:fillColor="{color}" android:pathData="{path}" />\n'
+            f"    {paint}\n"
             "</vector>\n")
 
 
 if res:
     open(f"{res}/ic_fg.xml", "w").write(vector(
-        "The cow and the horse holding up UM's shield, in its gold, on the blue of @color/ic_bg.",
-        "#FF" + P["gold"][1:].upper(), gold))
+        "The cow and the horse holding up UM's shield, in gold, on the blue of @color/ic_bg.", stops, gold))
     open(f"{res}/ic_mono.xml", "w").write(vector("Themed icon: the same drawing in one colour.", "#FFFFFFFF", gold))
     open(f"{res}/ic_notify.xml", "w").write(vector("Status-bar icon: UM's shield, in one colour.", "#FFFFFFFF", notify, 24))
 
-body = f'<rect width="108" height="108" fill="{P["blue"]}"/><path fill="{P["gold"]}" d="{gold}"/>'
+grad = (f'<linearGradient id="g" gradientUnits="userSpaceOnUse" x1="54" y1="{num(t)}" x2="54" y2="{num(b)}">'
+        + "".join(f'<stop offset="{o}" stop-color="{c}"/>' for o, c in stops) + "</linearGradient>")
+body = f'<rect width="108" height="108" fill="{P["blue"]}"/><path fill="url(#g)" d="{gold}"/>'
 open("preview-notify.svg", "w").write(
     f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#FFFFFF" d="{notify}"/></svg>')
 for name, mask in (("circle", '<circle cx="54" cy="54" r="36"/>'),
                    ("squircle", '<rect x="18" y="18" width="72" height="72" rx="22"/>')):
     open(f"preview-{name}.svg", "w").write(
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72"><defs><clipPath id="m">{mask}</clipPath>'
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72"><defs>{grad}<clipPath id="m">{mask}</clipPath>'
         f'</defs><g clip-path="url(#m)">{body}</g></svg>')
+
+# The animals alone, black on white: the cow standing and reared, then the horse.
+study = "".join(f'<path transform="translate({i * 330 + j * 170 + 30} 185)" d="{data(posed(a, a[pose])[0])}"/>'
+                for i, a in enumerate((COW, HORSE)) for j, pose in enumerate(("stand", "rear")))
+open("preview-study.svg", "w").write(
+    f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 200"><rect width="660" height="200" fill="#fff"/>{study}</svg>')

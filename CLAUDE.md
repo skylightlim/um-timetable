@@ -125,9 +125,11 @@ To release a new version of the app, once the user asks:
   then port, generating the Kotlin path data from the prototype's shapes rather than retyping it. That's
   much faster than rebuilding the APK. Look at the drawing at real phone size (the view's dp × 3 px).
   Gold outlines on blue were clutter at launcher size; solid silhouettes read. The icon's pair are
-  their own drawings (rearing silhouettes, outlines through points), not `DuelView`'s. Placed by the
-  hooves they stand on, so the shield sits between them: hung from the shield by a front hoof, a
-  rearing animal's body rose above it.
+  their own drawings, not `DuelView`'s: each drawn standing (trunk, neck and head as outlines, legs and
+  tail as bones) and then posed rearing, so `preview-study.svg` can be held against a photo. Placed by
+  the upper front hoof, on the shield's top, with the cow sized to stand on the horse's ground. Legs are
+  round beads joined by their tangents and then redrawn as one curve: an outline offset from the leg's
+  line folds over itself where a wide thigh bends sharply.
 - `crest.py` (`uv run --with skia-pathops`): `Path.stroke` emits conics (call `convertConicsToQuads`
   before boolean ops), and a `qCurveTo` segment holds several quadratics with implied points
   (`decompose_quadratic_segment`).
