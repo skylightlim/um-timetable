@@ -26,6 +26,7 @@ Aplikasi jadual waktu tidak rasmi untuk pelajar UM · 马来亚大学学生的�
 |---|---|
 | **Know what's next** | Your class right now, how long is left, and where to go after it. |
 | **See your whole week** | A clean week grid with UM's semester weeks and Kuala Lumpur's public holidays. Add your own plans to free slots. |
+| **Your exams too** | Sign in to MAYA once and your exams land on Day and Week, with the hall and when to be there. |
 | **Never miss a deadline** | Every Spectrum deadline in one list, counting down. |
 | **Keep up with each course** | News, marks, files and links, without digging through Spectrum. |
 | **Get reminded** | Notifications for deadlines, marks, news, new slides and notes, and your classes. |
@@ -72,7 +73,7 @@ There's **no server** behind this app: nothing about you is sent to the project,
 
 - **Your password:** you type it on Microsoft's own sign-in page, and the app doesn't read or save it. It keeps only a sign-in token, encrypted on your phone.
 - **Your data:** your timetable, marks and news are stored on your phone only.
-- **Who the app talks to:** Microsoft to sign in; UM's Spectrum and TimeEdit for your information (and MAYA, only if you choose to import from it); GitHub to check for updates.
+- **Who the app talks to:** Microsoft to sign in; UM's Spectrum and TimeEdit for your information (and MAYA, only if you choose to import from it or get your exams from it); GitHub to check for updates.
 - **Signing out** deletes everything the app saved.
 
 The code is all here, so anyone can check.

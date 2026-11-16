@@ -43,6 +43,7 @@ import java.io.File
  * view scene draws the sign-in poster's fight as a contact sheet, a frame every --ei step ms (200); with --ei fps 30
  * instead, each frame on its own (cache/render/scene/0000.png …, 960 × 540) for a video, a second en garde after.
  * view occcard draws Settings' card for choosing an occurrence (--es code CODE); view shortcard its card for a short name.
+ * view examscard draws Settings' Exams card, listing the saved exams still to come.
  * view pinmenu draws the card a long press on a course page's section name brings up (--ez pinned true: Unpin).
  * view signout draws the Sign out question's card. view settings draws the Settings tab's page (--ez signedIn true|false
  * for either Account row); view signin the first-run sign-in poster, at screen height (or --ei height px).
@@ -121,6 +122,11 @@ class DebugRenderReceiver : BroadcastReceiver() {
                 setPadding(host.ui.dp(4), host.ui.dp(16), host.ui.dp(4), host.ui.dp(24))
                 val course = host.timetable.courses.firstOrNull { it.code == intent.getStringExtra("code") } ?: host.timetable.courses.first()
                 addView(SettingsSheet.shortFormCard(host.ui, course) {})
+            }
+            // Settings' Exams card, with the saved exams still to come.
+            "examscard" -> FrameLayout(c).apply {
+                setPadding(host.ui.dp(4), host.ui.dp(16), host.ui.dp(4), host.ui.dp(24))
+                addView(SettingsSheet.examsCard(host.ui, Exams.ahead(context), host.timetable) {})
             }
             // The card a long press on a course page's section name brings up (--ez pinned true: "Unpin").
             "pinmenu" -> FrameLayout(c).apply {
@@ -602,7 +608,7 @@ class DebugRenderReceiver : BroadcastReceiver() {
         override fun signIn() = Unit
         override fun signOut(from: View?) = Unit
         override fun refresh() = Unit
-        override fun openMaya() = Unit
+        override fun openMaya(exams: Boolean) = Unit
         override fun openTimeEdit() = Unit
         override fun enableNotifications() = Unit
         override fun openAppSettings() = Unit

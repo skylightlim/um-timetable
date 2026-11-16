@@ -1267,7 +1267,9 @@ class MainActivity : Activity(), SpectrumHost {
     }
 
     @Suppress("DEPRECATION")
-    override fun openMaya() = startActivityForResult(Intent(this, MayaActivity::class.java), REQ_MAYA)
+    override fun openMaya(exams: Boolean) =
+        if (exams) startActivityForResult(Intent(this, MayaActivity::class.java).putExtra(MayaActivity.EXTRA_EXAMS, true), REQ_EXAMS)
+        else startActivityForResult(Intent(this, MayaActivity::class.java), REQ_MAYA)
 
     @Suppress("DEPRECATION")
     override fun openTimeEdit() = startActivityForResult(Intent(this, TimeEditActivity::class.java), REQ_TIMEEDIT)
@@ -1307,6 +1309,8 @@ class MainActivity : Activity(), SpectrumHost {
                 hideWelcome()
                 go("week", null)
             }
+            // Settings, where the Exams row now counts them.
+            REQ_EXAMS -> render(keepScroll = true)
         }
     }
 
@@ -1331,6 +1335,7 @@ class MainActivity : Activity(), SpectrumHost {
         private const val REQ_NOTIFY = 2
         private const val REQ_MAYA = 3
         private const val REQ_TIMEEDIT = 4
+        private const val REQ_EXAMS = 5
         private val TABS = listOf(
             // Animated icons (res/drawable/avd_tab_*): at rest each is its ic_tab_* drawing.
             Triple("day", "Day", R.drawable.avd_tab_day),

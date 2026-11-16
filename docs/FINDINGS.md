@@ -122,6 +122,23 @@ GIG1017 27335, GUL1001 27337.
   "MAYA Portal > Timetable > My Timetable" (once modules are registered); "Timetable > Timetable
   Search" is the TimeEdit viewer. Since 14 Oct `MayaActivity` takes that path by itself after the user
   signs in. The real menu's markup hasn't been seen: it was tested only against a stand-in page.
+  **Seen 16 Nov:** the home page's link is "MyTimetable" (one word, `SIW_YMHD.start_url?…`), and it
+  opens a form first, not the timetable: **"Timetable view selection"** (a title that also contains
+  "Timetable View"). Its fields: Display View `select[name="DISPLAY_TYPE.DUM_DETAILS.MENSYS.1"]` (D Day,
+  W Week, M Month, S Semester, T Task List, U Usage, K/O overviews), Display Start/End Date
+  (`DISPLAY_DATE…`, `DISPLAY_END_DATE…`, typed as "01/Feb/2027", the date picker's `dd/M/yy`), then the
+  "Display Timetable" submit button. Setting the fields' values by script and clicking it works. The
+  Task List from today to the end of the semester comes back as SIW_XTTB with one day row per date.
+- **Exams (16 Nov):** UM puts each student's exams on the same My Timetable, among the classes, once
+  the exam timetable is set (Sem 1 2026/27: in the exam weeks, 25 Jan–7 Feb). There's no exam link on
+  MAYA's tabs (Home, Admission, Enrolment, …). An exam event is labelled differently from a class:
+  `Module` (not `Code`), MAYA's own spelling `Occurence` (not `Occurrence`), `Activity: Centrally
+  Scheduled Exam`, `Room` (the exam building's halls are "Dewan N Aras N Bangunan Peperiksaan"),
+  `Site`, then `Barred from Exam`, `Quarantine Exam` and `Special Case` (N/A unless they apply) and
+  a red line "Please arrive at least 15 minutes before the examination starts." No seat number.
+  `Exams.kt` reads them (any event whose activity says exam); `MayaActivity` with `EXTRA_EXAMS`
+  signs the user in, fills the form (Task List, today to the semester's end) and saves them.
+  Checked on a real account: all of its exams read, every class around them skipped.
 - Timetable page: **`SIW_XTTB`, title "Timetable View"**, list layout, about 3 weeks on screen.
   - Day rows: `div.sitsjqttdaylistrow[data-jqtt-date="20261006…"]`.
   - Classes: `li.sitsjqtteventcontainer` with `HH:MM - HH:MM` and labelled lines

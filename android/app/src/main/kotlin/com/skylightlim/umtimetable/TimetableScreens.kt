@@ -278,7 +278,10 @@ object DayScreen {
         // come in time order, the class in progress or the next one lifted, and what's finished under it all.
         val date = h.dateOf(day)
         val plans = Plans.on(sample ?: Plans.all(ui.context), date)
-        val items = (list.map { Triple(it.start, it.end, it as Any) } + plans.map { Triple(it.start, it.end, it as Any) }).sortedBy { it.first }
+        // The user's exams that day, from MAYA ([Exams]), set out as classes are.
+        val exams = Exams.on(ui.context, date)
+        val items = (list.map { Triple(it.start, it.end, it as Any) } + plans.map { Triple(it.start, it.end, it as Any) } +
+            exams.map { Triple(it.start, it.end, it as Any) }).sortedBy { it.first }
         val (finished, ahead) = splitDay(items, isToday && !off, now.min)
         val lifted = status?.session?.takeIf { it in list }
         val agenda = ui.column(gap = 8f)
@@ -292,6 +295,7 @@ object DayScreen {
                 is Session -> if (item == lifted) agenda.addView(liftedSlot(h, item, status).also { hero = it })
                     else agenda.addView(slot(h, item, past = off))
                 is Plan -> agenda.addView(planSlot(h, item, items, live = isToday && now.min >= item.start && now.min < item.end))
+                is Exam -> agenda.addView(examSlot(h, item, live = isToday && now.min >= item.start && now.min < item.end))
             }
         }
         page.addView(agenda)
@@ -300,6 +304,7 @@ object DayScreen {
             for ((_, _, item) in finished) when (item) {
                 is Session -> addView(slot(h, item, past = true))
                 is Plan -> addView(planSlot(h, item, items, live = false))
+                is Exam -> addView(examSlot(h, item, live = false))
             }
             page.addView(this, ui.wide(top = if (ahead.isNotEmpty()) 22f else 0f))
         }
@@ -381,6 +386,50 @@ object DayScreen {
             WeekGrid.landing = null
             Motion.pop(card, 0.85f)
         }
+        if (!live) return card
+        return FrameLayout(ui.context).apply {
+            background = ui.shape(Color.TRANSPARENT, 19f, p.accent, 2f)
+            setPadding(ui.dp(3), ui.dp(3), ui.dp(3), ui.dp(3))
+            addView(card)
+        }
+    }
+
+    /**
+     * One of the user's exams, among the classes and set out as a lecture is: filled with its course's colour,
+     * the times on the left, the course in bold and the hall large on the right, then "Exam" and when to be
+     * there, the hall's full name, and the code and occurrence. Faded once it's over; ringed in the accent
+     * while it's on ([live]). Everything MAYA says about it is on the card, so a tap does nothing.
+     */
+    private fun examSlot(h: Host, e: Exam, live: Boolean): View {
+        val ui = h.ui
+        val p = ui.p
+        val course = h.timetable.courses.firstOrNull { it.code == e.code }
+        val c = course?.color ?: p.accent
+        val over = e.endsAt <= System.currentTimeMillis()
+        val fill = if (over) p.pastFill(c) else c
+        val fg = if (over) p.pastText(fill) else if (course == null) p.accentInk else p.ink
+        val fgMuted = if (over || course == null) fg else p.inkMuted
+        val name = course?.name ?: e.code
+        val card = columns(ui).apply {
+            background = ui.shape(fill, 16f)
+            setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(15))
+            contentDescription = "Exam, ${if (over) "done, " else ""}${clockText(e.start)} to ${clockText(e.end)}, $name, ${MayaImport.roomName(e.room)}" +
+                e.note.takeIf { it.isNotEmpty() }?.let { ", $it" }.orEmpty()
+        }
+        card.addView(times(ui, e.start, e.end, fg, fgMuted))
+        val meta = SpannableStringBuilder(if (over) "Exam · done" else "Exam").apply {
+            setSpan(TypefaceSpan(ui.f.bodySemi), 0, 4, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if (!over && e.note.isNotEmpty()) append(" · ").append(e.note)
+        }
+        val nameView = title(ui, name, fg)
+        card.addView(ui.column().apply {
+            addView(nameView)
+            addView(ui.text(meta, 13.5f, fgMuted), ui.wide(top = 4f))
+            addView(ui.text(MayaImport.roomName(e.room), 13.5f, fgMuted), ui.wide(top = 2f))
+            addView(ui.text("${e.code}${if (e.occ > 0) " · Occ ${e.occ}" else ""}", 11f, fgMuted, ui.f.mono, caps = true), ui.wide(top = 6f))
+            baselineAlignedChildIndex = 0
+        }, ui.grow())
+        card.addView(room(ui, e.shortRoom, fg, nameView))
         if (!live) return card
         return FrameLayout(ui.context).apply {
             background = ui.shape(Color.TRANSPARENT, 19f, p.accent, 2f)
@@ -636,7 +685,7 @@ object WeekScreen {
     private fun offCard(h: Host): View? = weekOff(h.dateOf(1))?.let { FrameLayout(h.ui.context).apply { addView(offCard(h.ui, null, it)); setPadding(0, 0, 0, h.ui.dp(12)) } }
 
     private fun grid(h: Host, plans: List<Plan>?) =
-        WeekGrid(h.ui, h.timetable, h.now(), h.daysTo(1), plans ?: Plans.inWeek(h.ui.context, h.dateOf(1)), h::openPlan) { s -> h.openSheet(s.course, s) }
+        WeekGrid(h.ui, h.timetable, h.now(), h.daysTo(1), plans ?: Plans.inWeek(h.ui.context, h.dateOf(1)), h::openPlan, Exams.inWeek(h.ui.context, h.dateOf(1))) { s -> h.openSheet(s.course, s) }
 
     /** The week's grid now, for the swipe to drag. */
     fun grid(page: View): View? = (page.tag as? Parts)?.gridBox?.let { it.getChildAt(it.childCount - 1) }
@@ -684,6 +733,8 @@ class WeekGrid(
     /** The user's plans in this week (see [Plan]): drawn in their free times, opened by a tap. */
     private val plans: List<Plan>,
     private val onPlan: (from: RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float) -> Unit,
+    /** The user's exams in this week ([Exams]): drawn over the (faded) classes of the exam weeks. */
+    private val exams: List<Exam> = emptyList(),
     private val onTap: (Session) -> Unit,
 ) : View(ui.context) {
     private val p = ui.p
@@ -698,6 +749,7 @@ class WeekGrid(
     private val hours = (endMin - startMin) / 60
     private val blocks = mutableListOf<Pair<RectF, Session>>()
     private val planBlocks = mutableListOf<Pair<RectF, Plan>>()
+    private val examBlocks = mutableListOf<RectF>()
     /** Each column's date, Monday first. */
     private val dates = (0..4).map { LocalDate.now().plusDays((monday + it).toLong()) }
     /** Today's column, when the week shown (its Monday [monday] days from today) is this week. */
@@ -737,7 +789,8 @@ class WeekGrid(
     private val fillClip = android.graphics.Path()
 
     init {
-        contentDescription = "Week timetable: " + tt.sessions.joinToString("; ") { "${DAY_NAMES[it.day]} ${clockText(it.start)} ${it.course.code} ${it.type} ${it.room}" }
+        contentDescription = "Week timetable: " + tt.sessions.joinToString("; ") { "${DAY_NAMES[it.day]} ${clockText(it.start)} ${it.course.code} ${it.type} ${it.room}" } +
+            exams.joinToString("") { "; exam ${DAY_NAMES[it.date.dayOfWeek.value % 7]} ${clockText(it.start)} ${it.code} ${it.shortRoom}" }
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -747,6 +800,7 @@ class WeekGrid(
     override fun onDraw(canvas: Canvas) {
         blocks.clear()
         planBlocks.clear()
+        examBlocks.clear()
         val colW = (width - axis - gapX * 5) / 5
         val top = padY
         val bottom = top + hour * hours
@@ -782,6 +836,8 @@ class WeekGrid(
             // Faded: today's classes that are over, and those on a holiday or in a week without classes.
             val cancelled = holiday != null || weekOff
             for (s in tt.day(d)) drawBlock(canvas, s, RectF(left + ui.dp(1f), top + (s.start - startMin) / 60f * hour + 1, left + colW - ui.dp(1f), top + (s.end - startMin) / 60f * hour - 1), cancelled || (isToday && now.min >= s.end))
+            // Exams over the classes, within the grid's hours.
+            for (e in exams.filter { it.date == dates[d - 1] }) drawExam(canvas, e, RectF(left + ui.dp(1f), maxOf(top, top + (e.start - startMin) / 60f * hour + 1), left + colW - ui.dp(1f), minOf(bottom, top + (e.end - startMin) / 60f * hour - 1)))
             // The holiday's name goes over its (faded) classes, so it can always be read.
             if (holiday != null) drawHolidayName(canvas, holiday, RectF(left, top, left + colW, bottom))
         }
@@ -908,6 +964,46 @@ class WeekGrid(
         roomPaint.color = textColor; roomPaint.alpha = alpha
         if (r.height() >= roomPaint.textSize + codePaint.textSize + pad * 2) {
             canvas.drawText(TextUtils.ellipsize(s.room, roomPaint, w.toFloat(), TextUtils.TruncateAt.END).toString(), r.left + pad, r.bottom - pad, roomPaint)
+        }
+        canvas.restore()
+    }
+
+    /**
+     * An exam: its course's colour, solid, with a ring in the page's colour that lifts it off the faded classes
+     * under it, "EXAM" where a class has its code, the course's name and the hall. Faded once it's over.
+     */
+    private fun drawExam(canvas: Canvas, e: Exam, r: RectF) {
+        if (r.height() <= 0f) return
+        examBlocks += r
+        val course = tt.courses.firstOrNull { it.code == e.code }
+        val radius = ui.dp(7f).toFloat()
+        val alpha = if (e.endsAt <= System.currentTimeMillis()) 115 else 255
+        fill.color = p.surface
+        canvas.drawRoundRect(RectF(r).apply { inset(-ui.dp(1.5f).toFloat(), -ui.dp(1.5f).toFloat()) }, radius + ui.dp(1.5f), radius + ui.dp(1.5f), fill)
+        fill.color = course?.color ?: p.accent; fill.alpha = alpha
+        canvas.drawRoundRect(r, radius, radius, fill)
+        fill.alpha = 255
+        val textColor = if (course == null) p.accentInk else p.ink
+        val pad = ui.dp(4f).toFloat()
+        val w = (r.width() - pad * 2).toInt().coerceAtLeast(1)
+        canvas.save()
+        canvas.clipRect(r)
+        codePaint.color = textColor; codePaint.alpha = alpha
+        canvas.drawText("EXAM", r.left + pad, r.top + pad + codePaint.textSize, codePaint)
+        val nameTop = r.top + pad + codePaint.textSize + ui.dp(3f)
+        val lines = ((r.bottom - pad - roomPaint.textSize - ui.dp(2f) - nameTop) / namePaint.fontSpacing).toInt()
+        if (lines >= 1) {
+            val full = layout(course?.form ?: course?.name ?: e.code, w, lines, true)
+            val name = if (course != null && course.form == null && full.getEllipsisCount(full.lineCount - 1) > 0 && course.short != course.name) layout(course.short, w, lines, true) else full
+            name.paint.color = textColor; name.paint.alpha = alpha
+            canvas.save()
+            canvas.translate(r.left + pad, nameTop)
+            name.draw(canvas)
+            canvas.restore()
+        }
+        roomPaint.color = textColor; roomPaint.alpha = alpha
+        if (r.height() >= roomPaint.textSize + codePaint.textSize + pad * 2) {
+            canvas.drawText(TextUtils.ellipsize(e.shortRoom, roomPaint, w.toFloat(), TextUtils.TruncateAt.END).toString(), r.left + pad, r.bottom - pad, roomPaint)
         }
         canvas.restore()
     }
@@ -1044,8 +1140,9 @@ class WeekGrid(
         return d to start
     }
 
-    /** What's taken on day [d]: its classes and plans (but [except], the plan being moved). */
+    /** What's taken on day [d]: its classes, exams and plans (but [except], the plan being moved). */
     private fun busy(d: Int, except: String?) = tt.day(d).map { it.start to it.end } +
+        exams.filter { it.date == dates[d - 1] }.map { it.start to it.end } +
         plans.filter { it.date == dates[d - 1] && it.id != except }.map { it.start to it.end }
 
     /** Starting at [start] on day [d]: whether it's free, how far it can run (to the end of the day at most), and where a plan of [length] would end. */
@@ -1253,6 +1350,8 @@ class WeekGrid(
                 if (dragging) { dragging = false; drop(); return true }
                 if (pressedLong) return true
                 planBlocks.firstOrNull { it.first.contains(e.x, e.y) }?.let { (r, plan) -> open(r, plan, false); performClick(); return true }
+                // An exam says all it has on Day: a tap on it doesn't open the faded class under it.
+                if (examBlocks.any { it.contains(e.x, e.y) }) return true
                 blocks.firstOrNull { it.first.contains(e.x, e.y) }?.let { onTap(it.second); performClick(); return true }
                 // A free time: a second tap soon after, close by, opens a plan there.
                 val t = e.eventTime

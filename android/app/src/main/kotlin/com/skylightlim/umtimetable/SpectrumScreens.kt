@@ -39,7 +39,8 @@ interface SpectrumHost : Host {
     fun scrollTo(v: View) = Unit
     /** The page drawn again as it is now, where it's scrolled to, with no entrance (as each minute's redraw). */
     fun redraw() = render()
-    fun openMaya()
+    /** MAYA, for the weekly timetable, or for the user's [exams] ([MayaActivity.EXTRA_EXAMS]). */
+    fun openMaya(exams: Boolean = false)
     fun openTimeEdit()
     fun enableNotifications()
     fun openAppSettings()

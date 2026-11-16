@@ -122,6 +122,7 @@ object SettingsSheet {
         val reminders = ClassReminders.CHOICES
         group("Classes", listOfNotNull(
             timetable(h, tt),
+            exams(h, context),
             if (signedIn) occurrences(h, context) else null,
             if (tt.courses.isEmpty()) null else shortForms(h, context),
             wheelRow(ui, "Class reminders", "A notification before class",
@@ -206,6 +207,53 @@ object SettingsSheet {
             close = ConfirmDialog.present(ui, card, from = Motion.onScreen(line))
         }
         return line
+    }
+
+    /** The exams' row says how many are still to come; a tap flies [examsCard] out of it. */
+    private fun exams(h: SpectrumHost, context: Context): View {
+        val ui = h.ui
+        val ahead = Exams.ahead(context)
+        lateinit var line: LinearLayout
+        line = row(ui, "Exams", end = chosen(ui, value(ui, if (ahead.isEmpty()) "None yet" else "${ahead.size} ${if (ahead.size == 1) "exam" else "exams"}"))) {
+            lateinit var close: (then: (() -> Unit)?) -> Unit
+            val card = examsCard(ui, ahead, h.timetable) { close { h.openMaya(exams = true) } }
+            close = ConfirmDialog.present(ui, card, from = Motion.onScreen(line))
+        }
+        return line
+    }
+
+    /**
+     * The exams still to come ([ahead]), listed: when, which course (its name from [tt]), where, and anything
+     * MAYA flagged; then Get from MAYA ([get]): MAYA is the only place they're listed.
+     */
+    fun examsCard(ui: Ui, ahead: List<Exam>, tt: Timetable, get: () -> Unit): LinearLayout {
+        val p = ui.p
+        val context = ui.context
+        val names = tt.courses.associate { it.code to it.name }
+        return ConfirmDialog.frame(ui).apply {
+            addView(ui.text("Exams", 30f, p.text, ui.f.sign))
+            addView(ui.text(if (ahead.isEmpty()) "None yet." else "From MAYA's timetable", 15f, p.muted), ui.wide(top = 2f))
+            if (ahead.isNotEmpty()) {
+                val list = ui.column()
+                ahead.forEachIndexed { i, e ->
+                    if (i > 0) list.addView(View(context).apply { setBackgroundColor(p.line) }, ui.wide().apply { height = 1 })
+                    list.addView(ui.column().apply {
+                        setPadding(0, ui.dp(10), 0, ui.dp(10))
+                        val d = e.date
+                        addView(ui.text("${DAY_SHORT[d.dayOfWeek.value % 7]} ${d.dayOfMonth} ${MONTHS[d.monthValue - 1]} · ${clockText(e.start)}–${clockText(e.end)}", 13f, p.muted, ui.f.mono))
+                        addView(ui.text(names[e.code] ?: e.code, 17f, p.text, ui.f.bodyBold), ui.wide(top = 2f))
+                        addView(ui.text((listOf(MayaImport.roomName(e.room)) + e.flags).joinToString(" · "), 13.5f, p.muted), ui.wide(top = 2f))
+                    })
+                }
+                // A long list scrolls inside the card, which stays on screen.
+                addView(PlanSheet.Capped(context).apply {
+                    cap = (context.resources.displayMetrics.heightPixels * 0.45f).toInt()
+                    addView(list)
+                }, ui.wide(top = 10f))
+            }
+            addView(ConfirmDialog.button(ui, "Get from MAYA", p.accent, p.accentInk, get), ui.wide(top = 16f))
+            addView(ui.text("You sign in to MAYA yourself; the app reads the exams on its timetable.", 13f, p.muted).apply { gravity = Gravity.CENTER }, ui.wide(top = 12f))
+        }
     }
 
     /**
