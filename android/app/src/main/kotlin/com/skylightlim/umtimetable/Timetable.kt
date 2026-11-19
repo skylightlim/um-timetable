@@ -122,8 +122,8 @@ class Timetable(
 
     /**
      * This timetable with the user's changes ([ClassEdits.all]): courses renamed and given another colour
-     * slot (in the import palette, which [recolored] then takes to the theme's), classes moved or retold.
-     * A changed class keeps what it was as its [Session.origin]. Spectrum's occurrence's classes
+     * slot (in the import palette, which [recolored] then takes to the theme's), classes moved or retold,
+     * and those the user deleted left out. A changed class keeps what it was as its [Session.origin]. Spectrum's occurrence's classes
      * ([registered]) take the course's changes only: they're for attendance, never shown.
      */
     fun withEdits(edits: JSONObject): Timetable {
@@ -153,7 +153,8 @@ class Timetable(
                 origin = s,
             )
         }
-        return Timetable(sessions.map(::edited), courses.map(::edited), term, registered.map { it.copy(course = edited(it.course)) })
+        val kept = sessions.filterNot { classEdits?.optJSONObject(ClassEdits.key(it))?.optBoolean(ClassEdits.GONE) == true }
+        return Timetable(kept.map(::edited), courses.map(::edited), term, registered.map { it.copy(course = edited(it.course)) })
     }
 
     /** This timetable with each course in [forms] (code to short name) carrying its short name. */

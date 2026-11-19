@@ -50,6 +50,8 @@ interface Host {
      * [plan] ([isNew] if it isn't saved yet); it can run to [maxEnd] at most; an hour is [hourPx] tall.
      */
     fun openPlan(from: RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float) = Unit
+    /** Opens class [s]'s card ([ClassCard]) out of the week grid's cell [from] (screen coordinates): a long press on it. */
+    fun openClass(from: RectF, s: Session) = Unit
 }
 
 /** Days from today to [day] (1 Monday … 5 Friday) of the week shown, [Host.weekShift] weeks on from the strip's own. */
@@ -689,7 +691,7 @@ object WeekScreen {
     private fun offCard(h: Host): View? = weekOff(h.dateOf(1))?.takeUnless { examWeek(h.dateOf(1)) }?.let { FrameLayout(h.ui.context).apply { addView(offCard(h.ui, null, it)); setPadding(0, 0, 0, h.ui.dp(12)) } }
 
     private fun grid(h: Host, plans: List<Plan>?) =
-        WeekGrid(h.ui, h.timetable, h.now(), h.daysTo(1), plans ?: Plans.inWeek(h.ui.context, h.dateOf(1)), h::openPlan, Exams.inWeek(h.ui.context, h.dateOf(1))) { s -> h.openSheet(s.course, s) }
+        WeekGrid(h.ui, h.timetable, h.now(), h.daysTo(1), plans ?: Plans.inWeek(h.ui.context, h.dateOf(1)), h::openPlan, Exams.inWeek(h.ui.context, h.dateOf(1)), h::openClass) { s -> h.openSheet(s.course, s) }
 
     /** The week's grid now, for the swipe to drag. */
     fun grid(page: View): View? = (page.tag as? Parts)?.gridBox?.let { it.getChildAt(it.childCount - 1) }
@@ -739,6 +741,8 @@ class WeekGrid(
     private val onPlan: (from: RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float) -> Unit,
     /** The user's exams in this week ([Exams]): drawn over the (faded) classes of the exam weeks. */
     private val exams: List<Exam> = emptyList(),
+    /** A long press on a class: its card, out of its cell (screen coordinates). */
+    private val onHold: (from: RectF, s: Session) -> Unit = { _, _ -> },
     private val onTap: (Session) -> Unit,
 ) : View(ui.context) {
     private val p = ui.p
@@ -1091,7 +1095,7 @@ class WeekGrid(
         }
     }
 
-    // --- touch: a tap opens a class or a plan; a long press brings up a selection box to place one ----
+    // --- touch: a tap opens a class or a plan; a long press brings up a selection box to place one, or a class's card ----
 
     private var downX = 0f
     private var downY = 0f
@@ -1168,10 +1172,16 @@ class WeekGrid(
 
     /**
      * A long press: the box comes up for the plan pressed, where it is, or for a new one under the finger,
-     * and follows the finger, held where it was pressed.
+     * and follows the finger, held where it was pressed. On a class, its card pops out instead.
      */
     private fun pickUp(x: Float, y: Float) {
-        val plan = planBlocks.firstOrNull { it.first.contains(x, y) }?.second ?: run {
+        val held = planBlocks.firstOrNull { it.first.contains(x, y) }?.second
+        if (held == null) blocks.firstOrNull { it.first.contains(x, y) }?.let { (r, s) ->
+            Haptics.threshold(this, true)
+            val at = IntArray(2).also(::getLocationOnScreen)
+            return onHold(RectF(r).apply { offset(at[0].toFloat(), at[1].toFloat()) }, s)
+        }
+        val plan = held ?: run {
             val palette = Plans.palette(Scheme.load(context), p.accent)
             Plan.new(dates[0], startMin, startMin + 60, palette[(plans.size + halfHourAt(x, y).first) % palette.size])
         }

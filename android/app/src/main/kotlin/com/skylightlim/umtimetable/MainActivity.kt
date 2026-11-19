@@ -1138,6 +1138,10 @@ class MainActivity : Activity(), SpectrumHost {
     override fun openPlan(from: android.graphics.RectF, plan: Plan, isNew: Boolean, maxEnd: Int, hourPx: Float) =
         PlanSheet.show(ui, from, plan, isNew, maxEnd, hourPx, onRepick = ::repick) { render(keepScroll = true) }
 
+    /** A class's card, out of its cell in the week grid; once it's deleted, the week, the widget and the alarms go without it. */
+    override fun openClass(from: android.graphics.RectF, s: Session) =
+        ClassCard.show(ui, from, s) { ClassEdits.changed(this); render(keepScroll = true) }
+
     /** "Change time" on a plan's card: the selection box waits on Week, in the plan's week (opened if need be, from Day). */
     private fun repick(draft: Plan) {
         if (view == "week" && Plan.weekOf(draft.date) == Plan.weekOf(dateOf(1))) return weekGrid()?.startRepick(draft) ?: Unit

@@ -6,7 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
 
-/** The class sheet's pen: what a change reaches, and how a changed class is still known by what TimeEdit gave it. */
+/** The class sheet's pen and a class card's Delete: what a change reaches, and how a changed class is still known by what TimeEdit gave it. */
 class ClassEditsTest {
     private val maths = Course("WIA1001", "Computing Mathematics I", "Maths", 5, 0xFFA586E8.toInt())
     private val other = Course("WIA1002", "Data Structures", "DS", 3, 0xFF4F9CF0.toInt())
@@ -58,5 +58,17 @@ class ClassEditsTest {
         assertEquals(5, s.day)
         assertEquals(1400, s.start)
         assertEquals(1405, s.end)
+    }
+
+    @Test fun aDeletedClassIsGoneEveryWeek() {
+        val e = tt.withEdits(edits("""{"classes": {"${ClassEdits.key(lecture)}": {"gone": true}}}"""))
+        assertEquals(listOf(tutorial, ds), e.sessions)
+        assertEquals(emptyList<Session>(), e.day(2))
+        // Its course stays, with its other classes; and attendance is for the classes left.
+        assertEquals(tt.courses, e.courses)
+        assertEquals(listOf(ds), e.attendance.filter { it.course.code == "WIA1002" })
+        // Deleted after it was moved: gone all the same, since it's known by what TimeEdit gave it.
+        val moved = tt.withEdits(edits("""{"classes": {"${ClassEdits.key(lecture)}": {"day": 4, "gone": true}}}"""))
+        assertEquals(listOf(tutorial, ds), moved.sessions)
     }
 }

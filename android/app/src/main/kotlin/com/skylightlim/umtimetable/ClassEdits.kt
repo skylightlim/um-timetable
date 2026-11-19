@@ -9,7 +9,10 @@ import org.json.JSONObject
  * [ShortForms] are, so getting it again from TimeEdit doesn't lose them. A class is known by what TimeEdit
  * gave it ([key]): one TimeEdit later moves is a new class, and the change made to the old one stays behind.
  *
- * `{courses: {CODE: {name?, slot?}}, classes: {KEY: {day?, start?, end?, type?, room?, lecturer?}}}`; a
+ * A class can also be deleted ([GONE], from its card on Week: [ClassCard]): it's gone for good, getting the
+ * timetable again doesn't bring it back.
+ *
+ * `{courses: {CODE: {name?, slot?}}, classes: {KEY: {day?, start?, end?, type?, room?, lecturer?, gone?}}}`; a
  * course's colour is its slot in the theme's course colours, so it changes with the theme as the rest do.
  */
 object ClassEdits {
@@ -25,6 +28,8 @@ object ClassEdits {
     const val TYPE = "type"
     const val ROOM = "room"
     const val LECTURER = "lecturer"
+    /** The class deleted: true. */
+    const val GONE = "gone"
 
     /** A class as TimeEdit gave it: its course, day, start and type ("WIA2003|2|600|Lecture"). */
     fun key(s: Session): String = (s.origin ?: s).let { "${it.course.code}|${it.day}|${it.start}|${it.type}" }
@@ -36,6 +41,9 @@ object ClassEdits {
 
     /** The class [key]'s [field] ([DAY], [START] …) set to [value]. */
     fun setClass(c: Context, key: String, field: String, value: Any) = edit(c, "classes", key, field, value)
+
+    /** Deletes the class [key], every week, for good. */
+    fun delete(c: Context, key: String) = setClass(c, key, GONE, true)
 
     /** Whether course [code] (or the class [key], when given) has a change of the user's. */
     fun has(c: Context, code: String, key: String?): Boolean = all(c).let { all ->
