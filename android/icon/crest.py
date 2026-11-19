@@ -1,8 +1,9 @@
 """Draws the launcher icon: a cow (牛) and a horse (马) rearing up on either side of an empty shield in
-UM's shape, holding it up the way the two tigers hold up the arms of Malaysia: their heads well above
-it, one front hoof on its top and the other against its side, one hind leg raised. The shield is larger
-than the jata's, nearly half the width and as tall as a supporter (the user found it too small at two
-fifths). Realistic
+UM's shape, holding it up the way the two tigers hold up the arms of Malaysia: upright and close beside
+it, their heads well above it, one front hoof on its top, the other against its side and the raised hind
+hoof against its lower side. The shield is about two fifths of the drawing's width and three quarters
+of a supporter's height, as on the jata (the user found it too small with the pair standing off it,
+and too big at the height of a supporter). Realistic
 silhouettes in gold, light at the top and deep at the bottom like the metal, on UM's blue (the adaptive
 icon's background, @color/ic_bg).
 
@@ -31,10 +32,10 @@ P = dict(
     blue="#223E99",  # UM's blue
     gold_hi="#F7E08A", gold="#D9AE3A", gold_lo="#B4841C",  # gold from the top of the drawing to its bottom
     line=0.9,       # the gap between a hoof and the shield, in icon units (dp in the 108-unit icon)
-    scale=0.165,    # the horse: icon units per unit it's drawn in (it stands 92 high at the withers)
-    rim=2.8,        # the shield's rim
-    shield_w=30, shield_h=31,
-    inset=1.6,      # how far in from the shield's corner the upper front hoof rests
+    scale=0.2,      # the horse: icon units per unit it's drawn in (it stands 92 high at the withers)
+    rim=2.6,        # the shield's rim
+    shield_w=26, shield_h=27,
+    inset=2.5,      # how far in from the shield's corner the upper front hoof rests
 )
 res = sys.argv[1] if len(sys.argv) > 1 and "=" not in sys.argv[1] else None
 for kv in sys.argv[1 if res is None else 2:]:
@@ -186,8 +187,8 @@ HORSE = dict(
     ],
     stand=dict(lean=0, neck=0, head=0, tail=[160, 120, 95, 85, 80], hoof=[90, 90, 90, 90],
                legs=[[65, 115, 115, 88, 88, 60], [80, 112, 112, 95, 95, 60], [115, 90, 90, 90, 90, 60], [105, 80, 80, 95, 95, 60]]),
-    rear=dict(lean=60, neck=-40, head=-3, tail=[150, 120, 100, 92, 88], hoof=[90, 60, 90, 0],
-              legs=[[50, 128, 128, 78, 78, 50], [15, 100, 100, 50, 50, 35], [50, -45, -45, 40, 40, 55], [75, 22, 22, 100, 100, 50]]),
+    rear=dict(lean=75, neck=-65, head=0, tail=[150, 120, 100, 92, 88], hoof=[90, -20, 90, 0],
+              legs=[[50, 128, 128, 78, 78, 50], [40, 81, 81, 40, 40, 30], [70, -30, -30, 60, 60, 75], [80, 50.3, 50.3, 105, 105, 60]]),
 )
 
 COW = dict(
@@ -211,8 +212,8 @@ COW = dict(
     ],
     stand=dict(lean=0, neck=0, head=0, tail=[150, 110, 95, 90, 88, 85], hoof=[90, 90, 90, 90],
                legs=[[60, 118, 118, 86, 86, 65], [78, 112, 112, 95, 95, 65], [115, 90, 90, 90, 90, 65], [105, 82, 82, 95, 95, 65]]),
-    rear=dict(lean=58, neck=-20, head=-12, tail=[140, 108, 96, 92, 90, 90], hoof=[90, 60, 90, 0],
-              legs=[[50, 125, 125, 80, 80, 55], [15, 100, 100, 55, 55, 40], [50, -45, -45, 40, 40, 55], [75, 29, 29, 100, 100, 50]]),
+    rear=dict(lean=68, neck=-30, head=-12, tail=[140, 108, 96, 92, 90, 90], hoof=[90, -20, 90, 0],
+              legs=[[50, 125, 125, 80, 80, 55], [35, 65, 65, 40, 40, 30], [70, -30, -30, 60, 60, 75], [80, 55.6, 55.6, 110, 110, 60]]),
 )
 
 
@@ -260,12 +261,24 @@ def posed(a, pose):
 
 def placed(a, edge, top, face_left, size=1.0):
     """[a] rearing, scaled into the icon: its upper front hoof on the shield's top, a line's width above
-    it and `inset` in from the side at x = [edge]. And how far its lower front hoof is from that side."""
+    it and `inset` in from the side at x = [edge]. And where its hooves' soles are."""
     shape, soles = posed(a, a["rear"])
     s, (rx, ry), d = P["scale"] * size, soles[2], -1 if face_left else 1
     x, y = edge + d * P["inset"], top - P["line"]
     p = shape.transform(d * s, 0, 0, s, x - d * rx * s, y - ry * s)
-    return op(p, Path(), PathOp.UNION), P["inset"] - (rx - soles[3][0]) * s
+    return op(p, Path(), PathOp.UNION), [(x + d * (sx - rx) * s, y + (sy - ry) * s) for sx, sy in soles]
+
+
+def off(shape, x, y):
+    """How far (x, y) is from [shape], to a hundredth; 0 inside it."""
+    touches = lambda r: op(circle(x, y, r), shape, PathOp.INTERSECTION).bounds != (0, 0, 0, 0)
+    if touches(0.01):
+        return 0.0
+    lo, hi = 0.0, 20.0
+    while hi - lo > 0.01:
+        m = (lo + hi) / 2
+        lo, hi = (lo, m) if touches(m) else (m, hi)
+    return hi
 
 
 # --- the icon -------------------------------------------------------------------------------------
@@ -276,11 +289,13 @@ def icon(top):
     sh = shield(54, top, w, h)
     gold = op(stroked(sh, 2 * P["rim"]), sh, PathOp.INTERSECTION)
     level = posed(HORSE, HORSE["rear"])[1][2][1] / posed(COW, COW["rear"])[1][2][1]  # the cow as tall as the horse
-    for a, x, left, size in ((COW, 54 - w / 2, False, level), (HORSE, 54 + w / 2, True, 1.0)):
-        shape, side = placed(a, x, top, left, size)
-        if abs(-side - P["line"]) > 0.25:
-            print(f"a lower front hoof is {-side:.2f} from the shield's side, not a line's width ({P['line']}): "
-                  "turn its forearm", file=sys.stderr)
+    for name, a, x, left, size in (("cow", COW, 54 - w / 2, False, level), ("horse", HORSE, 54 + w / 2, True, 1.0)):
+        shape, soles = placed(a, x, top, left, size)
+        for k, hoof in ((1, "raised hind hoof"), (3, "lower front hoof")):
+            gap = off(sh, *soles[k])
+            if abs(gap - P["line"]) > 0.25:
+                print(f"the {name}'s {hoof} is {gap:.2f} from the shield, not a line's width ({P['line']}): "
+                      "turn its leg", file=sys.stderr)
         gold = op(op(gold, stroked(shape, 2 * P["line"]), PathOp.DIFFERENCE), shape, PathOp.UNION)
     return gold
 
