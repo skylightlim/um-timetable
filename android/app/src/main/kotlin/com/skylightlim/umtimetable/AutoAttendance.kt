@@ -170,7 +170,7 @@ object AutoAttendance {
         AttendanceLog.add(c, "attendance read${error?.let { " failed: $it (using the last one)" } ?: ""}: " +
             sessions.joinToString("; ") { "${it.optString("code")} \"${it.optString("name")}\" ${SpectrumStore.hm(it.getLong("start"))}-${SpectrumStore.hm(it.getLong("end"))}${if (it.optBoolean("listed", true)) "" else " (not in the calendar)"}" }.ifEmpty { "none today" })
         for (s in due) {
-            val what = "${s.course.code} ${s.type.lowercase()} ${clockText(s.start)}"
+            val what = AttendanceHistory.what(s) // as the log page reads it back
             val from = dayStart + s.start * 60_000L
             val to = dayStart + s.end * 60_000L
             // The try after this one, if the class lasts that long.
@@ -262,17 +262,7 @@ object AutoAttendance {
             Notify.post(c, Notify.ATTENDANCE, "att-$id", "Marked $status · $what", "Spectrum recorded your attendance at ${SpectrumStore.hm(System.currentTimeMillis())}$how.", Notify.openSpectrum(c, url))
             return
         }
-        val why = when (answer.optString("error")) {
-            "notopen", "closed" -> "No attendance session opened for it while the app kept trying."
-            "password" -> "The session needs your lecturer's password."
-            "qr" -> "The session needs its QR code scanned in class."
-            "network" -> "Spectrum only takes this session from UM's network: join the campus Wi-Fi."
-            "nostatus" -> "Spectrum offered no status to choose."
-            "signedout" -> "Spectrum wants you to sign in again."
-            "blocked" -> "Android blocked the app's mobile data in the background."
-            "unreachable" -> "Couldn't reach Spectrum."
-            else -> "Spectrum didn't confirm it."
-        }
+        val why = AttendanceHistory.why(answer.optString("error"))
         if (!Notify.allowed(c)) AttendanceLog.add(c, "notifications are off: the user isn't told")
         Notify.post(c, Notify.ATTENDANCE, "att-$id", "Couldn't mark attendance · $what", "$why Tap to mark it yourself.", Notify.openSpectrum(c, url))
     }

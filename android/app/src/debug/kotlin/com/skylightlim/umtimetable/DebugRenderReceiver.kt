@@ -44,6 +44,7 @@ import java.io.File
  * instead, each frame on its own (cache/render/scene/0000.png …, 960 × 540) for a video, a second en garde after.
  * view occcard draws Settings' card for choosing an occurrence (--es code CODE); view shortcard its card for a short name.
  * view examscard draws Settings' Exams card, listing the saved exams still to come.
+ * view log draws the attendance log's page from the phone's log: its Classes tab (--ez all true: All).
  * view classcard draws the card a long press on a class on Week brings up (--ei session N: the timetable's Nth
  * class, else the first).
  * view pinmenu draws the card a long press on a course page's section name brings up (--ez pinned true: Unpin).
@@ -146,6 +147,8 @@ class DebugRenderReceiver : BroadcastReceiver() {
             // --ez open true: the Occurrences fold open.
             "settings" -> SettingsSheet.also { it.occurrencesOpen = intent.getBooleanExtra("open", false) }.build(host, c, intent.getBooleanExtra("signedIn", SpectrumStore.signedIn(context)))
             "signin" -> SignInScreen.build(host.ui) {}
+            // The attendance log's page: Classes, or All with --ez all true.
+            "log" -> AttendanceLogPage.build(host, intent.getBooleanExtra("all", false))
             // The top bar as MainActivity lays it out: --es view title --es page Courses|Due|day|week (day and week
             // with their widest titles)
             "title" -> host.ui.row().apply {

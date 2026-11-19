@@ -455,7 +455,8 @@ object DayScreen {
     /**
      * The class in progress or the next one: its own card from the list, not a second one about it. It says
      * when over the card's usual lines, with a larger name and the lecturer whole, and in progress how far
-     * through. No shadow: on a course colour it looked dirty; its place and size set it apart.
+     * through and, with auto attendance on, whether its attendance is marked ([AttendanceHistory.now]). No
+     * shadow: on a course colour it looked dirty; its place and size set it apart.
      */
     private fun liftedSlot(h: Host, s: Session, st: Status): View {
         val ui = h.ui
@@ -468,10 +469,11 @@ object DayScreen {
             Phase.NEXT_TODAY -> "Next" to "in ${durationText(st.minutesAway)}"
             Phase.NEXT_LATER -> "Next class" to "in ${durationText(st.minutesAway)}"
         }
+        val attendance = if (st.phase == Phase.IN_CLASS) AttendanceHistory.now(ui.context, s) else null
         return ui.column().apply {
             background = ui.pressable(fill, 20f)
             setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(16))
-            contentDescription = "$now, $left. ${describe(s)}"
+            contentDescription = "$now, $left. ${describe(s)}${attendance?.let { ". ${it.short}" }.orEmpty()}"
             setOnClickListener { h.openSheet(s.course, s) }
             addView(ui.row().apply {
                 addView(ui.label(now, fg, 11f), ui.grow())
@@ -481,6 +483,7 @@ object DayScreen {
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
             }, ui.wide(top = 12f))
             if (st.phase == Phase.IN_CLASS) addView(ui.bar(st.progress, fg, (fg and 0xFFFFFF) or 0x2E000000), ui.wide(top = 14f).apply { height = ui.dp(4) })
+            attendance?.let { addView(ui.text(it.short, 13f, fg, ui.f.bodySemi, lines = 1), ui.wide(top = 10f)) }
         }
     }
 
