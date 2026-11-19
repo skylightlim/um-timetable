@@ -7,7 +7,6 @@ import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.view.Gravity
 import android.view.KeyEvent
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -17,14 +16,14 @@ import android.window.OnBackInvokedDispatcher
 /**
  * A class's card, out of the week grid: a long press on a class pops its cell out of the grid into a card,
  * the flight the plan card takes ([PlanSheet]). On it, the course's colour with the class's day and time,
- * the course and where; and Delete, which asks once in place and then deletes the class for good, every
- * week ([ClassEdits.delete]). Deleted, the card vanishes in a spin; closed, it goes back down into its cell.
+ * the course and where; and Delete, held as Sign out is ([HoldButton]), which deletes the class every week
+ * ([ClassEdits.delete]) until the timetable is got from TimeEdit again. Deleted, the card vanishes in a spin;
+ * closed, it goes back down into its cell.
  */
 object ClassCard {
-    /** The card's views: [close] is what its buttons do, "delete" or "close" (set by [show]); [ask] puts Delete's question in place of the buttons. */
+    /** The card's views: [close] is what its buttons do, "delete" or "close" (set by [show]). */
     class Card(val card: LinearLayout, val content: LinearLayout, val body: LinearLayout) {
         var close: (String) -> Unit = {}
-        var ask: () -> Unit = {}
     }
 
     fun build(ui: Ui, s: Session): Card {
@@ -51,40 +50,13 @@ object ClassCard {
         content.addView(body)
         val c = Card(card, content, body)
 
-        // Delete, then Close. Delete asks once, in place of the buttons, as a weekly plan's does.
-        val buttons = ui.row(gap = 8f)
-        val sure = ui.column().apply {
-            visibility = View.GONE
-            addView(ui.text("Every week, for good: off Day, Week, the widget, reminders and auto attendance. Getting the timetable again won't bring it back.", 12.5f, p.muted), ui.wide(bottom = 10f))
-            addView(ui.row(gap = 8f).apply {
-                addView(ui.text("Delete it?", 15f, p.muted, ui.f.bodySemi).apply { gravity = Gravity.CENTER_VERTICAL; minHeight = ui.dp(48) })
-                addView(ui.space(), ui.spacer())
-                addView(ConfirmDialog.button(ui, "Keep", p.surface2, p.text) { c.close("close") })
-                addView(ConfirmDialog.button(ui, "Delete", p.accent, p.accentInk) { c.close("delete") })
-            })
-        }
-        buttons.apply {
-            addView(ui.text("Delete", 15f, p.muted, ui.f.bodySemi).apply {
-                gravity = Gravity.CENTER
-                minHeight = ui.dp(48)
-                setPadding(ui.dp(4), 0, ui.dp(12), 0)
-                setOnClickListener {
-                    Haptics.tick(this)
-                    c.ask()
-                    Motion.enter(sure, ui.dp(8f).toFloat())
-                }
-            })
-            addView(ui.space(), ui.spacer())
-            addView(ConfirmDialog.button(ui, "Close", p.surface2, p.text) { c.close("close") })
-        }
-        c.ask = {
-            buttons.visibility = View.GONE
-            sure.visibility = View.VISIBLE
-        }
-        content.addView(ui.column().apply {
+        // What Delete does, then Close and Delete side by side as on the Sign out card: Delete only once it's held
+        // (the phone sobs while it fills, see [HoldButton]).
+        body.addView(ui.text("Deleting takes it off every week: Day, Week, the widget, reminders and auto attendance. To bring it back, get the timetable from TimeEdit again in Settings.", 12.5f, p.muted).apply { setLineSpacing(0f, 1.25f) }, ui.wide(top = 14f))
+        content.addView(ui.row(gap = 8f).apply {
             setPadding(ui.dp(20), ui.dp(18), ui.dp(20), ui.dp(20))
-            addView(buttons)
-            addView(sure)
+            addView(ConfirmDialog.button(ui, "Close", p.surface2, p.text) { c.close("close") }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(HoldButton(ui, "Hold to delete", "Delete", p.accent, p.accentInk) { c.close("delete") }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.5f))
         })
         return c
     }
@@ -96,13 +68,8 @@ object ClassCard {
         val card = c.card
         val dialog = Dialog(ctx, android.R.style.Theme_Translucent_NoTitleBar)
         val scrim = View(ctx).apply { setBackgroundColor(0x99000000.toInt()) }
-        val frame = object : FrameLayout(ctx) {
-            private val presser = Motion.Presser(this)
-            override fun dispatchTouchEvent(e: MotionEvent): Boolean {
-                presser.onTouch(e)
-                return super.dispatchTouchEvent(e)
-            }
-        }.apply {
+        // No press feedback over it (PlanSheet's Presser): it would sink the held button against its own sinking.
+        val frame = FrameLayout(ctx).apply {
             clipChildren = false
             addView(scrim, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             addView(card, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER).apply {
@@ -121,10 +88,8 @@ object ClassCard {
         val close: (String) -> Unit = close@{ how ->
             if (closing) return@close
             closing = true
-            if (how == "delete") {
-                ClassEdits.delete(ctx, ClassEdits.key(s))
-                Haptics.back(card)
-            }
+            // (The held button has already clicked.)
+            if (how == "delete") ClassEdits.delete(ctx, ClassEdits.key(s))
             fun done() {
                 dialog.dismiss()
                 if (how == "delete") onDeleted()

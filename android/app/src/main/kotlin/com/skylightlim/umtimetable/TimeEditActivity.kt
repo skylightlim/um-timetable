@@ -84,9 +84,13 @@ class TimeEditActivity : WebScreen() {
         }
     }
 
-    /** A first timetable is used straight away; one that would change the app's is shown first. */
+    /**
+     * A first timetable is used straight away; one that would change the app's is shown first. Classes the user
+     * deleted ([ClassCard]) come back with it, so a timetable that matches but has some is shown too.
+     */
     private fun offer(result: TimeEditTimetable.Result, current: JSONObject) {
         if ((current.optJSONArray("sessions")?.length() ?: 0) == 0) return use(result)
+        val deleted = ClassEdits.deleted(this)
         val diff = TimeEditTimetable.compare(current, result.json)
         Log.i("UMTimetable", "TimeEdit vs app: ${diff.same} same, ${diff.changed.size} changed, ${diff.added.size} new, ${diff.removed.size} gone")
         (diff.changed + diff.added.map { "new: $it" } + diff.removed.map { "gone: $it" }).forEach { Log.i("UMTimetable", "TimeEdit diff: $it") }
@@ -97,18 +101,20 @@ class TimeEditActivity : WebScreen() {
             if (diff.changed.isNotEmpty()) add("Changed:\n" + diff.changed.joinToString("\n") { "• $it" })
             if (diff.added.isNotEmpty()) add("New:\n" + diff.added.joinToString("\n") { "• $it" })
             if (diff.removed.isNotEmpty()) add("Not on TimeEdit, so they'd go:\n" + diff.removed.joinToString("\n") { "• $it" })
+            if (deleted.isNotEmpty()) add("Deleted in the app, they'd come back:\n" + deleted.joinToString("\n") { "• ${ClassEdits.label(it)}" })
             if (result.notFound.isNotEmpty()) add("No classes on TimeEdit for ${result.notFound.joinToString(", ")}.")
         }
         val dialog = AlertDialog.Builder(this).setTitle("Timetable from TimeEdit").setMessage(lines.joinToString("\n\n"))
-        if (diff.identical) dialog.setPositiveButton("OK") { _, _ -> finish() }
+        if (diff.identical && deleted.isEmpty()) dialog.setPositiveButton("OK") { _, _ -> finish() }
         else dialog.setPositiveButton("Use TimeEdit's timetable") { _, _ -> use(result) }.setNegativeButton("Keep mine", null)
         dialog.show()
     }
 
     private fun use(result: TimeEditTimetable.Result) {
         Timetable.setLocal(this, result.json.toString())
-        TimetableWidget.updateAll(this)
-        AttendanceWatch.schedule(this)
+        ClassEdits.bringBack(this)
+        // The widget, reminders and attendance alarms follow the new timetable (and any class back).
+        ClassEdits.changed(this)
         Log.i("UMTimetable", "TimeEdit: saved the timetable, ${result.classes} classes")
         setResult(RESULT_OK)
         finish()

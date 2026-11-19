@@ -45,7 +45,7 @@ import java.io.File
  * view occcard draws Settings' card for choosing an occurrence (--es code CODE); view shortcard its card for a short name.
  * view examscard draws Settings' Exams card, listing the saved exams still to come.
  * view classcard draws the card a long press on a class on Week brings up (--ei session N: the timetable's Nth
- * class, else the first; --ez ask true: with Delete's question).
+ * class, else the first).
  * view pinmenu draws the card a long press on a course page's section name brings up (--ez pinned true: Unpin).
  * view signout draws the Sign out question's card. view settings draws the Settings tab's page (--ez signedIn true|false
  * for either Account row); view signin the first-run sign-in poster, at screen height (or --ei height px).
@@ -125,11 +125,11 @@ class DebugRenderReceiver : BroadcastReceiver() {
                 val course = host.timetable.courses.firstOrNull { it.code == intent.getStringExtra("code") } ?: host.timetable.courses.first()
                 addView(SettingsSheet.shortFormCard(host.ui, course) {})
             }
-            // A class's card off Week (--ei session N, --ez ask true: Delete's question showing).
+            // A class's card off Week (--ei session N).
             "classcard" -> FrameLayout(c).apply {
                 setPadding(host.ui.dp(4), host.ui.dp(16), host.ui.dp(4), host.ui.dp(24))
                 val s = host.timetable.sessions.getOrNull(intent.getIntExtra("session", 0)) ?: host.timetable.sessions.first()
-                addView(ClassCard.build(host.ui, s).also { if (intent.getBooleanExtra("ask", false)) it.ask() }.card)
+                addView(ClassCard.build(host.ui, s).card)
             }
             // Settings' Exams card, with the saved exams still to come.
             "examscard" -> FrameLayout(c).apply {

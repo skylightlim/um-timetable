@@ -71,4 +71,17 @@ class ClassEditsTest {
         val moved = tt.withEdits(edits("""{"classes": {"${ClassEdits.key(lecture)}": {"day": 4, "gone": true}}}"""))
         assertEquals(listOf(tutorial, ds), moved.sessions)
     }
+
+    @Test fun gettingTheTimetableAgainBringsDeletedClassesBack() {
+        val all = edits("""{"classes": {"${ClassEdits.key(lecture)}": {"gone": true}, "${ClassEdits.key(ds)}": {"room": "MM3", "gone": true}, "${ClassEdits.key(tutorial)}": {"room": "BK9"}}}""")
+        assertEquals(true, ClassEdits.bringBack(all))
+        val e = tt.withEdits(all)
+        assertEquals(3, e.sessions.size)
+        // A class changed before it was deleted comes back changed; one only deleted, as TimeEdit gives it.
+        assertEquals("MM3", e.sessions[2].room)
+        assertEquals(lecture, e.sessions[0])
+        assertEquals(false, all.getJSONObject("classes").has(ClassEdits.key(lecture)))
+        assertEquals(false, ClassEdits.bringBack(all))
+        assertEquals("WIA1001 lecture, Tue 10:00", ClassEdits.label(ClassEdits.key(lecture)))
+    }
 }
