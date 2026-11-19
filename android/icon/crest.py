@@ -1,7 +1,8 @@
 """Draws the launcher icon: a cow (牛) and a horse (马) rearing up on either side of an empty shield in
-UM's shape, holding it up the way the two tigers hold up the arms of Malaysia, and in its proportions:
-the shield about two fifths of the width and three quarters of a supporter's height, their heads well
-above it, one front hoof on its top and the other against its side, one hind leg raised. Realistic
+UM's shape, holding it up the way the two tigers hold up the arms of Malaysia: their heads well above
+it, one front hoof on its top and the other against its side, one hind leg raised. The shield is larger
+than the jata's, nearly half the width and as tall as a supporter (the user found it too small at two
+fifths). Realistic
 silhouettes in gold, light at the top and deep at the bottom like the metal, on UM's blue (the adaptive
 icon's background, @color/ic_bg).
 
@@ -30,9 +31,9 @@ P = dict(
     blue="#223E99",  # UM's blue
     gold_hi="#F7E08A", gold="#D9AE3A", gold_lo="#B4841C",  # gold from the top of the drawing to its bottom
     line=0.9,       # the gap between a hoof and the shield, in icon units (dp in the 108-unit icon)
-    scale=0.18,     # the horse: icon units per unit it's drawn in (it stands 92 high at the withers)
-    rim=2.4,        # the shield's rim
-    shield_w=23.5, shield_h=24.5,
+    scale=0.165,    # the horse: icon units per unit it's drawn in (it stands 92 high at the withers)
+    rim=2.8,        # the shield's rim
+    shield_w=30, shield_h=31,
     inset=1.6,      # how far in from the shield's corner the upper front hoof rests
 )
 res = sys.argv[1] if len(sys.argv) > 1 and "=" not in sys.argv[1] else None
