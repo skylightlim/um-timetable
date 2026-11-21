@@ -860,22 +860,15 @@ class MainActivity : Activity(), SpectrumHost {
         val t = TourView(ui, show = { page ->
             if (page == "day" || page == "week") weekShift = 0
             if (page == "day") { pickedDay = false; sel = homeDay(timetable, now()) }
-            if (page == "files") openCourse = null
-            go(page, null)
-        }, target = { which ->
-            when (which) {
-                Tour.Target.NONE -> null
-                Tour.Target.STRIP -> stripFrame
-                Tour.Target.DAY_TAB -> tabViews["day"]?.first
-                Tour.Target.DUE_TAB -> tabViews["due"]?.first
-                Tour.Target.COURSES_TAB -> tabViews["files"]?.first
-                Tour.Target.SETTINGS_TAB -> tabViews["settings"]?.first
-            }
-        }) { finished ->
+            // A course page: the first course's, to show its Sections tab.
+            openCourse = if (page == "course") SpectrumStore.array(this, "courses").objects().firstOrNull()?.optInt("id")?.takeIf { it > 0 } else null
+            go(if (page == "course") "files" else page, null)
+        }, target = ::tourSpot) { _ ->
             tour = null
             shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
             updateBack()
-            if (!finished) go("day", null)
+            openCourse = null
+            go("day", null)
         }
         tour = t
         Tour.markSeen(this)
@@ -884,6 +877,31 @@ class MainActivity : Activity(), SpectrumHost {
         shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         t.start()
         updateBack()
+    }
+
+    /**
+     * Where the tour's finger goes on the page shown ([Tour.Target]); with nothing there to point at (no classes,
+     * no plans, not signed in), the nearest thing that stands for it: a free hour for a plan or a class, the
+     * tab for a list with nothing in it.
+     */
+    private fun tourSpot(which: Tour.Target): Tour.Spot? {
+        val page = content.getChildAt(content.childCount - 1)
+        val grid = weekGrid()
+        fun tab(id: String) = tabViews[id]?.first?.let { Tour.Spot(it) }
+        fun onGrid(area: () -> android.graphics.RectF?) = grid?.let { g -> Tour.Spot(g) { area() ?: g.tourFree() } }
+        return when (which) {
+            Tour.Target.CLASS_CARD -> Tour.find(page, Tour.CLASS)?.let { Tour.Spot(it) } ?: tab("day")
+            Tour.Target.DAY_PAGE -> Tour.Spot(scroll) { android.graphics.RectF(scroll.width * 0.2f, scroll.height * 0.3f, scroll.width * 0.8f, scroll.height * 0.8f) }
+            Tour.Target.FREE_TIME -> onGrid { null }
+            Tour.Target.PLAN -> onGrid { grid?.tourPlan() }
+            Tour.Target.WEEK_CLASS -> onGrid { grid?.tourClass() }
+            Tour.Target.TITLE -> Tour.Spot(titleBox)
+            Tour.Target.DUE_ROW -> Tour.find(page, Tour.DUE)?.let { Tour.Spot(it) } ?: tab("due")
+            Tour.Target.COURSE_FOLD -> Tour.find(page, Tour.FOLD)?.let { Tour.Spot(it) } ?: tab("files")
+            Tour.Target.COURSE_NAME -> Tour.find(page, Tour.COURSE)?.let { Tour.Spot(it) } ?: tab("files")
+            // At the left edge, halfway down, where it comes once the course page has loaded.
+            Tour.Target.SECTIONS_TAB -> if (sectionsTabView.isShown) Tour.Spot(sectionsTabView) else tab("files")
+        }
     }
 
     /**

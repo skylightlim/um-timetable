@@ -475,6 +475,7 @@ object DayScreen {
             setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(16))
             contentDescription = "$now, $left. ${describe(s)}${attendance?.let { ". ${it.short}" }.orEmpty()}"
             setOnClickListener { h.openSheet(s.course, s) }
+            setTag(R.id.tour, Tour.CLASS)
             addView(ui.row().apply {
                 addView(ui.label(now, fg, 11f), ui.grow())
                 addView(ui.label(left, fg, 11f))
@@ -520,6 +521,7 @@ object DayScreen {
         }, 16f)
         card.setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(15))
         card.setOnClickListener { h.openSheet(s.course, s) }
+        card.setTag(R.id.tour, Tour.CLASS)
         card.contentDescription = "${if (past) "Finished. " else ""}${describe(s)}"
         return card
     }
@@ -1140,6 +1142,21 @@ class WeekGrid(
     private val gridTop get() = padY
     private fun yOf(min: Int) = gridTop + (min - startMin) / 60f * hour
     private fun cell(d: Int, start: Int, end: Int) = RectF(colLeft(d) + ui.dp(1f), yOf(start) + 1, colLeft(d) + colW - ui.dp(1f), yOf(end) - 1)
+
+    // For the app tour ([Tour]): what to point at on the grid, in its own coordinates; null when there's none.
+    internal fun tourClass(): RectF? = blocks.firstOrNull()?.first
+    internal fun tourPlan(): RectF? = planBlocks.firstOrNull()?.first
+
+    /** An hour free of classes, exams and plans, from late morning on, as a cell. */
+    internal fun tourFree(): RectF? {
+        if (width == 0) return null
+        for (start in listOf(600, 660, 720, 540, 780, 840, 900, 480)) for (d in listOf(3, 2, 4, 1, 5)) {
+            if (start + 60 > startMin + hours * 60) continue
+            val end = start + 60
+            if (busy(d, null).none { (a, b) -> a < end && b > start }) return cell(d, start, end)
+        }
+        return null
+    }
 
     /** The day column (1–5) under [x], or null between columns or on the hour axis. */
     private fun columnAt(x: Float): Int? {
