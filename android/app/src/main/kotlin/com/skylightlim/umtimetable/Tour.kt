@@ -66,8 +66,11 @@ object Tour {
             "On a course page, tap the tab on the left edge for every section, then tap one to jump there."),
     )
 
-    /** Where the finger goes: [view], or the part of it [area] gives (in the view's own coordinates) when it gives one. */
-    class Spot(val view: View, val area: (() -> RectF?)? = null)
+    /**
+     * Where the finger goes: [view], or the part of it [area] gives (in the view's own coordinates) when it
+     * gives one. The spotlight leaves [pad] dp of room around it (none for what sits against the screen's edge).
+     */
+    class Spot(val view: View, val pad: Float = 6f, val area: (() -> RectF?)? = null)
 
     // What the pages mark for the tour to find ([find]), under the tag key R.id.tour. A Day class card also
     // carries its Session under R.id.tour_session.
@@ -347,6 +350,7 @@ class TourView(
         val first = index < 0
         index = i
         stopScene()
+        lit.setEmpty()
         show(stop.page)
         count.text = "${i + 1} of ${stops.size}"
         title.text = stop.title
@@ -538,6 +542,7 @@ class TourView(
     private fun spotRect(find: (() -> Tour.Spot?)?, out: RectF) {
         out.setEmpty()
         val s = find?.invoke() ?: return
+        spotPad = ui.dp(s.pad).toFloat()
         val v = s.view
         if (!v.isShown || v.width == 0) return
         v.getLocationInWindow(at)
@@ -551,16 +556,23 @@ class TourView(
 
     private val to = RectF()
     private val was = RectF()
-    private val firstSpot = RectF()
+    /** The room the last spot found leaves around it (px). */
+    private var spotPad = 0f
+    /** All the stop has lit so far, with room: its card keeps clear of it (the Dismiss menu, the news under a course). */
+    private val lit = RectF()
 
     private fun place() {
         if (width == 0 || card.height == 0) return
         val s = playing
         spotRect(s?.beats?.getOrNull(beat)?.aim, to)
         pointing = !to.isEmpty
-        if (pointing) spot.set(to)
-        val pad = ui.dp(6f).toFloat()
-        if (pointing) to.inset(-pad, -pad)
+        if (pointing) {
+            spot.set(to)
+            to.inset(-spotPad, -spotPad)
+            // Never past the screen's edges: a tab against the left edge is lit as far as it goes.
+            if (!to.intersect(0f, 0f, width.toFloat(), height.toFloat())) to.setEmpty()
+            if (!to.isEmpty) lit.union(to)
+        }
         // Gliding to or from no spot, the hole shrinks to (or grows from) the middle of the one there is.
         val a = if (from.isEmpty && !to.isEmpty) RectF(to.centerX(), to.centerY(), to.centerX(), to.centerY()) else from
         val b = if (to.isEmpty && !from.isEmpty) RectF(from.centerX(), from.centerY(), from.centerX(), from.centerY()) else to
@@ -568,20 +580,32 @@ class TourView(
         hole.set(lerp(a.left, b.left, t), lerp(a.top, b.top, t), lerp(a.right, b.right, t), lerp(a.bottom, b.bottom, t))
         if (to.isEmpty && t >= 1f) hole.setEmpty()
         if (hole != was) invalidate()
-        // The card: where the scene puts it, or by its first spot; on screen.
+        // The card: where the scene puts it, or clear of all the stop has lit (below it, else above it, else on
+        // the side with more room); on screen.
         val gap = ui.dp(16f).toFloat()
         val lo = barTop + gap
         val hi = maxOf(lo, height - barBottom - gap - card.height)
-        if (s?.card == 0) spotRect(s.beats.firstOrNull()?.aim, firstSpot) else firstSpot.setEmpty()
         val y = when {
             s?.card == -1 -> lo
             s?.card == 1 -> hi
-            firstSpot.isEmpty -> (height - card.height) / 2f
-            firstSpot.centerY() < height / 2f -> firstSpot.bottom + pad + gap
-            else -> firstSpot.top - pad - gap - card.height
+            lit.isEmpty -> (height - card.height) / 2f
+            lit.bottom + gap <= hi -> lit.bottom + gap
+            lit.top - gap - card.height >= lo -> lit.top - gap - card.height
+            lit.top - lo > hi - lit.bottom -> lo
+            else -> hi
         }.coerceIn(lo, hi)
-        val cardY = if (ct >= 1f) y else lerp(fromY, y, ct)
-        if (cardY != card.translationY) card.translationY = cardY
+        // Gliding there: with the stop's change, or as more is lit (a menu that opens), a little each frame.
+        val now = card.translationY
+        val cardY = when {
+            ct < 1f -> lerp(fromY, y, ct)
+            kotlin.math.abs(y - now) < 1f -> y
+            !Motion.enabled -> y
+            else -> now + (y - now) * 0.2f
+        }
+        if (cardY != now) {
+            card.translationY = cardY
+            if (cardY != y) invalidate()
+        }
     }
 
     private fun lerp(a: Float, b: Float, f: Float) = a + (b - a) * f

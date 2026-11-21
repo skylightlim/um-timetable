@@ -33,10 +33,10 @@ object TourScenes {
         fun page() = h.tourPage()
         fun tab(id: String) = spot(h.tourTab(id))
         /** A free hour on the week grid, as a cell. */
-        fun free(): Tour.Spot? = h.tourGrid()?.let { g -> g.tourFree()?.let { Tour.Spot(g) { g.tourFree() } } }
+        fun free(): Tour.Spot? = h.tourGrid()?.let { g -> g.tourFree()?.let { Tour.Spot(g, area = { g.tourFree() }) } }
         /** Something on the grid that [area] finds, or a free hour when there's none. */
         fun onGrid(area: (WeekGrid) -> android.graphics.RectF?): Tour.Spot? = h.tourGrid()?.let { g ->
-            if (area(g) != null) Tour.Spot(g) { area(g) ?: g.tourFree() } else free()
+            if (area(g) != null) Tour.Spot(g, area = { area(g) ?: g.tourFree() }) else free()
         }
         return when (act) {
             Tour.Act.CLASS -> Scene(listOf(Beat(Gesture.TAP, { spot(Tour.find(page(), Tour.CLASS)) ?: tab("day") }, rest = 900)))
@@ -59,7 +59,7 @@ object TourScenes {
 
             Tour.Act.SWIPE_UP -> Scene(listOf(Beat(Gesture.SWIPE_UP, {
                 val scroll = h.tourScroll()
-                Tour.Spot(scroll) { android.graphics.RectF(scroll.width * 0.2f, scroll.height * 0.3f, scroll.width * 0.8f, scroll.height * 0.8f) }
+                Tour.Spot(scroll, area = { android.graphics.RectF(scroll.width * 0.2f, scroll.height * 0.3f, scroll.width * 0.8f, scroll.height * 0.8f) })
             }, rest = 700)))
 
             // Held, then double-tapped: a new plan's card pops up each time, and goes.
@@ -154,7 +154,12 @@ object TourScenes {
                 Scene(
                     listOf(
                         Beat(Gesture.TAP, { spot(arrow()) ?: tab("files") }, rest = 400, press = { if (!isOpen()) tap() }),
-                        Beat(Gesture.LOOK, { spot(Tour.find(page(), Tour.NEWS)) }, rest = 0),
+                        // Its first few items: a long fold lit whole would leave the card nowhere to go but over it.
+                        Beat(Gesture.LOOK, {
+                            Tour.find(page(), Tour.NEWS)?.let { news ->
+                                Tour.Spot(news, area = { android.graphics.RectF(0f, 0f, news.width.toFloat(), minOf(news.height, ui.dp(240)).toFloat()) })
+                            }
+                        }, rest = 0),
                     ),
                     reset = { if (isOpen()) tap() },
                     leave = { if (isOpen() != wasOpen) tap() },
@@ -174,8 +179,8 @@ object TourScenes {
                 }
                 Scene(
                     listOf(
-                        Beat(Gesture.TAP, { spot(h.tourSectionsTab().takeIf { it.isShown }) ?: tab("files") }, rest = 400, press = ::panel),
-                        Beat(Gesture.LOOK, { spot(open) }, rest = 0, after = ::shut),
+                        Beat(Gesture.TAP, { h.tourSectionsTab().takeIf { it.isShown }?.let { Tour.Spot(it, pad = 0f) } ?: tab("files") }, rest = 400, press = ::panel),
+                        Beat(Gesture.LOOK, { open?.let { Tour.Spot(it, pad = 0f) } }, rest = 0, after = ::shut),
                     ),
                     card = 1, reset = ::shut, leave = ::shut,
                 )
