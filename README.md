@@ -17,7 +17,7 @@ Aplikasi jadual waktu tidak rasmi untuk pelajar UM · 马来亚大学学生的�
 ### [⬇️ Download the app](https://github.com/skylightlim/um-timetable/releases)
 
 <p align="center">
-  <img src="docs/media/tour.gif" alt="A short tour of the app: Day, Week, Due, Courses and Settings" width="320">
+  <img src="docs/media/tour.gif" alt="The in-app tour: eleven stops that act out each gesture" width="320">
 </p>
 
 ## What you get
@@ -27,11 +27,12 @@ Aplikasi jadual waktu tidak rasmi untuk pelajar UM · 马来亚大学学生的�
 | **Know what's next** | Your class right now, how long is left, and where to go after it. |
 | **See your whole week** | A clean week grid with UM's semester weeks and Kuala Lumpur's public holidays. Add your own plans to free slots. |
 | **Your exams too** | Sign in to MAYA once and your exams land on Day and Week, with the hall and when to be there. |
-| **Never miss a deadline** | Every Spectrum deadline in one list, counting down. |
+| **Never miss a deadline** | Every Spectrum deadline in one list, counting down. Swipe one left to dismiss it. |
 | **Keep up with each course** | News, marks, files and links, without digging through Spectrum. |
 | **Get reminded** | Notifications for deadlines, marks, news, new slides and notes, and your classes. |
 | **Check it at a glance** | A home-screen widget with your next class and your week. |
-| **Make it yours** | Gold, Blue or Red themes, light and dark. |
+| **Make it yours** | Gold, Blue, Red or Pastel themes, light and dark. |
+| **Learn it in a minute** | A short tour on first launch plays out each gesture with a finger; open it again from Settings › App tour. |
 
 ## See it
 

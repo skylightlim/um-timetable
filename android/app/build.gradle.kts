@@ -17,8 +17,8 @@ android {
         minSdk = 31
         targetSdk = 37
         // The release's tag is "v" + versionCode ("v3"): the in-app updater reads it from there.
-        versionCode = 15
-        versionName = "1.12.0"
+        versionCode = 16
+        versionName = "1.13.0"
     }
 
     // The release key lives outside the project and is never committed: ~/.android/um-timetable-release.properties
