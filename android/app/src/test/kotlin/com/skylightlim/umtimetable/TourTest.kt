@@ -17,15 +17,27 @@ class TourTest {
         assertEquals(Tour.SEEN, Tour.onLaunch(Tour.SEEN, firstRun = true))
     }
 
-    @Test fun everyStopOpensAPageAndTheEndsStandAlone() {
-        val pages = setOf("day", "week", "due", "files", "settings")
-        assertTrue(Tour.STOPS.all { it.page in pages && it.title.isNotBlank() && it.body.isNotBlank() })
-        assertEquals(Tour.Target.NONE, Tour.STOPS.first().target)
-        assertEquals(Tour.Target.NONE, Tour.STOPS.last().target)
-        // Each tab gets its stop.
-        val lit = Tour.STOPS.map { it.target }.toSet()
-        assertTrue(lit.containsAll(Tour.Target.entries))
-        // The last card says where to find it again.
-        assertTrue(Tour.STOPS.last().body.contains("Settings"))
+    @Test fun everyStopOpensAPageAndShowsAGesture() {
+        val pages = setOf("day", "week", "due", "files", "course")
+        assertTrue(Tour.STOPS.all { it.page in pages && it.gestures.isNotEmpty() && it.title.isNotBlank() && it.body.isNotBlank() })
+        // Each thing it points at gets its stop, and Settings isn't one of them.
+        assertEquals(Tour.Target.entries.toSet(), Tour.STOPS.map { it.target }.toSet())
+        assertTrue(Tour.STOPS.none { it.page == "settings" })
+    }
+
+    @Test fun theFingerComesActsAndGoes() {
+        for (g in Tour.Gesture.entries) {
+            val end = Tour.length(g)
+            // Not there at the start or the end of a go, so one go runs into the next without a jump.
+            assertEquals(0f, Tour.pose(g, 0).shown, 0.001f)
+            assertEquals(0f, Tour.pose(g, end).shown, 0.001f)
+            // Pressed at some point, and let go before it fades.
+            assertTrue((0..end step 10).any { Tour.pose(g, it).down > 0.99f })
+            assertEquals(0f, Tour.pose(g, end - 300).down, 0.001f)
+        }
+        // A hold's ring fills; a swipe goes from below the spot to above it; a drag ends away from where it began.
+        assertEquals(1f, Tour.pose(Tour.Gesture.HOLD, 1200).hold, 0.001f)
+        assertTrue(Tour.pose(Tour.Gesture.SWIPE_UP, 400).dy > 0.9f && Tour.pose(Tour.Gesture.SWIPE_UP, 1100).dy < -0.9f)
+        assertTrue(Tour.pose(Tour.Gesture.DRAG, 1800).let { it.dx > 0.5f && it.dy > 0.7f })
     }
 }

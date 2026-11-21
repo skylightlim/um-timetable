@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- What the app tour points at on a page (Tour.find): a view's tag under this key. -->
+    <item name="tour" type="id" />
+</resources>

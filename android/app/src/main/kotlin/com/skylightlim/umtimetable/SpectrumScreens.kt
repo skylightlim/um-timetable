@@ -265,6 +265,7 @@ object SpectrumScreens {
         for ((n, row) in rows.withIndex()) {
             val line = if (n > 0) rule(ui).also(page::addView) else null
             page.addView(row)
+            row.setTag(R.id.tour, Tour.DUE)
             row.setOnLongClickListener { at ->
                 popMenu(ui, at, menuCard(ui, R.drawable.ic_close, "Dismiss")) {
                     SpectrumStore.dismissDue(ui.context, items[n], gone = true)
@@ -720,6 +721,7 @@ object SpectrumScreens {
             background = ui.pressable(ui.shape(Color.TRANSPARENT, 8f), 8f)
             contentDescription = "$code, $name.${if (newOnPage) " Something new on its page." else ""} Opens the course page."
             setOnClickListener { Haptics.tick(this); h.openCourse = id; h.render() }
+            setTag(R.id.tour, Tour.COURSE)
         }
         val chevron = Motion.chevron(ui, key in h.expanded, p.faint)
         val toggle = ui.column().apply {
@@ -729,6 +731,7 @@ object SpectrumScreens {
             if (fresh > 0) addView(ui.chip(fresh.toString(), p.accent, p.accentInk).apply { setPadding(ui.dp(6), ui.dp(1), ui.dp(6), ui.dp(1)) },
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = ui.dp(6) })
             addView(chevron, LinearLayout.LayoutParams(ui.dp(16), ui.dp(16)))
+            setTag(R.id.tour, Tour.FOLD)
         }
         // In line with the course's name (after its 12dp dot and 12dp gap). Built once, then moved into each redraw
         // while it would show the same: the saved news and marks (the same objects until a sync saves new
