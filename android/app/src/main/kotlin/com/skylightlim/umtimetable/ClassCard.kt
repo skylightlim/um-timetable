@@ -56,7 +56,7 @@ object ClassCard {
         content.addView(ui.row(gap = 8f).apply {
             setPadding(ui.dp(20), ui.dp(18), ui.dp(20), ui.dp(20))
             addView(ConfirmDialog.button(ui, "Close", p.surface2, p.text) { c.close("close") }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(HoldButton(ui, "Hold to delete", "Delete", p.accent, p.accentInk) { c.close("delete") }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.5f))
+            addView(HoldButton(ui, "Hold to delete", "Delete", p.accent, p.accentInk) { c.close("delete") }.apply { setTag(R.id.tour, Tour.DELETE) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.5f))
         })
         return c
     }

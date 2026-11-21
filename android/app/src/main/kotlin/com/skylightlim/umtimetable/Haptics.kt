@@ -106,7 +106,17 @@ object Haptics {
         else vibrator.vibrate(effect)
     }
 
+    /** Set while the app tour presses something for show ([quietly]): no vibration then. */
+    private var quiet = false
+
+    /** Runs [action] without its vibrations: the app tour pressing a button for show. */
+    fun quietly(action: () -> Unit) {
+        quiet = true
+        try { action() } finally { quiet = false }
+    }
+
     private fun play(v: View, kind: Kind) {
+        if (quiet) return
         val level = level(v.context)
         if (level == Level.OFF) return
         val vibrator = vibrator(v) ?: return

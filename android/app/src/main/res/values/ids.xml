@@ -2,4 +2,6 @@
 <resources>
     <!-- What the app tour points at on a page (Tour.find): a view's tag under this key. -->
     <item name="tour" type="id" />
+    <!-- A Day class card's Session, for the tour to open its sheet. -->
+    <item name="tour_session" type="id" />
 </resources>

@@ -476,6 +476,7 @@ object DayScreen {
             contentDescription = "$now, $left. ${describe(s)}${attendance?.let { ". ${it.short}" }.orEmpty()}"
             setOnClickListener { h.openSheet(s.course, s) }
             setTag(R.id.tour, Tour.CLASS)
+            setTag(R.id.tour_session, s)
             addView(ui.row().apply {
                 addView(ui.label(now, fg, 11f), ui.grow())
                 addView(ui.label(left, fg, 11f))
@@ -522,6 +523,7 @@ object DayScreen {
         card.setPadding(ui.dp(16), ui.dp(14), ui.dp(16), ui.dp(15))
         card.setOnClickListener { h.openSheet(s.course, s) }
         card.setTag(R.id.tour, Tour.CLASS)
+        card.setTag(R.id.tour_session, s)
         card.contentDescription = "${if (past) "Finished. " else ""}${describe(s)}"
         return card
     }
@@ -1145,17 +1147,25 @@ class WeekGrid(
 
     // For the app tour ([Tour]): what to point at on the grid, in its own coordinates; null when there's none.
     internal fun tourClass(): RectF? = blocks.firstOrNull()?.first
+    internal fun tourClassSession(): Session? = blocks.firstOrNull()?.second
     internal fun tourPlan(): RectF? = planBlocks.firstOrNull()?.first
 
-    /** An hour free of classes, exams and plans, from late morning on, as a cell. */
-    internal fun tourFree(): RectF? {
-        if (width == 0) return null
+    /** An hour free of classes, exams and plans, from late morning on: its day (1–5) and start. */
+    private fun freeHour(): Pair<Int, Int>? {
         for (start in listOf(600, 660, 720, 540, 780, 840, 900, 480)) for (d in listOf(3, 2, 4, 1, 5)) {
             if (start + 60 > startMin + hours * 60) continue
             val end = start + 60
-            if (busy(d, null).none { (a, b) -> a < end && b > start }) return cell(d, start, end)
+            if (busy(d, null).none { (a, b) -> a < end && b > start }) return d to start
         }
         return null
+    }
+
+    /** That hour as a cell. */
+    internal fun tourFree(): RectF? = if (width == 0) null else freeHour()?.let { (d, start) -> cell(d, start, start + 60) }
+
+    /** A new plan in that hour, as a long press there would make it (not saved). */
+    internal fun tourNewPlan(): Plan? = freeHour()?.let { (d, start) ->
+        Plan.new(dates[d - 1], start, start + 60, Plans.palette(Scheme.load(context), p.accent).first())
     }
 
     /** The day column (1–5) under [x], or null between columns or on the hour axis. */
