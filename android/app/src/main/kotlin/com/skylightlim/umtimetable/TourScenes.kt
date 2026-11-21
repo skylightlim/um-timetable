@@ -1,6 +1,7 @@
 package com.skylightlim.umtimetable
 
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.skylightlim.umtimetable.Tour.Gesture
 
@@ -115,14 +116,19 @@ object TourScenes {
                 Scene(listOf(Beat(Gesture.DOUBLE_TAP, { spot(h.tourTitle()) }, rest = 1600, press = ::back)), reset = ::away, leave = ::back)
             }
 
-            // Held, the Dismiss menu grows out of the row; tapped, the row fades as it would go.
+            // Swiped left, the row follows the finger, "Dismiss" comes up under it, and it slides off; then, put
+            // back, it's held, the Dismiss menu grows out of it, and tapped, the row fades as it would go.
             Tour.Act.DISMISS -> {
                 var menu: View? = null
                 var row: View? = null
+                var flown = false
+                fun due() = Tour.find(page(), Tour.DUE)
+                /** "Dismiss" under the row ([SwipeDismiss.wrap]). */
+                fun hint() = (row?.parent as? ViewGroup)?.getChildAt(0)?.takeIf { it !== row }
                 fun shut() { menu?.let(v::dismiss); menu = null }
                 fun open() {
                     shut()
-                    val r = Tour.find(page(), Tour.DUE) ?: return
+                    val r = due() ?: return
                     row = r
                     // With room around the card for its shadow, as the real menu has.
                     val room = FrameLayout(ui.context).apply {
@@ -132,16 +138,45 @@ object TourScenes {
                     }
                     menu = v.menu(room, r)
                 }
-                fun putBack() { row?.animate()?.cancel(); row?.alpha = 1f }
+                fun putBack(fade: Boolean) {
+                    flown = false
+                    val r = row ?: return
+                    r.animate().cancel()
+                    r.translationX = 0f
+                    hint()?.alpha = 0f
+                    if (fade && Motion.enabled && r.alpha < 1f) Motion.fade(r, 0f, 1f, 220) else r.alpha = 1f
+                }
+                /** The row where it lies, not where the swipe has moved it, so the spotlight and the finger stay put. */
+                fun lying(): Tour.Spot? = due()?.let { r ->
+                    Tour.Spot(r, area = { android.graphics.RectF(-r.translationX, 0f, r.width - r.translationX, r.height.toFloat()) })
+                }
+                fun drag(dx: Float) {
+                    if (flown) return
+                    val r = due() ?: return
+                    row = r
+                    val tx = minOf(0f, (dx - Tour.SWIPE_FROM) * ui.dp(Tour.REACH))
+                    val f = (-tx / SwipeDismiss.line(r.width, ui.context.resources.displayMetrics.density)).coerceIn(0f, 1f)
+                    r.translationX = tx
+                    r.alpha = 1f - 0.5f * f
+                    hint()?.alpha = f
+                }
+                fun flyOff() {
+                    // With "Remove animations" the finger rests on the row, which stays to be seen.
+                    val r = row ?: return
+                    if (!Motion.enabled) return
+                    flown = true
+                    r.animate().translationX(-r.width.toFloat()).alpha(0f).setInterpolator(Motion.EXIT).setDuration(220).start()
+                }
                 Scene(
                     listOf(
-                        Beat(Gesture.HOLD, { spot(Tour.find(page(), Tour.DUE)) ?: tab("due") }, rest = 300, press = ::open),
+                        Beat(Gesture.SWIPE_LEFT, { lying() ?: tab("due") }, rest = 900, press = ::flyOff, moving = ::drag, after = { putBack(fade = true) }),
+                        Beat(Gesture.HOLD, { spot(due()) ?: tab("due") }, rest = 300, press = ::open),
                         Beat(Gesture.TAP, { spot((menu as? FrameLayout)?.getChildAt(0)) }, rest = 1300, press = {
                             shut()
                             row?.animate()?.alpha(0.25f)?.setDuration(220)?.start()
                         }),
                     ),
-                    reset = { shut(); putBack() }, leave = { shut(); putBack() },
+                    reset = { shut(); putBack(fade = false) }, leave = { shut(); putBack(fade = false) },
                 )
             }
 
