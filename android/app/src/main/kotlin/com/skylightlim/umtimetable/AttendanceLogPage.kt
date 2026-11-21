@@ -132,8 +132,9 @@ object AttendanceLogPage {
 
     /**
      * When the phone didn't wake the app for a class ([AttendanceHistory.Outcome.asleep]): what to change,
-     * and a button to the app's page in Android's settings, where Battery (and Autostart, on the phones
-     * that have it) live. Gone once opened, until it happens to a class after that.
+     * and a button to that setting ([BatteryHelp.open]: Android's question while the battery is optimised,
+     * else the phone maker's Autostart or sleeping apps screen, else the app's page in Android's settings).
+     * Gone once opened, until it happens to a class after that.
      */
     private fun batteryHelp(ui: Ui, page: LinearLayout, rows: List<AttendanceHistory.Row>) {
         val p = ui.p
@@ -147,19 +148,14 @@ object AttendanceLogPage {
                 "On Xiaomi, Redmi, POCO, OPPO, realme, vivo, Huawei or Honor, also turn on Autostart. On Samsung, take it out of Sleeping apps and Deep sleeping apps.",
             13.5f, p.text,
         ), ui.wide(top = 14f))
-        page.addView(ui.text("Open the app's settings", 14f, p.accentText, ui.f.bodySemi).apply {
+        page.addView(ui.text("Open the setting", 14f, p.accentText, ui.f.bodySemi).apply {
             gravity = Gravity.CENTER
             minHeight = ui.dp(44)
             background = ui.pressable(ui.shape(p.surface2, 12f), 12f)
             setOnClickListener {
                 Haptics.tick(this)
                 prefs.edit().putLong("batteryHelpAt", System.currentTimeMillis()).apply()
-                runCatching {
-                    c.startActivity(
-                        android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${c.packageName}"))
-                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                }
+                BatteryHelp.open(c)
             }
         }, ui.wide(top = 10f))
     }

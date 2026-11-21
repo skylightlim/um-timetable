@@ -18,6 +18,9 @@
     <!-- Auto attendance marks in a short foreground service: it gets mobile data even with the app's
          background data off (AutoAttendance). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- So its alarms can wake it as a class starts: Android's own "always run in the background?"
+         question, asked from BatteryHelp. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Updates from GitHub Releases: the app hands the downloaded APK to Android's installer (Updater). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 

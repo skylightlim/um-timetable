@@ -146,7 +146,13 @@ object AutoAttendance {
         val restarted = now - SystemClock.elapsedRealtime() > due
         AttendanceLog.add(c, "missed: the ${SpectrumStore.hm(due)} alarm never came${if (restarted) " $RESTARTED" else ""}; ${conditions(c)}")
         SpectrumStore.putLong(c, MISSED, due)
+        if (!restarted) SpectrumStore.putLong(c, MISSED_AT, now)
     }
+
+    private const val MISSED_AT = "autoAttendanceMissedAt"
+
+    /** When an alarm was last found never to have come with the phone on (0: never), for [BatteryHelp]. */
+    fun lastMissed(c: Context) = SpectrumStore.long(c, MISSED_AT)
 
     /** What [missed] adds when the phone started after the alarm was due. */
     const val RESTARTED = "(the phone was off or restarting then)"

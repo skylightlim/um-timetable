@@ -210,6 +210,8 @@ class MainActivity : Activity(), SpectrumHost {
         // Grades arrive after the rest of a sync (they can take Spectrum much longer).
         SpectrumSync.onGrades = { if (view == "files" && openCourse == null) render(keepScroll = true) else renderTabs() }
         if (SpectrumStore.signedIn(this) && System.currentTimeMillis() - SpectrumStore.lastSync(this) > 10 * 60_000L) refresh()
+        // Auto attendance's alarms still can't wake the app: the popup, unless put off and no alarm missed since.
+        BatteryHelp.offer(ui)
     }
 
     override fun onPause() {
