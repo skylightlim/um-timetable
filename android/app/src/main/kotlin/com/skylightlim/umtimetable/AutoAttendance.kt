@@ -22,6 +22,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
 import android.webkit.CookieManager
@@ -62,6 +63,11 @@ import kotlin.concurrent.thread
  * campus network, signing in again) is said at once. Only for classes whose course has an attendance
  * activity matched to them ([AttendanceMatch]); a class without one has nothing to mark and says
  * nothing. Public holidays and weeks without classes (break, revision, exams) are skipped.
+ *
+ * Some phones (Xiaomi, OPPO, vivo, Huawei with Autostart off; Samsung's Sleeping apps) don't let an alarm
+ * wake an app that isn't running. An alarm that never came is logged ("missed: the 08:02 alarm never
+ * came") when the next [schedule] finds it past, so the Classes tab can say why, and the 30-minute
+ * background sync makes up for it ([catchUp]) while the class is still on.
  */
 object AutoAttendance {
     private const val FLAG = "autoAttendance"
@@ -93,11 +99,23 @@ object AutoAttendance {
      * An exact alarm at the next try: today's next for a class not done yet, else the next class's start
      * (in the coming week). None when it's off.
      */
+    @Synchronized
     fun schedule(c: Context) {
         val am = c.getSystemService(AlarmManager::class.java)
         val pi = SpectrumAlarmReceiver.intent(c, SpectrumAlarmReceiver.ACTION_AUTOMARK)
-        if (!enabled(c) || !SpectrumStore.signedIn(c)) return am.cancel(pi)
+        if (!enabled(c) || !SpectrumStore.signedIn(c)) {
+            SpectrumStore.putLong(c, NEXT, 0)
+            return am.cancel(pi)
+        }
         val now = System.currentTimeMillis()
+        // The alarm set last: [fire] clears it when it comes, so one still here and past hasn't come.
+        val due = SpectrumStore.long(c, NEXT)
+        if (due in 1..now) {
+            // Just past: Android may hand it over a little late. Left as it is rather than replaced by a later try.
+            if (now - due < MISSED_AFTER) return exactAlarm(am, due, pi)
+            SpectrumStore.putLong(c, NEXT, 0)
+            if (now - due < 12 * 3_600_000L) missed(c, due, now)
+        }
         val done = SpectrumStore.stringSet(c, DONE)
         for (offset in 0..7L) {
             val date = LocalDate.now().plusDays(offset)
@@ -110,10 +128,48 @@ object AutoAttendance {
                 return exactAlarm(am, next, pi)
             }
         }
+        SpectrumStore.putLong(c, NEXT, 0)
         am.cancel(pi)
     }
 
     private const val NEXT = "autoAttendanceNext"
+    private const val MISSED = "autoAttendanceMissed"
+    /** How long past its time an alarm that hasn't come is taken as never coming. */
+    private const val MISSED_AFTER = 60_000L
+
+    /**
+     * The alarm at [due] never came: logged with what stood in the way ([AttendanceHistory] reads it back),
+     * and kept for the background sync to make up for ([catchUp]). A phone switched off or restarting then
+     * (it started since) is said as such: no battery setting is to blame.
+     */
+    private fun missed(c: Context, due: Long, now: Long) {
+        val restarted = now - SystemClock.elapsedRealtime() > due
+        AttendanceLog.add(c, "missed: the ${SpectrumStore.hm(due)} alarm never came${if (restarted) " $RESTARTED" else ""}; ${conditions(c)}")
+        SpectrumStore.putLong(c, MISSED, due)
+        if (!restarted) SpectrumStore.putLong(c, MISSED_AT, now)
+    }
+
+    private const val MISSED_AT = "autoAttendanceMissedAt"
+
+    /** When an alarm was last found never to have come with the phone on (0: never), for [BatteryHelp]. */
+    fun lastMissed(c: Context) = SpectrumStore.long(c, MISSED_AT)
+
+    /** What [missed] adds when the phone started after the alarm was due. */
+    const val RESTARTED = "(the phone was off or restarting then)"
+
+    /**
+     * The 30-minute background sync's catch-up: when an alarm never came ([missed]), the classes in progress
+     * are marked now rather than waiting for an alarm that may not come either. Runs in the sync job's
+     * thread, which has a network; [run] does nothing when no class is on or one is being marked already.
+     */
+    fun catchUp(c: Context) {
+        val due = SpectrumStore.long(c, MISSED)
+        if (due == 0L) return
+        SpectrumStore.putLong(c, MISSED, 0)
+        if (!enabled(c) || !SpectrumStore.signedIn(c)) return
+        AttendanceLog.add(c, "catching up from the background sync, for the ${SpectrumStore.hm(due)} alarm")
+        run(c)
+    }
     private val STAMP = DateTimeFormatter.ofPattern("EEE d MMM HH:mm", Locale.UK)
 
     /**
@@ -123,7 +179,10 @@ object AutoAttendance {
      */
     fun fire(c: Context, dry: String? = null) {
         val late = (System.currentTimeMillis() - SpectrumStore.long(c, NEXT)) / 1000
-        if (dry == null) AttendanceLog.add(c, "alarm${if (late in 0..86_400) ", ${late}s after it was due" else ""}")
+        if (dry == null) {
+            SpectrumStore.putLong(c, NEXT, 0) // it came: [schedule] doesn't take it as missed
+            AttendanceLog.add(c, "alarm${if (late in 0..86_400) ", ${late}s after it was due" else ""}")
+        }
         try {
             c.startForegroundService(Intent(c, AutoAttendanceService::class.java).putExtra(AutoAttendanceService.EXTRA_DRY, dry))
         } catch (e: Exception) {
@@ -471,12 +530,13 @@ object AttendanceLog {
 
     /**
      * Whether a step went wrong: a read or a run that failed, Spectrum's answer naming an error, no
-     * attendance activity for a class, the run cut short, or nobody told because notifications are off.
+     * attendance activity for a class, the run cut short, nobody told because notifications are off, or
+     * an alarm that never came.
      */
     fun isProblem(text: String) = PROBLEM.containsMatchIn(text)
 
     private val LINE = Regex("""(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) (.*)""")
-    private val PROBLEM = Regex("""\bfailed\b|"error"\s*:|ran out of time|no attendance activity|notifications are off""")
+    private val PROBLEM = Regex("""\bfailed\b|"error"\s*:|ran out of time|no attendance activity|notifications are off|alarm never came""")
 }
 
 /**

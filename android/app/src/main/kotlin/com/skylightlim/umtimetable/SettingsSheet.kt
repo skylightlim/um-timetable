@@ -132,7 +132,11 @@ object SettingsSheet {
                 after = { i -> if (reminders[i].first != null && !Notify.allowed(context)) h.enableNotifications() }),
             // Marking attendance by itself, as each class starts (AutoAttendance), and its log: each try and what went wrong.
             if (signedIn) row(ui, "Mark my attendance", "Settles your attendance as each class starts",
-                Toggle(ui, AutoAttendance.enabled(context)) { on -> AutoAttendance.setEnabled(context, on) }.apply { contentDescription = "Mark my attendance" }) else null,
+                Toggle(ui, AutoAttendance.enabled(context)) { on ->
+                    AutoAttendance.setEnabled(context, on)
+                    // Its alarms have to wake the app: ask for that now, while the user is here for it.
+                    if (on) BatteryHelp.offer(ui, force = true)
+                }.apply { contentDescription = "Mark my attendance" }) else null,
             if (signedIn) row(ui, "Attendance log", end = chosen(ui, value(ui, AttendanceLogPage.short(context)))) { openLog() } else null,
         ))
 
