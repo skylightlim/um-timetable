@@ -70,7 +70,7 @@ object ClassSheet {
                 edit = !edit
                 Motion.resize(sheet)
                 fill()
-            }, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)))
+            }.apply { setTag(R.id.tour, Tour.PEN) }, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)))
             top.addView(roundButton(ui, R.drawable.ic_close, p.muted, p.surface2, "Close") { close(null) },
                 LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)).apply { marginEnd = -ui.dp(7) })
             sheet.addView(top)

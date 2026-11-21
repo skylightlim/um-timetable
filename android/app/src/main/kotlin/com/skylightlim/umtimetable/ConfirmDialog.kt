@@ -199,6 +199,13 @@ class HoldButton(ui: Ui, label: String, action: String, fill: Int, ink: Int, pri
         super.onDraw(canvas)
     }
 
+    /** For the app tour: filled to [f] (0 to 1), as if held that long, with nothing done. */
+    fun preview(f: Float) {
+        if (f == progress) return
+        progress = f
+        invalidate()
+    }
+
     private fun fillTo(to: Float, ms: Long, ease: android.animation.TimeInterpolator?) {
         filling?.cancel()
         if (!Motion.enabled) { progress = to; invalidate(); return }

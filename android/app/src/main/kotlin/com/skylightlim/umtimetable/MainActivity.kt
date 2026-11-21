@@ -45,7 +45,7 @@ import kotlin.math.hypot
  * and grades) and Settings.
  * The timetable comes from the MAYA import.
  */
-class MainActivity : Activity(), SpectrumHost {
+class MainActivity : Activity(), SpectrumHost, TourHost {
 
     override lateinit var ui: Ui
     private lateinit var fonts: Fonts
@@ -863,7 +863,7 @@ class MainActivity : Activity(), SpectrumHost {
             // A course page: the first course's, to show its Sections tab.
             openCourse = if (page == "course") SpectrumStore.array(this, "courses").objects().firstOrNull()?.optInt("id")?.takeIf { it > 0 } else null
             go(if (page == "course") "files" else page, null)
-        }, target = ::tourSpot) { _ ->
+        }, scene = { act, view -> TourScenes.scene(act, this, view) }) { _ ->
             tour = null
             shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
             updateBack()
@@ -879,30 +879,15 @@ class MainActivity : Activity(), SpectrumHost {
         updateBack()
     }
 
-    /**
-     * Where the tour's finger goes on the page shown ([Tour.Target]); with nothing there to point at (no classes,
-     * no plans, not signed in), the nearest thing that stands for it: a free hour for a plan or a class, the
-     * tab for a list with nothing in it.
-     */
-    private fun tourSpot(which: Tour.Target): Tour.Spot? {
-        val page = content.getChildAt(content.childCount - 1)
-        val grid = weekGrid()
-        fun tab(id: String) = tabViews[id]?.first?.let { Tour.Spot(it) }
-        fun onGrid(area: () -> android.graphics.RectF?) = grid?.let { g -> Tour.Spot(g) { area() ?: g.tourFree() } }
-        return when (which) {
-            Tour.Target.CLASS_CARD -> Tour.find(page, Tour.CLASS)?.let { Tour.Spot(it) } ?: tab("day")
-            Tour.Target.DAY_PAGE -> Tour.Spot(scroll) { android.graphics.RectF(scroll.width * 0.2f, scroll.height * 0.3f, scroll.width * 0.8f, scroll.height * 0.8f) }
-            Tour.Target.FREE_TIME -> onGrid { null }
-            Tour.Target.PLAN -> onGrid { grid?.tourPlan() }
-            Tour.Target.WEEK_CLASS -> onGrid { grid?.tourClass() }
-            Tour.Target.TITLE -> Tour.Spot(titleBox)
-            Tour.Target.DUE_ROW -> Tour.find(page, Tour.DUE)?.let { Tour.Spot(it) } ?: tab("due")
-            Tour.Target.COURSE_FOLD -> Tour.find(page, Tour.FOLD)?.let { Tour.Spot(it) } ?: tab("files")
-            Tour.Target.COURSE_NAME -> Tour.find(page, Tour.COURSE)?.let { Tour.Spot(it) } ?: tab("files")
-            // At the left edge, halfway down, where it comes once the course page has loaded.
-            Tour.Target.SECTIONS_TAB -> if (sectionsTabView.isShown) Tour.Spot(sectionsTabView) else tab("files")
-        }
-    }
+    // What the tour plays its stops on ([TourHost]).
+    override fun tourPage(): View? = content.getChildAt(content.childCount - 1)
+    override fun tourScroll(): View = scroll
+    override fun tourGrid(): WeekGrid? = weekGrid()
+    override fun tourTitle(): View = titleBox
+    override fun tourTab(id: String): View? = tabViews[id]?.first
+    override fun tourSectionsTab(): View = sectionsTabView
+    override fun tourSections() { sectionsOpen?.invoke() }
+    override fun tourWeek(by: Int) = shiftWeek(by)
 
     /**
      * The line under Week's title: a week of UM's calendar without classes, the week's public holidays

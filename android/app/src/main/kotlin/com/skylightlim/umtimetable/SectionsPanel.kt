@@ -31,6 +31,9 @@ object SectionsPanel {
      * Shows the panel for the course [code] (in its [color]). [folded] is how many of the foldable
      * sections are folded now, of [foldable]; [foldAll] folds them all (true) or opens them all.
      */
+    /** Set by the app tour: the panel (and its width) goes to it, to be shown there, rather than opening. */
+    var intercept: ((View, Int) -> Unit)? = null
+
     fun show(ui: Ui, code: String, color: Int, entries: List<Entry>, foldable: Int, folded: Int, foldAll: (Boolean) -> Unit) {
         val p = ui.p
         val dialog = Dialog(ui.context, android.R.style.Theme_Translucent_NoTitleBar)
@@ -106,6 +109,7 @@ object SectionsPanel {
             isVerticalScrollBarEnabled = false
             addView(list)
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        intercept?.let { it(panel, width); return }
 
         val frame = FrameLayout(ui.context).apply {
             addView(scrim, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))

@@ -740,6 +740,7 @@ object SpectrumScreens {
         val fold = h.folds[id]?.takeIf { it.ui === ui && it.from == from }?.view?.also { (it.parent as? ViewGroup)?.removeView(it) }
             ?: ui.column().apply { setPadding(ui.dp(24), 0, 0, ui.dp(16)) }
         h.folds[id] = Fold(ui, from, fold)
+        fold.setTag(R.id.tour, Tour.NEWS)
         fun open(now: Boolean) {
             if (fold.childCount == 0) courseFold(h, fold, news, grades)
             fold.visibility = if (now) View.VISIBLE else View.GONE
