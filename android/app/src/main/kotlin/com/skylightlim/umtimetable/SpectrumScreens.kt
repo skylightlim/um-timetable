@@ -48,6 +48,8 @@ interface SpectrumHost : Host {
     fun openDataSettings()
     /** Settings' Check for updates: asks GitHub, and says how it went. */
     fun checkForUpdates()
+    /** Settings' App tour: the new user's tour of the app again ([Tour]). */
+    fun showTour() = Unit
     /** Light or dark, and the accent scheme, and choosing them (Settings). */
     val look: Look
     fun setLook(look: Look)

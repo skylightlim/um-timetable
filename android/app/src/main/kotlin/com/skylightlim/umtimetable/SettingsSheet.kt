@@ -148,6 +148,8 @@ object SettingsSheet {
             row(ui, "Notifications", end = chosen(ui, value(ui, if (allowed) "On" else "Off", allowed))) { if (ask) h.enableNotifications() else h.openAppSettings() },
             // The newest version on GitHub (Updater); the installed one is under the page's title.
             row(ui, "Check for updates", end = chevron(ui)) { h.checkForUpdates() },
+            // The tour a new user sees once ([Tour]), again.
+            row(ui, "App tour", "Where everything is, in a minute", chevron(ui)) { Haptics.tick(page); h.showTour() },
             if (signedIn) {
                 lateinit var out: View
                 out = button(ui, "Sign out") { h.signOut(out) }

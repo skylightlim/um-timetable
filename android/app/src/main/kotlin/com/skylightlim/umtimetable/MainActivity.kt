@@ -55,6 +55,8 @@ class MainActivity : Activity(), SpectrumHost {
         private set
     /** The sign-in poster over the app on first run (see [showWelcome]). */
     private var welcome: View? = null
+    /** The tour over the app ([Tour]), while it's on. */
+    private var tour: TourView? = null
     /** Settings redrawn after a new look or theme: what moves on it (the look's pill, the theme's dots). */
     private var settingsMoved: SettingsSheet.Moved? = null
     /** Where a new look or theme spreads from: what was tapped in Settings, else the title. */
@@ -181,7 +183,10 @@ class MainActivity : Activity(), SpectrumHost {
         intent.getIntExtra(EXTRA_FOLD, 0).takeIf { it > 0 }?.let { view = "files"; openFold(it) }
         buildShell()
         render()
-        if (!SpectrumStore.signedIn(this) && timetable.sessions.isEmpty()) showWelcome()
+        val firstRun = !SpectrumStore.signedIn(this) && timetable.sessions.isEmpty()
+        // A new user sees the tour once signed in (or with a timetable); an app already in use has seen it.
+        Tour.launch(this, firstRun)
+        if (firstRun) showWelcome()
         // A newer release on GitHub? Asked at most every 12 hours, and only said when there is one.
         else Updater.check(this, ui, quiet = true)
         fresh = true
@@ -214,9 +219,15 @@ class MainActivity : Activity(), SpectrumHost {
         BatteryHelp.offer(ui)
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) tourWhenReady()
+    }
+
     override fun onPause() {
         super.onPause()
         ticker.removeCallbacks(tick)
+        ticker.removeCallbacks(tourCheck)
         SpectrumSync.onGrades = null
     }
 
@@ -830,6 +841,52 @@ class MainActivity : Activity(), SpectrumHost {
     }
 
     /**
+     * The new user's tour, once the app is theirs to look at: past the sign-in poster, the first sync done
+     * (it may open TimeEdit for the timetable), and nothing over the app (the notification question). Checked
+     * a moment after the app has the screen again, as a question can still be on its way.
+     */
+    private val tourCheck = Runnable {
+        if (Tour.pending(this) && tour == null && welcome == null && !syncing && !timetableAfterSync && hasWindowFocus() && !isFinishing) showTour()
+    }
+
+    private fun tourWhenReady() {
+        ticker.removeCallbacks(tourCheck)
+        if (Tour.pending(this)) ticker.postDelayed(tourCheck, 700)
+    }
+
+    /** The tour ([Tour]): from the first-run check above, or Settings' "App tour". Skipped or done, it's seen. */
+    override fun showTour() {
+        if (tour != null) return
+        val t = TourView(ui, show = { page ->
+            if (page == "day" || page == "week") weekShift = 0
+            if (page == "day") { pickedDay = false; sel = homeDay(timetable, now()) }
+            if (page == "files") openCourse = null
+            go(page, null)
+        }, target = { which ->
+            when (which) {
+                Tour.Target.NONE -> null
+                Tour.Target.STRIP -> stripFrame
+                Tour.Target.DAY_TAB -> tabViews["day"]?.first
+                Tour.Target.DUE_TAB -> tabViews["due"]?.first
+                Tour.Target.COURSES_TAB -> tabViews["files"]?.first
+                Tour.Target.SETTINGS_TAB -> tabViews["settings"]?.first
+            }
+        }) { finished ->
+            tour = null
+            shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+            updateBack()
+            if (!finished) go("day", null)
+        }
+        tour = t
+        Tour.markSeen(this)
+        findViewById<FrameLayout>(android.R.id.content).addView(t, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        // TalkBack reads the card alone, not the app under it.
+        shell.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        t.start()
+        updateBack()
+    }
+
+    /**
      * The line under Week's title: a week of UM's calendar without classes, the week's public holidays
      * ("Deepavali Mon"), then its Spectrum deadlines.
      */
@@ -1099,8 +1156,9 @@ class MainActivity : Activity(), SpectrumHost {
         go(if (week) "week" else "day", if (slideFar) null else Haptics::tick)
     }
 
-    // Back: leave a course page or the attendance log, then return to Day; on Day (false), Android's own back leaves the app.
+    // Back: end the tour, leave a course page or the attendance log, then return to Day; on Day (false), Android's own back leaves the app.
     private fun stepBack(): Boolean {
+        tour?.let { it.skip(); return true }
         if (view == "settings" && settingsLog) { logBack(); return true }
         if (view == "files" && openCourse != null && sectionBack()) return true
         if (view == "files" && openCourse != null) {
@@ -1127,7 +1185,7 @@ class MainActivity : Activity(), SpectrumHost {
 
     private fun updateBack() {
         if (Build.VERSION.SDK_INT < 33) return
-        val want = view != "day"
+        val want = view != "day" || tour != null
         if (want == backRegistered) return
         backRegistered = want
         if (want) onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, back)
@@ -1181,6 +1239,7 @@ class MainActivity : Activity(), SpectrumHost {
                     timetableAfterSync = false
                     if (Timetable.load(this).sessions.isEmpty() && SpectrumStore.occurrences(this).length() > 0) openTimeEdit()
                 }
+                tourWhenReady()
             }
         }
     }
