@@ -169,7 +169,7 @@ object SpectrumStore {
         return parsed
     }
 
-    /** What's due, less what the user dismissed (a long press in Due): every page, reminder and the widget read this. */
+    /** What's due, less what the user dismissed (a swipe or a long press in Due): every page, reminder and the widget read this. */
     fun due(c: Context): List<JSONObject> = dismissedDue(c).let { gone -> array(c, "due").objects().filter { DueList.activityKey(it) !in gone } }
 
     /** The activities the user dismissed from Due ([DueList.activityKey]). */

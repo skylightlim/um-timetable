@@ -237,9 +237,9 @@ object SpectrumScreens {
 
     /**
      * What's due, as in redesign 1i (in the app's own fonts): open attendance as a band to tap, then
-     * one ruled row per deadline, led by how long is left. Pull down to sync. A long press on a row
-     * offers to dismiss it: it goes from the list, the reminders and the widget, into a Dismissed fold at
-     * the end, faded, where a long press brings it back.
+     * one ruled row per deadline, led by how long is left. Pull down to sync. A swipe left on a row
+     * ([SwipeDismiss]), or a long press and its Dismiss, dismisses it: it goes from the list, the reminders
+     * and the widget, into a Dismissed fold at the end, faded, where a long press brings it back.
      */
     fun due(
         h: SpectrumHost,
@@ -264,20 +264,24 @@ object SpectrumScreens {
         val rows = items.map { i -> dueRow(h, i, now, faded = false) }
         for ((n, row) in rows.withIndex()) {
             val line = if (n > 0) rule(ui).also(page::addView) else null
-            page.addView(row)
+            lateinit var held: View
+            fun dismiss() {
+                SpectrumStore.dismissDue(ui.context, items[n], gone = true)
+                Reminders.schedule(ui.context)
+                TimetableWidget.updateAll(ui.context)
+                // It folds away where it is (and the line that led to it, or the first row's line after
+                // it); the page is then drawn again, with it under Dismissed.
+                Motion.resize(held)
+                held.visibility = View.GONE
+                (line ?: (page.getChildAt(page.indexOfChild(held) + 1)?.takeIf { rows.size > 1 }))?.visibility = View.GONE
+                held.postDelayed({ h.redraw() }, Motion.QUICK.duration + 60)
+            }
+            // Swiped left, or held and Dismiss tapped.
+            held = SwipeDismiss.wrap(ui, row, ::dismiss)
+            page.addView(held)
             row.setTag(R.id.tour, Tour.DUE)
             row.setOnLongClickListener { at ->
-                popMenu(ui, at, menuCard(ui, R.drawable.ic_close, "Dismiss")) {
-                    SpectrumStore.dismissDue(ui.context, items[n], gone = true)
-                    Reminders.schedule(ui.context)
-                    TimetableWidget.updateAll(ui.context)
-                    // It folds away where it is (and the line that led to it, or the first row's line after
-                    // it); the page is then drawn again, with it under Dismissed.
-                    Motion.resize(row)
-                    row.visibility = View.GONE
-                    (line ?: (page.getChildAt(page.indexOfChild(row) + 1)?.takeIf { rows.size > 1 }))?.visibility = View.GONE
-                    row.postDelayed({ h.redraw() }, Motion.QUICK.duration + 60)
-                }
+                popMenu(ui, at, menuCard(ui, R.drawable.ic_close, "Dismiss"), ::dismiss)
                 true
             }
         }

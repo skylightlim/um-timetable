@@ -35,13 +35,18 @@ class TourTest {
             assertTrue((0..end step 10).any { Tour.pose(g, it).down > 0.99f })
             assertEquals(0f, Tour.pose(g, end - 300).down, 0.001f)
             // What it does happens while it's down: a tap's touch, a hold full, a swipe's end, a drag's lift.
-            assertTrue(Tour.pose(g, Tour.actAt(g)).down > 0.5f || g == Tour.Gesture.SWIPE_UP)
+            assertTrue(Tour.pose(g, Tour.actAt(g)).down > 0.5f || g == Tour.Gesture.SWIPE_UP || g == Tour.Gesture.SWIPE_LEFT)
         }
         // A look shows no finger.
         assertEquals(0f, Tour.pose(Tour.Gesture.LOOK, 1000).shown, 0.001f)
         // A hold's ring fills; a swipe goes from below the spot to above it; a drag ends away from where it began.
         assertEquals(1f, Tour.pose(Tour.Gesture.HOLD, 1200).hold, 0.001f)
         assertTrue(Tour.pose(Tour.Gesture.SWIPE_UP, 400).dy > 0.9f && Tour.pose(Tour.Gesture.SWIPE_UP, 1100).dy < -0.9f)
+        // A swipe left starts right of the spot and goes past the line a real swipe must cross to dismiss (a third
+        // of a 360dp row), so the tour's row slides off as a real one would.
+        assertEquals(Tour.SWIPE_FROM, Tour.pose(Tour.Gesture.SWIPE_LEFT, 400).dx, 0.001f)
+        val travel = (Tour.SWIPE_FROM - Tour.pose(Tour.Gesture.SWIPE_LEFT, 1100).dx) * Tour.REACH
+        assertTrue(travel >= SwipeDismiss.line(360, 1f))
         assertTrue(Tour.pose(Tour.Gesture.DRAG, 1800).let { it.dx > 0.5f && it.dy > 0.7f })
     }
 }

@@ -24,9 +24,9 @@ import com.skylightlim.umtimetable.Motion.spring
  * The tour of the app for a new user: a card for each thing worth knowing, over the app dimmed, with a
  * spotlight on what it's done to and a finger doing it there, over and over, and what it does playing out:
  * the class's sheet opening and its pen tapped, a plan's card popping up, a plan carried to another time, a
- * class's card and its Delete held, the week coming back, a deadline's Dismiss, a course's news folding
- * open, the Sections panel. Cards and menus that would open are drawn in the tour as they look, and nothing
- * is saved, deleted or dismissed. Each stop opens its page first, so what's lit is the real thing ([TourScenes]
+ * class's card and its Delete held, the week coming back, a deadline swiped away and its Dismiss, a course's
+ * news folding open, the Sections panel. Cards and menus that would open are drawn in the tour as they look,
+ * and nothing is saved, deleted or dismissed. Each stop opens its page first, so what's lit is the real thing ([TourScenes]
  * plays each one). The first card can be skipped (Back ends it at any stop); the others go back with
  * Previous. Shown once, after the first sign-in or timetable import; an app already in use when this came is
  * taken to have seen it. Settings' "App tour" shows it again.
@@ -36,7 +36,7 @@ object Tour {
     enum class Act { CLASS, EDIT, SWIPE_UP, ADD_PLAN, MOVE_PLAN, DELETE_CLASS, THIS_WEEK, DISMISS, NEWS, SPECTRUM, SECTIONS }
 
     /** What the finger does; [LOOK] is no finger, only the spotlight on what's come up. */
-    enum class Gesture { TAP, DOUBLE_TAP, HOLD, SWIPE_UP, DRAG, LOOK }
+    enum class Gesture { TAP, DOUBLE_TAP, HOLD, SWIPE_UP, SWIPE_LEFT, DRAG, LOOK }
 
     /** A stop: the [page] it opens ("day", "week", "due", "files", or "course": the first course's page), what it shows, and what the card says. */
     data class Stop(val page: String, val act: Act, val title: String, val body: String)
@@ -57,7 +57,7 @@ object Tour {
         Stop("week", Act.THIS_WEEK, "Back to this week",
             "Swipe the week sideways to see others. Double-tap the big date title to come back to this week."),
         Stop("due", Act.DISMISS, "Dismiss a deadline",
-            "Hold a deadline, then tap Dismiss. It moves to Dismissed at the bottom, where holding it brings it back."),
+            "Swipe a deadline left, or hold it and tap Dismiss. It moves to Dismissed at the bottom, where holding it brings it back."),
         Stop("files", Act.NEWS, "News and grades",
             "Tap the arrow beside a course to open its news and grades under it."),
         Stop("files", Act.SPECTRUM, "Open on Spectrum",
@@ -122,6 +122,7 @@ object Tour {
         Gesture.DOUBLE_TAP -> 1700L
         Gesture.HOLD -> 2100L
         Gesture.SWIPE_UP -> 1800L
+        Gesture.SWIPE_LEFT -> 1800L
         Gesture.DRAG -> 2500L
         Gesture.LOOK -> 2200L
     }
@@ -132,9 +133,16 @@ object Tour {
         Gesture.DOUBLE_TAP -> 680L
         Gesture.HOLD -> 1150L
         Gesture.SWIPE_UP -> 1050L
+        Gesture.SWIPE_LEFT -> 1050L
         Gesture.DRAG -> 950L
         Gesture.LOOK -> 0L
     }
+
+    /** A swipe's reach (dp): the finger's moves ([Pose.dx], [Pose.dy]) are in these. */
+    const val REACH = 60f
+
+    /** Where a swipe left starts, right of the spot's middle ([Pose.dx]); what it drags moves from there. */
+    const val SWIPE_FROM = 0.8f
 
     /**
      * The finger [ms] into a go of [g]: how far it is from the spot ([dx], [dy], in units of a swipe's
@@ -172,6 +180,10 @@ object Tour {
                 out.down = press(300f, 1050f)
                 out.dy = 1 - 2 * ramp(450f, 1050f)
             }
+            Gesture.SWIPE_LEFT -> {
+                out.down = press(300f, 1050f)
+                out.dx = SWIPE_FROM - 2.2f * ramp(450f, 1050f)
+            }
             Gesture.DRAG -> {
                 out.down = press(300f, 1900f)
                 if (t in 380f..1000f) out.hold = ramp(380f, 950f)
@@ -186,7 +198,8 @@ object Tour {
 
 /**
  * One move of a stop: [gesture] at what [aim] finds (null: nothing to point at now). [press] runs when it
- * lands ([Tour.actAt]); [holding] each frame with how full a hold is; [after] once it and its [rest] are over.
+ * lands ([Tour.actAt]); [holding] each frame with how full a hold is; [moving] each frame with how far across
+ * the finger is ([Tour.Pose.dx]); [after] once it and its [rest] are over.
  * [carry]: the colour of a plan a drag carries along with the finger.
  */
 class Beat(
@@ -195,6 +208,7 @@ class Beat(
     val rest: Long = 600,
     val press: (() -> Unit)? = null,
     val holding: ((Float) -> Unit)? = null,
+    val moving: ((Float) -> Unit)? = null,
     val after: (() -> Unit)? = null,
     val carry: Int? = null,
 )
@@ -434,6 +448,7 @@ class TourView(
             b.press?.invoke()
         }
         b.holding?.invoke(pose.hold.coerceAtLeast(0f))
+        b.moving?.invoke(pose.dx)
         invalidate()
     }
 
@@ -652,7 +667,7 @@ class TourView(
             pressedFill.alpha = (36 * pose.down * shown).toInt()
             canvas.drawRoundRect(hole, radius, radius, pressedFill)
         }
-        val reach = ui.dp(60f).toFloat()
+        val reach = ui.dp(Tour.REACH).toFloat()
         val x = spot.centerX() + pose.dx * reach
         val y = spot.centerY() + pose.dy * reach
         // A drag carries a plan once it has lifted: a block the spot's size, under the finger.
