@@ -13,8 +13,11 @@ import java.time.LocalDateTime
 object AttendanceHistory {
     enum class Kind { MARKED, NOT_MARKED, TRYING, NOTHING, NOT_TRIED }
 
-    /** How one class went: [text] in a sentence (the log page), [short] in a line (Day's card). */
-    data class Outcome(val kind: Kind, val text: String, val short: String) {
+    /**
+     * How one class went: [text] in a sentence (the log page), [short] in a line (Day's card). [asleep]: an
+     * alarm for it never came while the phone was on, so the phone's battery setting held the app back.
+     */
+    data class Outcome(val kind: Kind, val text: String, val short: String, val asleep: Boolean = false) {
         /** It should have been marked and wasn't. */
         val missed get() = kind == Kind.NOT_MARKED || kind == Kind.NOT_TRIED
     }
@@ -57,6 +60,24 @@ object AttendanceHistory {
 
     private class Step(val time: LocalDateTime, val code: String, val type: String, val start: Int, val text: String)
 
+    /** An alarm that never came, as [AutoAttendance] logs it: "missed: the 08:02 alarm never came; …". */
+    private val MISSED = Regex("""^missed: the (\d\d):(\d\d) alarm never came( ${Regex.escape(AutoAttendance.RESTARTED)})?""")
+
+    /** An alarm due at [at] (minutes after midnight) that never came; [restarted]: the phone was off or restarting then. */
+    private class Missed(val time: LocalDateTime, val at: Int, val restarted: Boolean)
+
+    private fun missed(entries: List<AttendanceLog.Entry>): List<Missed> = entries.mapNotNull { e ->
+        val m = MISSED.find(e.text) ?: return@mapNotNull null
+        Missed(e.time, m.groupValues[1].toInt() * 60 + m.groupValues[2].toInt(), m.groupValues[3].isNotEmpty())
+    }
+
+    /** What a missed alarm means, in words: "the phone didn't wake the app at 08:02". */
+    private fun slept(m: Missed) =
+        if (m.restarted) "the phone was off or restarting at ${clockText(m.at)}" else "the phone didn't wake the app at ${clockText(m.at)}"
+
+    /** The same for a line on Day's card. */
+    private fun sleptShort(m: Missed) = if (m.restarted) "the phone was off" else "the phone didn't wake the app"
+
     private fun steps(entries: List<AttendanceLog.Entry>): List<Step> = entries.mapNotNull { e ->
         val m = STEP.matchEntire(e.text) ?: return@mapNotNull null
         Step(e.time, m.groupValues[1], m.groupValues[2], m.groupValues[3].toInt() * 60 + m.groupValues[4].toInt(), m.groupValues[5])
@@ -64,11 +85,28 @@ object AttendanceHistory {
 
     private fun hm(t: LocalDateTime) = clockText(t.hour * 60 + t.minute)
 
-    /** How a class went from its [steps] in the log, oldest first; [ended]: the class is over, so no try is still to come. */
-    private fun outcome(steps: List<Step>, ended: Boolean): Outcome {
+    /**
+     * How a class went from its [steps] in the log, oldest first; [ended]: the class is over, so no try is
+     * still to come. [missed]: the alarms for its tries that never came, which say why a try didn't happen.
+     */
+    private fun outcome(steps: List<Step>, ended: Boolean, missed: List<Missed> = emptyList()): Outcome {
         val last = steps.lastOrNull()
-            ?: return if (ended) Outcome(Kind.NOT_TRIED, "Not marked. The app didn't try to mark it.", "Attendance not marked")
-            else Outcome(Kind.TRYING, "Not marked yet.", "Attendance not marked yet")
+        if (last == null) {
+            val m = missed.firstOrNull()
+            return when {
+                m != null && ended -> Outcome(
+                    Kind.NOT_TRIED, "Not marked: ${slept(m)} to mark it." + fix(m), "Attendance not marked · ${sleptShort(m)}", asleep = !m.restarted,
+                )
+                m != null -> Outcome(
+                    Kind.TRYING, "Not marked yet: ${slept(m)}. It tries again when the app next runs.",
+                    "Attendance not marked yet · ${sleptShort(m)}", asleep = !m.restarted,
+                )
+                ended -> Outcome(Kind.NOT_TRIED, "Not marked. The app didn't try to mark it.", "Attendance not marked")
+                else -> Outcome(Kind.TRYING, "Not marked yet.", "Attendance not marked yet")
+            }
+        }
+        // A try that was to come after the last one, and didn't.
+        val lost = missed.lastOrNull { it.time.isAfter(last.time) }
         val text = last.text
         if (text.startsWith("no attendance activity")) {
             return if (ended || text.startsWith("no attendance activity for this class, last try")) {
@@ -92,10 +130,24 @@ object AttendanceHistory {
         val again = m.groupValues[2].takeIf { it.isNotEmpty() }
         return when {
             again == null -> Outcome(Kind.NOT_MARKED, "Not marked. ${why(error)}", "Attendance not marked · ${brief(error)}")
+            ended && lost != null -> Outcome(
+                Kind.NOT_MARKED, "Not marked. Last tried at ${hm(last.time)} (${brief(error)}), then ${slept(lost)} to try again." + fix(lost),
+                "Attendance not marked · ${brief(error)}", asleep = !lost.restarted,
+            )
             ended -> Outcome(Kind.NOT_MARKED, "Not marked. Last tried at ${hm(last.time)} (${brief(error)}), and no try came after it.", "Attendance not marked · ${brief(error)}")
+            lost != null -> Outcome(
+                Kind.TRYING, "Not marked yet (${brief(error)}), and ${slept(lost)} to try again. It tries again when the app next runs.",
+                "Attendance not marked yet · ${sleptShort(lost)}", asleep = !lost.restarted,
+            )
             else -> Outcome(Kind.TRYING, "Not marked yet (${brief(error)}). Trying again at $again.", "Attendance not marked yet · trying again at $again")
         }
     }
+
+    /** What to do about a phone that didn't wake the app; nothing for one that was off. */
+    private fun fix(m: Missed) = if (m.restarted) "" else " Set the app's battery use to Unrestricted."
+
+    /** The missed alarms in [list] for a class from [start] to [end] (minutes after midnight). */
+    private fun during(list: List<Missed>, start: Int, end: Int) = list.filter { it.at in start until end }
 
     /** Whether auto attendance was on at [t], by the log's "turned on" and "turned off"; a log begun while it was on, or cut short since, starts on. */
     private fun onAt(entries: List<AttendanceLog.Entry>, t: LocalDateTime): Boolean {
@@ -113,6 +165,7 @@ object AttendanceHistory {
     fun rows(entries: List<AttendanceLog.Entry>, now: LocalDateTime, days: Int, classesOn: (LocalDate) -> List<Session>): List<Row> {
         if (entries.isEmpty()) return emptyList()
         val steps = steps(entries).groupBy { it.time.toLocalDate() }
+        val missed = missed(entries).groupBy { it.time.toLocalDate() }
         val today = now.toLocalDate()
         val from = maxOf(entries.first().time.toLocalDate(), today.minusDays(days - 1L))
         val out = mutableListOf<Row>()
@@ -126,7 +179,7 @@ object AttendanceHistory {
             out += keys.sortedBy { it.first.third }.map { (k, end) ->
                 // A class the timetable no longer has is taken to last two hours.
                 val ended = date < today || nowMin >= (end ?: (k.third + 120))
-                Row(date, k.third, k.first, k.second, outcome(logged[k].orEmpty(), ended))
+                Row(date, k.third, k.first, k.second, outcome(logged[k].orEmpty(), ended, during(missed[date].orEmpty(), k.third, end ?: (k.third + 120))))
             }
             date = date.minusDays(1)
         }
@@ -149,8 +202,9 @@ object AttendanceHistory {
     fun now(c: Context, s: Session): Outcome? {
         if (!AutoAttendance.enabled(c) || !SpectrumStore.signedIn(c)) return null
         val today = LocalDate.now()
-        val todays = steps(AttendanceLog.read(c)).filter { it.time.toLocalDate() == today && it.code == s.course.code }
+        val entries = AttendanceLog.read(c)
+        val todays = steps(entries).filter { it.time.toLocalDate() == today && it.code == s.course.code }
         val own = todays.filter { it.start == s.start }.ifEmpty { todays }
-        return outcome(own, ended = false)
+        return outcome(own, ended = false, during(missed(entries).filter { it.time.toLocalDate() == today }, s.start, s.end))
     }
 }

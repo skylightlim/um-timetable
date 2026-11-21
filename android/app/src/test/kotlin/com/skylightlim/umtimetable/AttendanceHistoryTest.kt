@@ -105,6 +105,42 @@ class AttendanceHistoryTest {
         assertEquals("Marked late at 08:01, with the QR code on its page.", r.outcome.text)
     }
 
+    @Test fun anAlarmThatNeverCame() {
+        val slept = AttendanceLog.parse(
+            """
+            2026-11-23 07:55:00 turned on
+            2026-11-23 08:31:00 missed: the 08:00 alarm never came; mobile data, battery Optimised, standby rare
+            2026-11-23 10:00:01 XYZ2002 tutorial 10:00: {"error":"notopen","rows":[]}; trying again at 10:02
+            2026-11-23 10:31:00 missed: the 10:02 alarm never came; mobile data, battery Optimised, standby rare
+            2026-11-23 15:00:00 missed: the 14:00 alarm never came ${AutoAttendance.RESTARTED}; Wi-Fi, battery Optimised, standby active
+            """.trimIndent(),
+        )
+        val r = AttendanceHistory.rows(slept, LocalDateTime.of(2026, 11, 23, 20, 0), 14, ::classesOn)
+        fun at(start: Int) = r.single { it.start == start }.outcome
+        // Never tried: the phone didn't wake the app, and what to do about it.
+        at(480).let {
+            assertEquals(AttendanceHistory.Kind.NOT_TRIED, it.kind)
+            assertTrue(it.asleep && it.missed)
+            assertEquals("Not marked: the phone didn't wake the app at 08:00 to mark it. Set the app's battery use to Unrestricted.", it.text)
+            assertEquals("Attendance not marked · the phone didn't wake the app", it.short)
+        }
+        // Tried once, then the next try's alarm never came.
+        at(600).let {
+            assertTrue(it.asleep)
+            assertEquals("Not marked. Last tried at 10:00 (no session open), then the phone didn't wake the app at 10:02 to try again. Set the app's battery use to Unrestricted.", it.text)
+        }
+        // The phone was off: no battery setting to blame.
+        at(840).let {
+            assertFalse(it.asleep)
+            assertEquals("Not marked: the phone was off or restarting at 14:00 to mark it.", it.text)
+        }
+        // While the class is on: it'll try when the app next runs.
+        val now = AttendanceHistory.rows(slept, LocalDateTime.of(2026, 11, 23, 8, 40), 14, ::classesOn).single { it.start == 480 }.outcome
+        assertEquals(AttendanceHistory.Kind.TRYING, now.kind)
+        assertEquals("Attendance not marked yet · the phone didn't wake the app", now.short)
+        assertTrue(AttendanceLog.isProblem("missed: the 08:00 alarm never came; Wi-Fi"))
+    }
+
     @Test fun namesClassesAsTheLogDoes() {
         assertEquals("XYZ2002 tutorial 10:00", AttendanceHistory.what(s(xyz, 1, 600, "Tutorial")))
     }

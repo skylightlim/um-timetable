@@ -948,11 +948,16 @@ object Notify {
     )
 }
 
-/** Full sync every 30 minutes when there's a network. */
+/** Full sync every 30 minutes when there's a network, and auto attendance's catch-up for an alarm that never came. */
 class SpectrumSyncJob : JobService() {
     override fun onStartJob(params: JobParameters): Boolean {
         thread {
             SpectrumSync.run(applicationContext, background = true)
+            try {
+                AutoAttendance.catchUp(applicationContext)
+            } catch (e: Exception) {
+                AttendanceLog.add(applicationContext, "catch-up failed: $e")
+            }
             jobFinished(params, false)
         }
         return true

@@ -100,6 +100,7 @@ object AttendanceLogPage {
             })
             return
         }
+        batteryHelp(ui, page, rows)
         val courses = Timetable.load(c).courses
         var day: LocalDate? = null
         for (r in rows) {
@@ -127,6 +128,40 @@ object AttendanceLogPage {
             })
         }
         page.addView(ui.text("All has every step the app took, as it wrote them down.", 12.5f, p.muted), ui.wide(top = 12f))
+    }
+
+    /**
+     * When the phone didn't wake the app for a class ([AttendanceHistory.Outcome.asleep]): what to change,
+     * and a button to the app's page in Android's settings, where Battery (and Autostart, on the phones
+     * that have it) live. Gone once opened, until it happens to a class after that.
+     */
+    private fun batteryHelp(ui: Ui, page: LinearLayout, rows: List<AttendanceHistory.Row>) {
+        val p = ui.p
+        val c = ui.context
+        val prefs = uiPrefs(c)
+        val seen = prefs.getLong("batteryHelpAt", 0)
+        val zone = java.time.ZoneId.systemDefault()
+        if (rows.none { it.outcome.asleep && it.date.atStartOfDay(zone).plusMinutes(it.start.toLong()).toInstant().toEpochMilli() > seen }) return
+        page.addView(ui.text(
+            "Your phone didn't wake the app for some classes, so it couldn't mark them. In the app's settings, set Battery to Unrestricted. " +
+                "On Xiaomi, Redmi, POCO, OPPO, realme, vivo, Huawei or Honor, also turn on Autostart. On Samsung, take it out of Sleeping apps and Deep sleeping apps.",
+            13.5f, p.text,
+        ), ui.wide(top = 14f))
+        page.addView(ui.text("Open the app's settings", 14f, p.accentText, ui.f.bodySemi).apply {
+            gravity = Gravity.CENTER
+            minHeight = ui.dp(44)
+            background = ui.pressable(ui.shape(p.surface2, 12f), 12f)
+            setOnClickListener {
+                Haptics.tick(this)
+                prefs.edit().putLong("batteryHelpAt", System.currentTimeMillis()).apply()
+                runCatching {
+                    c.startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${c.packageName}"))
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            }
+        }, ui.wide(top = 10f))
     }
 
     /** All: every step, newest first, each day under its own label, its steps ruled inside only. */
